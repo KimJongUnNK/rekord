@@ -8,6 +8,9 @@ import re
 import sys
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):  # Windows consoles (cp1252) can't print ✔/✘
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parent.parent
 app = (ROOT / "rekord/web/app.js").read_text("utf-8")
 index = (ROOT / "rekord/web/index.html").read_text("utf-8")
