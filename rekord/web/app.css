@@ -288,9 +288,11 @@ dialog::backdrop { background: rgba(0,0,0,.55); backdrop-filter: blur(3px); }
     position: relative; z-index: 10; }
   .brand, .side-foot { display: none; }
   .nav { flex-direction: row; flex: 1; justify-content: space-around; }
-  .nav a { flex-direction: column; gap: 3px; padding: 6px 4px; font-size: 10.5px; flex: 1; text-align: center; border-radius: 10px; }
+  .nav a { flex-direction: column; gap: 3px; padding: 6px 1px; font-size: 10px; letter-spacing: -.01em; flex: 1; min-width: 0; text-align: center; border-radius: 10px; }
+  .nav a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav a span[data-short] { font-size: 0; }
+  .nav a span[data-short]::after { content: attr(data-short); font-size: 10px; }
   .nav a.on { background: transparent; color: var(--accent); }
-  .nav a[data-nav="templates"] { display: none; }
   main { padding-bottom: calc(110px); }
   .fab { bottom: calc(84px + var(--safe-b)); right: 16px; width: 60px; height: 60px; }
   .live { grid-template-columns: 1fr; }

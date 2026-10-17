@@ -152,7 +152,7 @@ struct PairingView: View {
                     Text("Lokaler KI-Rekorder. Dein Computer rechnet, dein iPhone nimmt auf und zeigt live, wer spricht.")
                         .font(.title3.weight(.medium)).foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("1. Auf dem Mac/PC REKORD starten (im WLAN freigeben)").font(.subheadline)
+                        Text("1. REKORD am Mac/PC öffnen (gleiches WLAN)").font(.subheadline)
                         Text("2. Einstellungen → iPhone & Geräte → QR-Code").font(.subheadline)
                         Text("3. Hier scannen").font(.subheadline)
                     }
@@ -190,7 +190,7 @@ struct PairingView: View {
                         error = "Kein REKORD-Code."; return
                     }
                     busy = true
-                    Task { if !(await hub.pair(with: p)) { error = "Hub nicht erreichbar – gleiches WLAN? Hub mit „Im WLAN freigeben“ gestartet?" }; busy = false }
+                    Task { if !(await hub.pair(with: p)) { error = "Computer nicht erreichbar – gleiches WLAN? Läuft REKORD am Computer? (Windows: Firewall „Private Netzwerke“ erlauben)" }; busy = false }
                 }
                 .ignoresSafeArea()
             }

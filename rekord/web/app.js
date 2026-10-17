@@ -370,8 +370,8 @@ function viewLive() {
       <div class="seg" id="mode"><button data-m="mic">Mikrofon</button><button data-m="mic+system">Mikro + Call-Ton</button></div></div>
     <h1 class="big" style="margin-bottom:16px"><input id="title" class="det-title" style="background:none;border:0;width:100%;padding:0;font:inherit;letter-spacing:inherit"
       placeholder="Meeting ${new Date().toLocaleDateString("de-AT")}"></h1>
-    ${secure ? "" : `<div class="card" style="border-color:var(--accent);margin-bottom:14px"><b>Mikrofon braucht HTTPS.</b>
-      <span class="muted">Im Handy-Browser: Hub mit <span class="kbd">--https</span> starten oder die REKORD iOS-App nutzen.</span></div>`}
+    ${secure ? "" : `<div class="card" style="border-color:var(--accent);margin-bottom:14px"><b>Hier im Browser kann nicht aufgenommen werden.</b>
+      <span class="muted">Handy-Browser geben das Mikrofon nur über HTTPS frei. Nimm mit der REKORD-App auf dem iPhone auf oder direkt am Computer.</span></div>`}
     <div class="live">
       <section class="stage">
         <div class="stage-top"><span class="rec-pill" id="pill"><i></i>BEREIT</span><span class="spacer"></span><span class="timer" id="timer">00:00</span></div>
@@ -831,7 +831,7 @@ async function viewDetail(id) {
     $("#tab").innerHTML = `<div class="row" style="margin-bottom:16px">
         <select id="tpl" style="max-width:340px">${tplOptions()}</select>
         <button class="btn primary" id="gen" ${!segs().length ? "disabled" : ""}>Zusammenfassen</button>
-        <span class="muted" style="font-size:13px">Mehrere Vorlagen = mehrere Blickwinkel auf dasselbe Gespräch.</span></div>
+        <span class="muted" style="font-size:13px">Mehrere Vorlagen = mehrere Blickwinkel auf dasselbe Gespräch. <a href="#/templates">Vorlagen verwalten →</a></span></div>
       ${noAi ? `<div class="card" style="margin-bottom:14px"><b>${esc(state.status.ai_problem || "Keine KI verbunden")}.</b> <a href="#/settings?s=ai">Claude, ChatGPT oder lokal (Ollama) verbinden →</a>
         <div class="muted" style="font-size:13px">Transkript und Sprecher funktionieren auch ohne KI.</div></div>` : ""}
       <div id="sums">${list.length ? "" : `<div class="empty" style="padding:40px"><p>${segs().length ? "Noch keine Zusammenfassung. Vorlage wählen und los." : "Wartet auf das Transkript …"}</p></div>`}</div>`;
@@ -1352,12 +1352,12 @@ async function viewSettings() {
   try {
     const p = await api("/api/pair");
     $("#pair").innerHTML = `
-      ${p.lan ? "" : `<p style="margin-top:0"><b>Der Hub ist nur auf diesem Computer erreichbar.</b> Fürs iPhone im WLAN starten mit:<br><span class="kbd">rekord serve --host 0.0.0.0</span>
-        (oder in der Desktop-App: „Im WLAN freigeben“).</p>`}
+      ${p.lan ? "" : `<p style="margin-top:0"><b>REKORD ist gerade nur auf diesem Computer erreichbar.</b> Starte REKORD über die App (Mac/Windows/Linux),
+        dann ist es automatisch im WLAN sichtbar. Im Terminal: <span class="kbd">rekord serve --host 0.0.0.0</span></p>`}
       <div class="row" style="align-items:flex-start;gap:28px">
-        <div><div class="qr">${p.qr_app}</div><p style="max-width:220px"><b>REKORD iOS-App</b><br><span class="muted">Mit Live Activity & Sperrbildschirm-Widget. In der App „Hub koppeln“ → QR scannen.</span></p></div>
-        <div><div class="qr">${p.qr_web}</div><p style="max-width:220px"><b>Im Browser (jedes Handy)</b><br><span class="muted">Kamera auf den Code → Seite öffnen → Teilen → „Zum Home-Bildschirm“.
-          Mikrofon im Browser braucht <span class="kbd">--https</span>.</span></p></div>
+        <div><div class="qr">${p.qr_app}</div><p style="max-width:220px"><b>REKORD iOS-App</b><br><span class="muted">Aufnehmen am iPhone, live sehen wer spricht, Sperrbildschirm-Widget. In der App „QR-Code scannen“.</span></p></div>
+        <div><div class="qr">${p.qr_web}</div><p style="max-width:220px"><b>Im Browser (jedes Handy)</b><br><span class="muted">Kamera auf den Code → Link öffnen → Teilen → „Zum Home-Bildschirm“.
+          Ansehen, anhören, Fragen stellen. Aufnehmen am Handy geht mit der REKORD-App.</span></p></div>
       </div>
       <div class="field"><div class="lbl">Adresse</div><div>${p.urls.map((u) => `<span class="kbd">${esc(u)}</span>`).join(" ") || "–"}</div></div>
       <div class="field"><div class="lbl">Kopplungs-Code<span class="hint">Neu erzeugen trennt alle gekoppelten Geräte.</span></div>
@@ -1367,10 +1367,10 @@ async function viewSettings() {
   } catch (e) { $("#pair").textContent = e.message; }
 
   // MCP
-  const py = st.python || "python";
-  const cfg = { mcpServers: { rekord: { command: py, args: ["-m", "rekord", "mcp"], env: { REKORD_HOME: st.home } } } };
+  const [cmd, ...args] = st.mcp_command || [st.python || "python", "-m", "rekord", "mcp"];
+  const cfg = { mcpServers: { rekord: { command: cmd, args, env: { REKORD_HOME: st.home } } } };
   $("#mcp").textContent = JSON.stringify(cfg, null, 2);
-  $("#mcp-cc").textContent = `claude mcp add rekord -e REKORD_HOME="${st.home}" -- "${py}" -m rekord mcp`;
+  $("#mcp-cc").textContent = `claude mcp add rekord -e REKORD_HOME="${st.home}" -- "${cmd}" ${args.join(" ")}`;
   $("#mcp-copy").onclick = () => { navigator.clipboard.writeText($("#mcp").textContent); toast("Kopiert"); };
 
   $("#inbox").onchange = (e) => save({ inbox_enabled: e.target.checked });

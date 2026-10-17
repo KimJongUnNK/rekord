@@ -115,3 +115,10 @@ def test_shutdown_only_from_this_computer(client, monkeypatch):
     fired = []
     monkeypatch.setattr(srv.threading, "Timer", lambda d, fn: type("T", (), {"start": lambda self: fired.append(d)})())
     assert client.post("/api/shutdown").json()["ok"] and fired == [0.5]
+
+
+def test_mcp_command_matches_install_type(client, monkeypatch):
+    import sys as _sys
+    assert client.get("/api/status").json()["mcp_command"][1:] == ["-m", "rekord", "mcp"]
+    monkeypatch.setattr(_sys, "frozen", True, raising=False)
+    assert client.get("/api/status").json()["mcp_command"][1:] == ["mcp"]  # packaged app takes the subcommand directly

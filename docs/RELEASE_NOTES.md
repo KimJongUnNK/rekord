@@ -13,13 +13,14 @@
 | `PKGBUILD` | Arch/AUR (`rekord-bin`): `makepkg -si` |
 | `REKORD-iOS-unsigned.ipa` | iPhone – per [Sideloadly](https://sideloadly.io) oder AltStore mit deiner Apple-ID installieren |
 
-**Erster Start:** lädt einmalig die Sprachmodelle (~700 MB). Danach läuft alles offline.
-Das Programm ist im WLAN erreichbar (geschützt durch Kopplungs-Code), damit das iPhone sich verbinden kann.
+**Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
+Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
-**Warnungen beim Öffnen (Apps sind nicht signiert):**
-- **Windows:** „Der Computer wurde durch Windows geschützt" → *Weitere Informationen* → *Trotzdem ausführen*. Firewall-Frage: *Privates Netzwerk* erlauben.
-- **macOS:** Rechtsklick auf REKORD → *Öffnen* → *Öffnen*. Oder im Terminal: `xattr -dr com.apple.quarantine /Applications/REKORD.app`
-- **iPhone:** nach dem Sideloaden *Einstellungen → Allgemein → VPN & Geräteverwaltung → deiner Apple-ID vertrauen*. Mit kostenloser Apple-ID 7 Tage gültig, Sideloadly erneuert automatisch.
+### Neu in 1.0.2
+- **Neue Anleitung** ([docs/ANLEITUNG.md](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)): Installation pro Plattform, die iPhone-Wege im Vergleich, KI verbinden und jeder Menüpunkt erklärt. Ein Test sorgt dafür, dass sie jeden Knopf der App abdeckt.
+- **Behoben:** *Einstellungen → Claude Desktop (MCP)* zeigte in der fertigen Mac/Windows/Linux-App einen Befehl, der dort nicht funktioniert.
+- **Behoben:** *Vorlagen* war am Handy nicht erreichbar. Die untere Leiste zeigt jetzt alle 6 Punkte, plus Link *Vorlagen verwalten* bei der Zusammenfassung.
+- Texte in der App und in der iPhone-App passen jetzt zur Anleitung (keine Hinweise mehr auf Terminal-Optionen).
 
 ### Neu in 1.0.1
 - **Linux für alle Distros:** AppImage, .deb, .rpm, Arch-Paket, tar.gz und AUR-PKGBUILD. Jedes Release wird automatisch auf Debian, Ubuntu, Fedora, openSUSE und Arch installiert und gestartet.

@@ -239,6 +239,8 @@ def status():
         "home": str(config.HOME),
         "inbox": str(config.INBOX_DIR),
         "python": sys.executable,
+        # packaged app (PyInstaller): the binary itself takes "mcp"; source install: python -m rekord mcp
+        "mcp_command": [sys.executable, "mcp"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "rekord", "mcp"],
     }
 
 

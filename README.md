@@ -7,11 +7,12 @@ Das ist die Plaud-Note-Pro-Idee, nur ohne Cloud-Zwang, ohne Abo und ohne Minuten
 |---|---|---|---|
 | ![](docs/04-live-running.png) | ![](docs/20-summary-dark.png) | ![](docs/21-mindmap.png) | ![](docs/13-mobile-detail.png) |
 
-## Download
+## Loslegen
 
-**[→ Neueste Version](https://github.com/KimJongUnNK/rekord/releases/latest)**: Windows (`.zip` → `REKORD.exe`), Mac mit Apple-Chip (`.zip` → `REKORD.app`), Linux (alle Distros, siehe unten), iPhone (`.ipa` zum Sideloaden).
-Entpacken, starten, fertig. Beim ersten Start werden die Sprachmodelle geladen (~700 MB), danach läuft alles offline.
-Die Apps sind nicht signiert, deshalb beim ersten Öffnen: Windows *Weitere Informationen → Trotzdem ausführen*, Mac *Rechtsklick → Öffnen*.
+1. **[Download](https://github.com/KimJongUnNK/rekord/releases/latest)**: Mac (Apple-Chip), Windows, Linux, iPhone
+2. **[Schritt-für-Schritt-Anleitung](docs/ANLEITUNG.md)**: Installation, iPhone verbinden, KI verbinden, jeder Menüpunkt erklärt
+
+In ~10 Minuten startklar. Danach läuft alles offline.
 
 ---
 
@@ -60,78 +61,6 @@ Optional: `faster-whisper` für NVIDIA-GPUs.
 
 ---
 
-## Installation
-
-### Linux
-Jede Distro, x86_64. Gebaut auf Debian 11, läuft auf allem ab Debian 11 / Ubuntu 20.04 / Fedora / openSUSE / Arch. Jedes Release wird automatisch auf Debian, Ubuntu, Fedora, openSUSE Tumbleweed und Arch installiert und gestartet.
-
-| Distro | Datei | Installieren |
-|---|---|---|
-| **Alle** | `REKORD-<ver>-x86_64.AppImage` | `chmod +x REKORD-*.AppImage && ./REKORD-*.AppImage` |
-| Debian, Ubuntu, Mint, Pop!_OS, Zorin, elementary | `rekord_<ver>_amd64.deb` | `sudo apt install ./rekord_*_amd64.deb` |
-| Fedora, RHEL/Alma/Rocky 9, openSUSE | `rekord-<ver>-1.x86_64.rpm` | `sudo dnf install ./rekord-*.rpm` · `sudo zypper in ./rekord-*.rpm` |
-| Arch, Manjaro, EndeavourOS, CachyOS | `rekord-<ver>-1-x86_64.pkg.tar.zst` | `sudo pacman -U rekord-*.pkg.tar.zst` (oder `PKGBUILD` → `makepkg -si`) |
-| Alles andere, ohne root | `REKORD-<ver>-Linux-x86_64.tar.gz` | `tar xzf REKORD-*.tar.gz && ./rekord-*/install.sh` |
-
-Danach liegt REKORD im App-Menü. Im Terminal geht `rekord` (öffnet REKORD im Browser), `rekord mcp` (für Claude Code) oder `rekord serve --host 0.0.0.0`.
-Unter Linux öffnet sich REKORD im Standard-Browser, und Chrome/Edge/Brave bieten dort „Installieren“ als eigenes App-Fenster an. Beenden geht über *Einstellungen → REKORD beenden*.
-Fürs iPhone im WLAN muss Port 8765 in der Firewall offen sein, z. B. `sudo ufw allow 8765/tcp`.
-
-Lieber aus dem Quellcode (für Entwickler):
-
-### Windows
-```powershell
-winget install -e --id Python.Python.3.12
-git clone https://github.com/KimJongUnNK/rekord; cd rekord
-.\start.ps1                      # nur dieser PC
-.\start.ps1 --host 0.0.0.0       # + iPhone im WLAN
-```
-
-### macOS
-```bash
-git clone https://github.com/KimJongUnNK/rekord && cd rekord
-./start.sh --host 0.0.0.0        # oder start.command im Finder doppelklicken
-```
-
-Der erste Start richtet eine venv ein und lädt die Basismodelle (~700 MB mit Whisper small). Danach öffnet sich `http://localhost:8765`.
-Im Browser über **Installieren** (Chrome/Edge) bzw. **Teilen → Zum Dock** (Safari) wird REKORD eine eigene App.
-
-**Desktop-App mit eigenem Fenster:** `pip install -e ".[desktop]"` und dann `python -m rekord desktop --lan`.
-Fertige `.app`/`.exe`: `pyinstaller desktop/rekord.spec`. Die CI baut beides automatisch (siehe `.github/workflows/ci.yml` → Artifacts).
-
-### iPhone
-**Variante A: Native App (empfohlen, mit Lockscreen)**
-1. Mac mit Xcode: `brew install xcodegen && cd ios && xcodegen generate && open Rekord.xcodeproj`
-2. Unter *Signing & Capabilities* dein Team wählen. Ist die Bundle-ID `app.rekord.ios` vergeben, Prefix und App Group (`group.app.rekord.shared`) in beiden Targets ändern.
-3. Auf dein iPhone spielen, die App öffnen und **QR scannen** (Hub: *Einstellungen → iPhone & Geräte*). Alternativ wird der Hub per Bonjour im WLAN automatisch gefunden.
-4. Sperrbildschirm bearbeiten → Widgets → REKORD. Im Kontrollzentrum gibt's „REKORD Aufnahme". Den Action Button belegst du über den Kurzbefehl „REKORD Aufnahme starten".
-
-Mit einer kostenlosen Apple-ID läuft die App 7 Tage und wird dann neu signiert. Mit dem Developer-Programm (99 €/Jahr) gibt's TestFlight und den App Store.
-
-**Variante B: PWA (ohne Mac, ohne Xcode)**
-Hub mit `--host 0.0.0.0 --https` starten, den Web-QR scannen, dem Zertifikat einmal vertrauen und dann *Teilen → Zum Home-Bildschirm*. Damit hast du alles außer Live Activity und Widgets.
-Tipp für echte Zertifikate ohne Warnung: [Tailscale](https://tailscale.com) + `tailscale serve 8765`.
-
----
-
-## KI verbinden
-*Einstellungen → KI*, oder in der iOS-App unter *Einstellungen*.
-
-| Anbieter | Was du brauchst | Hinweis |
-|---|---|---|
-| **Claude** | API-Key von console.anthropic.com | Standard `claude-opus-5-5`, günstig `claude-haiku-5-5`. Denkaufwand und Ausweichmodell sind einstellbar. |
-| **ChatGPT** | API-Key von platform.openai.com | Plus-Abo ≠ API-Guthaben. Modelle per „Laden" aus deinem Account. |
-| **Lokal** | [Ollama](https://ollama.com), z. B. `ollama pull qwen3:8b` | Nichts verlässt dein Netzwerk. Lange Meetings werden automatisch abschnittsweise verdichtet. |
-| **Kompatibel** | LM Studio, llama.cpp, Jan, vLLM, OpenRouter, Groq … | Jede OpenAI-kompatible URL |
-
-### Claude Desktop / Claude Code (MCP, ohne API-Key)
-Unter *Einstellungen → Claude Desktop (MCP)* steht der fertige Konfig-Block zum Kopieren. Claude bekommt die Werkzeuge `list_recordings`, `get_transcript`, `search_transcripts`, `list_people` und `save_summary`.
-```bash
-claude mcp add rekord -- python -m rekord mcp
-```
-
----
-
 ## Personen erkennen: so wird's präzise
 1. **Einmal anlernen.** Dafür gibt's drei Wege:
    - *Personen → Person einsprechen*: 15 s vorlesen.
@@ -146,18 +75,30 @@ Nach der Aufnahme läuft ein zweiter, gründlicher Durchgang: Segmentierung, Fei
 
 ---
 
-## Bedienung (Kurzfassung)
-- **Leertaste** startet und stoppt im Live-Modus, **H** markiert einen Moment (★). ★-Stellen gewichtet die KI stärker.
-- **Eingangsordner** `~/Rekord/inbox`: Was hier landet (iCloud-/Dropbox-Sync vom Handy, Diktiergerät), wird automatisch verarbeitet.
-- **Vokabular**: falsch erkannte Namen dauerhaft korrigieren („Beni" → „Beeni"), auch direkt aus *Suchen & Ersetzen*.
-- **Pro Gerät einstellbar**: Mikrofon, Rausch-/Echo-Unterdrückung, Auto-Pegel, Quelle (Mikro / Mikro + Call-Ton), Hell/Dunkel/System, Akzentfarbe, Dichte.
-- **CLI**: `python -m rekord process datei.m4a --summary meeting` · `python -m rekord models list|download` · `python -m rekord enroll "Lisa" probe.m4a`
+## Bedienung
+Jeder Menüpunkt, jeder Reiter und jede Einstellung ist in der **[Anleitung, Abschnitt 6](docs/ANLEITUNG.md#6-das-menü-jeder-punkt-erklärt)** erklärt.
+Kurz: **Leertaste** startet/stoppt im Live-Modus, **H** markiert einen Moment (★). ★-Stellen gewichtet die KI stärker.
 
 ## Daten
 Alles liegt in `~/Rekord` (änderbar per `REKORD_HOME`): `rekord.db` (SQLite), `audio/`, `models/`, `inbox/`, `settings.json`. Für ein Backup kopierst du diesen Ordner.
 Im WLAN ist jeder Zugriff außer von localhost durch einen **Kopplungs-Code** geschützt, und das Rotieren des Codes trennt alle Geräte.
 
 ## Entwicklung
+
+**Aus dem Quellcode starten** (Python 3.10+):
+```bash
+git clone https://github.com/KimJongUnNK/rekord && cd rekord
+./start.sh --host 0.0.0.0        # macOS/Linux · Windows: .\start.ps1 --host 0.0.0.0
+```
+
+**CLI:** `rekord serve` · `rekord process datei.m4a --summary meeting` · `rekord models list|download` · `rekord enroll "Lisa" probe.m4a` · `rekord mcp`
+
+**iOS-App selbst bauen** (Mac + Xcode): `brew install xcodegen && cd ios && xcodegen generate && open Rekord.xcodeproj`. Dann bei *Signing & Capabilities* dein Team wählen.
+Ist die Bundle-ID `app.rekord.ios` vergeben, Prefix und App Group (`group.app.rekord.shared`) in beiden Targets ändern.
+
+**Desktop-Pakete:** `pyinstaller desktop/rekord.spec`. Linux-Pakete: `packaging/linux/build.sh`. Ein Push auf den Branch `release` baut alles und veröffentlicht das Release.
+
+**Tests:**
 ```bash
 pip install -e ".[all,dev]"
 pytest -m "not models"                                   # Unit- + API-Tests, Sekunden
