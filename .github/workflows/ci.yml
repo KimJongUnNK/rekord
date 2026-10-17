@@ -1,0 +1,41 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[all,dev]"
+      - name: unit + api tests
+        run: pytest -m "not models" -q
+      - name: end-to-end with real models (downloads ~250 MB)
+        if: matrix.os == 'ubuntu-latest'
+        run: python scripts/make_test_audio.py && pytest -m models -q
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: cd ios && xcodegen generate
+      - run: cd ios && xcodebuild -project Rekord.xcodeproj -scheme Rekord -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+  desktop:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[all]" pyinstaller
+      - run: cd desktop && pyinstaller rekord.spec --noconfirm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: REKORD-${{ runner.os }}
+          path: desktop/dist/

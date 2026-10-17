@@ -1,0 +1,78 @@
+# XcodeGen spec:  brew install xcodegen && xcodegen generate && open Rekord.xcodeproj
+# Before running on a device: set DEVELOPMENT_TEAM below (or in Xcode → Signing) and, if the
+# bundle prefix is taken, change BUNDLE_PREFIX + the App Group in both .entitlements files.
+name: Rekord
+options:
+  bundleIdPrefix: app.rekord
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    DEVELOPMENT_TEAM: ""
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    BUNDLE_PREFIX: app.rekord
+    APP_GROUP: group.app.rekord.shared
+targets:
+  Rekord:
+    type: application
+    platform: iOS
+    sources:
+      - Rekord
+      - Shared
+    entitlements:
+      path: Rekord/Rekord.entitlements
+      properties:
+        com.apple.security.application-groups: [group.app.rekord.shared]
+    info:
+      path: Rekord/Info.plist
+      properties:
+        CFBundleDisplayName: REKORD
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        NSMicrophoneUsageDescription: "REKORD nimmt Meetings auf und erkennt, wer spricht. Audio geht nur an deinen eigenen REKORD-Hub."
+        NSCameraUsageDescription: "Zum Scannen des Kopplungs-QR-Codes deines REKORD-Hubs."
+        NSLocalNetworkUsageDescription: "REKORD verbindet sich mit deinem Computer im WLAN, auf dem der REKORD-Hub läuft."
+        NSBonjourServices: [_rekord._tcp]
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSAllowsArbitraryLoads: true
+        CFBundleURLTypes:
+          - CFBundleURLName: app.rekord
+            CFBundleURLSchemes: [rekord]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.rekord.ios
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1,2"
+    dependencies:
+      - target: RekordWidgets
+        embed: true
+  RekordWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - RekordWidgets
+      - Shared
+    entitlements:
+      path: RekordWidgets/RekordWidgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.app.rekord.shared]
+    info:
+      path: RekordWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: REKORD
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.rekord.ios.widgets
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) WIDGET_EXTENSION"
+        TARGETED_DEVICE_FAMILY: "1,2"

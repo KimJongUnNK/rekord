@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="de" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>REKORD</title>
+<meta name="description" content="Lokaler KI-Notizrekorder: aufnehmen, transkribieren, Sprecher erkennen, zusammenfassen.">
+<meta name="theme-color" content="#0B0B0C">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="REKORD">
+<script>
+  // apply per-device theme before first paint (no flash)
+  (function () {
+    try {
+      var p = JSON.parse(localStorage.getItem("rekord.device") || "{}");
+      var t = p.theme || "system";
+      if (t === "system") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.dataset.theme = t;
+      if (p.accent) document.documentElement.style.setProperty("--accent", p.accent);
+      if (p.density) document.documentElement.dataset.density = p.density;
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div id="app">
+  <aside class="sidebar">
+    <a class="brand" href="#/"><span class="brand-r">R</span><span class="brand-dot"></span><span class="brand-word">REKORD</span></a>
+    <nav class="nav">
+      <a href="#/" data-nav="library"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"/></svg><span>Aufnahmen</span></a>
+      <a href="#/live" data-nav="live"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9"/></svg><span>Live</span></a>
+      <a href="#/ask" data-nav="ask"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><span>Fragen</span></a>
+      <a href="#/people" data-nav="people"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.9.6 3.1 2.3 3.5 5.2"/></svg><span>Personen</span></a>
+      <a href="#/templates" data-nav="templates"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7"/></svg><span>Vorlagen</span></a>
+      <a href="#/settings" data-nav="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span>Einstellungen</span></a>
+    </nav>
+    <div class="side-foot">
+      <div id="engine-status" class="engine-status"></div>
+    </div>
+  </aside>
+  <main id="view" tabindex="-1"></main>
+  <a id="fab" class="fab" href="#/live" aria-label="Aufnahme starten"><span></span></a>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<dialog id="dlg"><form method="dialog" id="dlg-body"></form></dialog>
+<script src="/static/md.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

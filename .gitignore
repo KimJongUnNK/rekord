@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+desktop/build/
+desktop/dist/
+.pytest_cache/
+tests/.tts/
+tests/fixtures/
+ios/Rekord.xcodeproj/
+ios/build/
+ios/**/xcuserdata/
+.DS_Store
+*.log
