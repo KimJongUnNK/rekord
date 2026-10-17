@@ -1209,6 +1209,8 @@ async function viewSettings() {
       <div class="field"><div class="lbl">Was verlässt das Gerät?</div><div class="muted">Audio, Transkription, Sprecher-Erkennung: <b>nie</b>. Für Zusammenfassungen geht nur der
         <b>Text</b> an die gewählte KI – bei Ollama/LM Studio auch das nicht. Keine Telemetrie, kein Konto.</div></div>
       <div class="field"><div class="lbl">Version</div><div class="muted">REKORD ${esc(st.version)}</div></div>
+      ${["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) ? `<div class="field"><div class="lbl">Beenden<span class="hint">Stoppt REKORD auf diesem Computer (läuft sonst im Hintergrund weiter, damit das iPhone verbunden bleibt).</span></div>
+        <div><button class="btn danger" id="quit">REKORD beenden</button></div></div>` : ""}
     </div></section></div>`;
 
   $$("[data-go]").forEach((b) => b.onclick = () => $("#s-" + b.dataset.go).scrollIntoView({ behavior: "smooth" }));
@@ -1372,6 +1374,11 @@ async function viewSettings() {
   $("#mcp-copy").onclick = () => { navigator.clipboard.writeText($("#mcp").textContent); toast("Kopiert"); };
 
   $("#inbox").onchange = (e) => save({ inbox_enabled: e.target.checked });
+  $("#quit") && ($("#quit").onclick = async () => {
+    if (!(await confirmBox("REKORD beenden?", "Laufende Verarbeitungen werden beim nächsten Start fortgesetzt.", "Beenden"))) return;
+    try { await api("/api/shutdown", { method: "POST" }); view.innerHTML = `<div class="page empty"><h2>REKORD ist beendet.</h2><p>Du kannst dieses Fenster schließen.</p></div>`; }
+    catch (e) { toast(e.message, 5000); }
+  });
   cleanup = () => { if (testCap) testCap.stop(); };
 }
 

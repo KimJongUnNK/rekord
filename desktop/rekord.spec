@@ -17,7 +17,7 @@ datas += [(os.path.join(ROOT, "rekord", "web"), os.path.join("rekord", "web"))] 
 
 a = Analysis([os.path.join(SPECPATH, "launch.py")], pathex=[ROOT], binaries=binaries, datas=datas,
              hiddenimports=hidden + ["rekord.server", "rekord.mcp_server", "mcp.server.mcpserver", "mcp.server.fastmcp"],
-             excludes=["tkinter", "matplotlib", "torch"])
+             excludes=["tkinter", "matplotlib", "torch", "PIL"])  # PIL: only needed at build time for the icon
 pyz = PYZ(a.pure)
 icon = os.path.join(SPECPATH, "icon.ico" if sys.platform == "win32" else "icon.png")
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="REKORD", console=False, icon=icon)

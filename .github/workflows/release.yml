@@ -63,8 +63,60 @@ jobs:
       - uses: actions/upload-artifact@v7
         with: { name: REKORD-iOS-unsigned.ipa, path: REKORD-iOS-unsigned.ipa }
 
+  linux-build:
+    # Debian 11 base (glibc 2.31) → the binary runs on Debian 11+, Ubuntu 20.04+, Fedora, openSUSE, Arch, Mint, Pop!_OS …
+    runs-on: ubuntu-latest
+    container: python:3.12-bullseye
+    steps:
+      - uses: actions/checkout@v7
+      - run: pip install ".[mcp,docx]" pyinstaller pillow
+      - name: build
+        run: |
+          cd desktop
+          pyinstaller rekord.spec --noconfirm > build.log 2>&1 || { echo "::error title=pyinstaller::$(tail -c 3000 build.log | tr '\n' ' ')"; exit 1; }
+          tar -C dist -czf ../rekord-linux-dist.tar.gz REKORD
+      - uses: actions/upload-artifact@v7
+        with: { name: linux-dist, path: rekord-linux-dist.tar.gz }
+
+  linux-package:
+    needs: linux-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with: { name: linux-dist }
+      - name: tools
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q rpm zstd libarchive-tools
+          sudo gem install --no-document fpm
+      - name: package (AppImage, deb, rpm, pacman, tar.gz, PKGBUILD)
+        run: |
+          mkdir -p dist && tar -C dist -xzf rekord-linux-dist.tar.gz
+          VER=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+          packaging/linux/build.sh dist/REKORD "$VER" linux-out
+      - name: install + start on real distros
+        run: |
+          VER=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+          t() { docker run --rm --network host -v "$PWD/linux-out:/pkgs:ro" -v "$PWD/packaging/linux/test-in-distro.sh:/t.sh:ro" \
+                  -e APPIMAGE_EXTRACT_AND_RUN=1 "$1" bash /t.sh "$2" "$3" || { echo "::error title=$1::install/start failed"; exit 1; }; }
+          t debian:bullseye      "dpkg -i /pkgs/rekord_${VER}_amd64.deb" 8801
+          t ubuntu:24.04         "dpkg -i /pkgs/rekord_${VER}_amd64.deb" 8802
+          t fedora:latest        "rpm -i /pkgs/rekord-${VER}-1.x86_64.rpm" 8803
+          t opensuse/tumbleweed  "rpm -i /pkgs/rekord-${VER}-1.x86_64.rpm" 8804
+          t archlinux:latest     "pacman -U --noconfirm /pkgs/rekord-${VER}-1-x86_64.pkg.tar.zst" 8805
+          t fedora:latest        "install -m755 /pkgs/REKORD-${VER}-x86_64.AppImage /usr/local/bin/rekord" 8806
+      - name: AUR PKGBUILD builds with makepkg
+        run: |
+          VER=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+          docker run --rm -v "$PWD/linux-out:/pkgs:ro" archlinux:latest bash -c "
+            pacman -Sy --noconfirm --needed fakeroot binutils debugedit >/dev/null &&
+            useradd -m b && mkdir /home/b/p && cp /pkgs/PKGBUILD /pkgs/REKORD-${VER}-Linux-x86_64.tar.gz /home/b/p/ && chown -R b /home/b/p &&
+            su b -c 'cd /home/b/p && makepkg -f --noconfirm' && pacman -U --noconfirm /home/b/p/rekord-bin-*.pkg.tar.zst && rekord models list | head -1"
+      - uses: actions/upload-artifact@v7
+        with: { name: linux-packages, path: linux-out/* }
+
   publish:
-    needs: [desktop, ios]
+    needs: [desktop, ios, linux-package]
     if: ${{ !cancelled() }}  # publish whatever built, even if one platform failed
     runs-on: ubuntu-latest
     steps:

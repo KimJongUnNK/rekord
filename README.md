@@ -9,7 +9,7 @@ Das ist die Plaud-Note-Pro-Idee, nur ohne Cloud-Zwang, ohne Abo und ohne Minuten
 
 ## Download
 
-**[→ Neueste Version](https://github.com/KimJongUnNK/rekord/releases/latest)**: Windows (`.zip` → `REKORD.exe`), Mac mit Apple-Chip (`.zip` → `REKORD.app`), iPhone (`.ipa` zum Sideloaden).
+**[→ Neueste Version](https://github.com/KimJongUnNK/rekord/releases/latest)**: Windows (`.zip` → `REKORD.exe`), Mac mit Apple-Chip (`.zip` → `REKORD.app`), Linux (alle Distros, siehe unten), iPhone (`.ipa` zum Sideloaden).
 Entpacken, starten, fertig. Beim ersten Start werden die Sprachmodelle geladen (~700 MB), danach läuft alles offline.
 Die Apps sind nicht signiert, deshalb beim ersten Öffnen: Windows *Weitere Informationen → Trotzdem ausführen*, Mac *Rechtsklick → Öffnen*.
 
@@ -62,7 +62,22 @@ Optional: `faster-whisper` für NVIDIA-GPUs.
 
 ## Installation
 
-Lieber aus dem Quellcode (für Entwickler oder Linux):
+### Linux
+Jede Distro, x86_64. Gebaut auf Debian 11, läuft auf allem ab Debian 11 / Ubuntu 20.04 / Fedora / openSUSE / Arch. Jedes Release wird automatisch auf Debian, Ubuntu, Fedora, openSUSE Tumbleweed und Arch installiert und gestartet.
+
+| Distro | Datei | Installieren |
+|---|---|---|
+| **Alle** | `REKORD-<ver>-x86_64.AppImage` | `chmod +x REKORD-*.AppImage && ./REKORD-*.AppImage` |
+| Debian, Ubuntu, Mint, Pop!_OS, Zorin, elementary | `rekord_<ver>_amd64.deb` | `sudo apt install ./rekord_*_amd64.deb` |
+| Fedora, RHEL/Alma/Rocky 9, openSUSE | `rekord-<ver>-1.x86_64.rpm` | `sudo dnf install ./rekord-*.rpm` · `sudo zypper in ./rekord-*.rpm` |
+| Arch, Manjaro, EndeavourOS, CachyOS | `rekord-<ver>-1-x86_64.pkg.tar.zst` | `sudo pacman -U rekord-*.pkg.tar.zst` (oder `PKGBUILD` → `makepkg -si`) |
+| Alles andere, ohne root | `REKORD-<ver>-Linux-x86_64.tar.gz` | `tar xzf REKORD-*.tar.gz && ./rekord-*/install.sh` |
+
+Danach liegt REKORD im App-Menü. Im Terminal geht `rekord` (öffnet REKORD im Browser), `rekord mcp` (für Claude Code) oder `rekord serve --host 0.0.0.0`.
+Unter Linux öffnet sich REKORD im Standard-Browser, und Chrome/Edge/Brave bieten dort „Installieren“ als eigenes App-Fenster an. Beenden geht über *Einstellungen → REKORD beenden*.
+Fürs iPhone im WLAN muss Port 8765 in der Firewall offen sein, z. B. `sudo ufw allow 8765/tcp`.
+
+Lieber aus dem Quellcode (für Entwickler):
 
 ### Windows
 ```powershell
@@ -156,5 +171,6 @@ Die End-to-End-Tests erzeugen Meetings mit mehreren Sprechern über offene TTS-S
 - Sehr ähnliche Stimmen ohne Anlernen können verwechselt werden. Abhilfe: anlernen und Teilnehmer wählen.
 - Das Live-Transkript nutzt das gewählte Modell auf kurzen Schnipseln. Das genaue Transkript entsteht im zweiten Durchgang.
 - Die iOS-App braucht zum Bauen einen Mac mit Xcode. Live Activities laufen ab iOS 18.
+- Linux-Pakete gibt's für x86_64. ARM-Boards (Raspberry Pi) und musl-Distros (Alpine) laufen aus dem Quellcode.
 
 MIT-Lizenz · © 2026 Emil Boenke

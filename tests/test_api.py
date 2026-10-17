@@ -105,3 +105,13 @@ def test_lan_requires_token(client):
             pass
     with lan.websocket_connect("/ws/events"):  # paired via cookie → allowed
         pass
+
+
+def test_shutdown_only_from_this_computer(client, monkeypatch):
+    lan = TestClient(app, client=("192.168.1.60", 5000))
+    tok = config.load()["pair_token"]
+    assert lan.post("/api/shutdown", headers={"X-Rekord-Token": tok}).status_code == 403
+    import rekord.server as srv
+    fired = []
+    monkeypatch.setattr(srv.threading, "Timer", lambda d, fn: type("T", (), {"start": lambda self: fired.append(d)})())
+    assert client.post("/api/shutdown").json()["ok"] and fired == [0.5]

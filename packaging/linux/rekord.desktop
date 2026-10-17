@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=REKORD
+GenericName=KI-Rekorder
+Comment=Meetings aufnehmen, live erkennen wer spricht, transkribieren und zusammenfassen – lokal
+Comment[en]=Record meetings, see who is speaking live, transcribe and summarize – locally
+Exec=rekord
+Icon=rekord
+Terminal=false
+Categories=AudioVideo;Audio;Office;Recorder;
+Keywords=transcription;meeting;speaker;whisper;notes;diarization;Protokoll;Transkript;
+StartupWMClass=REKORD
+StartupNotify=true

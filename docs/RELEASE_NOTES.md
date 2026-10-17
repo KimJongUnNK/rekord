@@ -5,6 +5,12 @@
 |---|---|
 | `REKORD-Windows-x64.zip` | Windows 10/11 – entpacken, `REKORD.exe` starten |
 | `REKORD-macOS-AppleSilicon.zip` | Mac mit Apple-Chip (M1 und neuer) |
+| `REKORD-<ver>-x86_64.AppImage` | **Linux, jede Distro**: `chmod +x` und starten |
+| `rekord_<ver>_amd64.deb` | Debian, Ubuntu, Mint, Pop!_OS: `sudo apt install ./rekord_*.deb` |
+| `rekord-<ver>-1.x86_64.rpm` | Fedora, openSUSE, RHEL/Alma/Rocky 9: `sudo dnf install ./rekord-*.rpm` |
+| `rekord-<ver>-1-x86_64.pkg.tar.zst` | Arch, Manjaro, EndeavourOS: `sudo pacman -U rekord-*.pkg.tar.zst` |
+| `REKORD-<ver>-Linux-x86_64.tar.gz` | Linux ohne root: entpacken, `./install.sh` |
+| `PKGBUILD` | Arch/AUR (`rekord-bin`): `makepkg -si` |
 | `REKORD-iOS-unsigned.ipa` | iPhone – per [Sideloadly](https://sideloadly.io) oder AltStore mit deiner Apple-ID installieren |
 
 **Erster Start:** lädt einmalig die Sprachmodelle (~700 MB). Danach läuft alles offline.
@@ -16,6 +22,9 @@ Das Programm ist im WLAN erreichbar (geschützt durch Kopplungs-Code), damit das
 - **iPhone:** nach dem Sideloaden *Einstellungen → Allgemein → VPN & Geräteverwaltung → deiner Apple-ID vertrauen*. Mit kostenloser Apple-ID 7 Tage gültig, Sideloadly erneuert automatisch.
 
 ### Neu in 1.0.1
+- **Linux für alle Distros:** AppImage, .deb, .rpm, Arch-Paket, tar.gz und AUR-PKGBUILD. Jedes Release wird automatisch auf Debian, Ubuntu, Fedora, openSUSE und Arch installiert und gestartet.
+- Ein zweiter Klick aufs App-Icon öffnet das laufende REKORD, statt einen zweiten Server zu starten. Gibt es kein natives Fenster, öffnet sich der Browser. Neuer Knopf *Einstellungen → REKORD beenden*.
+- Die Desktop-App versteht CLI-Befehle, z. B. `rekord mcp` für Claude Code.
 - **Behoben:** Wer eine falsch erkannte Person korrigiert hat (z. B. „Lisa" → „Anna"), hat damit Lisas Stimmprofil überschrieben. Jetzt bekommt Anna ein eigenes Profil, Lisa bleibt unverändert.
 - **Behoben:** Claude Desktop / Claude Code (MCP) startete mit dem aktuellen MCP-SDK 2.x nicht. Läuft jetzt mit 1.x und 2.x.
 - **Behoben:** Eine per Drag & Drop importierte Datei wurde mehrfach hochgeladen, wenn man vorher zwischen Ansichten gewechselt hatte.

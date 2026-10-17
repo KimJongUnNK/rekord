@@ -6,6 +6,7 @@ import hmac
 import io
 import json
 import logging
+import os
 import re
 import shutil
 import socket
@@ -260,6 +261,17 @@ async def put_settings(request: Request):
     asr._sherpa.cache_clear()
     asr._faster.cache_clear()
     return config.public()
+
+
+@app.post("/api/shutdown")
+def shutdown(request: Request):
+    """Quit the hub (needed when it runs in the background without a window). Only from this computer."""
+    if not _is_local(request.client.host if request.client else None):
+        raise HTTPException(403, "Nur am Computer selbst möglich")
+    if live.active():
+        raise HTTPException(409, "Es läuft gerade eine Live-Aufnahme")
+    threading.Timer(0.5, lambda: os._exit(0)).start()
+    return {"ok": True}
 
 
 @app.post("/api/settings/rotate-token")
