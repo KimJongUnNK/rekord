@@ -73,6 +73,12 @@ jobs:
         with: { path: dist, merge-multiple: true }
       - id: v
         run: echo "tag=v$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - name: remove assets that are no longer built
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          gh release view "${{ steps.v.outputs.tag }}" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null | while read -r a; do
+            [ -f "dist/$a" ] || gh release delete-asset "${{ steps.v.outputs.tag }}" "$a" --repo "$GITHUB_REPOSITORY" -y
+          done
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
@@ -81,3 +87,4 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: REKORD ${{ steps.v.outputs.tag }}
           make_latest: true
+          overwrite_files: true
