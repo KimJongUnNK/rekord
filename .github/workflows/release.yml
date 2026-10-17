@@ -1,7 +1,9 @@
 name: release
-# Push a tag like v1.0.0 → builds Windows + macOS desktop apps and an unsigned iPhone IPA, publishes a GitHub Release.
+# Push to the `release` branch (or a v* tag) → builds Windows + macOS desktop apps and an unsigned iPhone IPA,
+# then publishes GitHub Release v<version from pyproject.toml> (tag is created by the workflow).
 on:
   push:
+    branches: [release]
     tags: ["v*"]
   workflow_dispatch:
 permissions:
@@ -71,9 +73,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: dist, merge-multiple: true }
+      - id: v
+        run: echo "tag=v$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           body_path: docs/RELEASE_NOTES.md
-          tag_name: ${{ github.ref_name }}
-          name: REKORD ${{ github.ref_name }}
+          tag_name: ${{ steps.v.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: REKORD ${{ steps.v.outputs.tag }}
+          make_latest: true
