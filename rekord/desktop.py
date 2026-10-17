@@ -1,6 +1,7 @@
 """Native desktop window for Windows/macOS/Linux: the hub runs in-process, the UI in a system webview."""
 from __future__ import annotations
 
+import os
 import socket
 import threading
 import time
@@ -20,6 +21,9 @@ def run(port: int = 8765, lan: bool = False) -> None:
     host = "0.0.0.0" if lan else "127.0.0.1"
     threading.Thread(target=serve, args=(host, port, False, False), daemon=True).start()
     _wait(port)
+    if os.environ.get("REKORD_HEADLESS") == "1":  # CI smoke test / server-only mode
+        while True:
+            time.sleep(3600)
     try:
         import webview  # pip install pywebview
     except ImportError:

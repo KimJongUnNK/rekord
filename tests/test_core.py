@@ -290,3 +290,14 @@ def test_provider_errors_are_friendly():
     s["llm"]["provider"] = "none"
     with pytest.raises(providers.LLMError):
         providers.complete(s, "x", [{"role": "user", "content": "x"}])
+
+
+# ------------------------------------------------------------------ model registry
+
+def test_model_registry_urls_are_sane():
+    from rekord import models
+    for m in models.REGISTRY.values():
+        assert isinstance(m.url, str) and m.url.startswith("https://"), m.id
+        assert isinstance(m.size_mb, int) and m.size_mb > 0, m.id
+        assert m.files and isinstance(m.description, str), m.id
+    assert set(models.ESSENTIAL) <= set(models.REGISTRY)

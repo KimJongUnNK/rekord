@@ -1,0 +1,79 @@
+name: release
+# Push a tag like v1.0.0 → builds Windows + macOS desktop apps and an unsigned iPhone IPA, publishes a GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: REKORD-Windows-x64.zip
+          - os: macos-latest
+            asset: REKORD-macOS-AppleSilicon.zip
+          - os: macos-15-intel
+            asset: REKORD-macOS-Intel.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[all]" pyinstaller pillow
+      - name: build
+        shell: bash
+        run: |
+          cd desktop
+          pyinstaller rekord.spec --noconfirm > build.log 2>&1 || { echo "::error title=pyinstaller::$(tail -c 3000 build.log | tr '\n' ' ')"; exit 1; }
+      - name: smoke test (packaged app serves the UI)
+        shell: bash
+        run: |
+          cd desktop/dist
+          if [ "$RUNNER_OS" = "macOS" ]; then BIN="REKORD.app/Contents/MacOS/REKORD"; elif [ "$RUNNER_OS" = "Windows" ]; then BIN="REKORD/REKORD.exe"; else BIN="REKORD/REKORD"; fi
+          export REKORD_HOME="$RUNNER_TEMP/rk" REKORD_PORT=8799 REKORD_LAN=0 REKORD_HEADLESS=1
+          "./$BIN" > smoke.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:8799/api/status > /dev/null && break; sleep 2; done
+          curl -sf localhost:8799/ | grep -q REKORD || { echo "::error title=smoke::$(tail -c 2500 smoke.log | tr '\n' ' ')"; exit 1; }
+      - name: package
+        shell: bash
+        run: |
+          cd desktop/dist
+          if [ "$RUNNER_OS" = "macOS" ]; then ditto -c -k --keepParent REKORD.app "../../${{ matrix.asset }}";
+          else 7z a "../../${{ matrix.asset }}" REKORD > /dev/null; fi
+      - uses: actions/upload-artifact@v4
+        with: { name: "${{ matrix.asset }}", path: "${{ matrix.asset }}" }
+
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - name: build unsigned IPA (sideload with Sideloadly/AltStore, or re-sign with your Apple ID)
+        run: |
+          cd ios && xcodegen generate
+          xcodebuild -project Rekord.xcodeproj -scheme Rekord -configuration Release -sdk iphoneos \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build > build.log 2>&1 \
+            || { echo "::error title=ios::$(tail -c 3000 build.log | tr '\n' ' ')"; exit 1; }
+          mkdir -p Payload && cp -R build/Build/Products/Release-iphoneos/Rekord.app Payload/
+          zip -qry ../REKORD-iOS-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with: { name: REKORD-iOS-unsigned.ipa, path: REKORD-iOS-unsigned.ipa }
+
+  publish:
+    needs: [desktop, ios]
+    if: ${{ !cancelled() }}  # publish whatever built, even if one platform failed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          body_path: docs/RELEASE_NOTES.md
+          tag_name: ${{ github.ref_name }}
+          name: REKORD ${{ github.ref_name }}
