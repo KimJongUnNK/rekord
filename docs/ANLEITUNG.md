@@ -251,4 +251,6 @@ Für jede Distro gibt's ein passendes Paket. Alle Dateien liegen auf der [Releas
 | Arch, Manjaro, EndeavourOS | `sudo pacman -U rekord-*.pkg.tar.zst` |
 | Ohne root | `tar xzf REKORD-*-Linux-x86_64.tar.gz && ./rekord-*/install.sh` |
 
-REKORD öffnet sich unter Linux im Browser. Fürs iPhone den Port freigeben: `sudo ufw allow 8765/tcp`.
+REKORD öffnet sich unter Linux im Browser. Fürs iPhone den Port freigeben:
+- Fedora, openSUSE, RHEL: `sudo firewall-cmd --add-port=8765/tcp --permanent && sudo firewall-cmd --reload`
+- Ubuntu, Mint: `sudo ufw allow 8765/tcp`

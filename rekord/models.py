@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import ssl
 import tarfile
 import threading
 import urllib.request
@@ -70,6 +71,19 @@ REGISTRY: dict[str, ModelSpec] = {m.id: m for m in [
 ]}
 
 ESSENTIAL = ["pyannote-segmentation", "eres2net-base", "silero-vad"]
+
+def _ssl_context() -> ssl.SSLContext:
+    """Bundled CA list (certifi): the packaged app's OpenSSL was built on Debian and would look for
+    certificates at Debian paths, which fails on Fedora/Arch/openSUSE. SSL_CERT_FILE still wins."""
+    import os
+    if os.environ.get("SSL_CERT_FILE"):
+        return ssl.create_default_context(cafile=os.environ["SSL_CERT_FILE"])
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
 
 _progress: dict[str, dict] = {}
 _plock = threading.Lock()
@@ -136,7 +150,7 @@ def _download(model_id: str) -> None:
     _set(model_id, state="downloading", done=0, total=spec.size_mb * 1024 * 1024, error="")
     try:
         req = urllib.request.Request(spec.url, headers={"User-Agent": "rekord"})
-        with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "wb") as f:
+        with urllib.request.urlopen(req, timeout=60, context=_ssl_context()) as r, open(tmp, "wb") as f:
             total = int(r.headers.get("Content-Length") or 0)
             if total:
                 _set(model_id, total=total)

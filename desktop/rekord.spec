@@ -7,7 +7,7 @@ from PyInstaller.utils.hooks import collect_all
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 
 datas, binaries, hidden = [], [], []
-for pkg in ("sherpa_onnx", "av", "webview", "uvicorn", "anthropic", "openai", "zeroconf", "docx", "qrcode"):
+for pkg in ("sherpa_onnx", "av", "webview", "uvicorn", "anthropic", "openai", "zeroconf", "docx", "qrcode", "certifi"):
     try:
         d, b, h = collect_all(pkg)
         datas += d; binaries += b; hidden += h

@@ -31,8 +31,28 @@ def _wait(port: int, timeout: float = 30) -> None:
         time.sleep(0.2)
 
 
-def _browser_mode(url: str) -> None:
+def open_url(url: str) -> None:
+    """Open the browser. In the packaged Linux app, child processes must not inherit our bundled
+    libraries (LD_LIBRARY_PATH), or system tools like kde-open/xdg-open crash on the old libstdc++."""
+    import subprocess
+    import sys
+    if sys.platform.startswith("linux") and getattr(sys, "frozen", False):
+        env = dict(os.environ)
+        orig = env.pop("LD_LIBRARY_PATH_ORIG", None)
+        if orig is not None:
+            env["LD_LIBRARY_PATH"] = orig
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
+        try:
+            subprocess.Popen(["xdg-open", url], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        except OSError:
+            pass
     webbrowser.open(url)
+
+
+def _browser_mode(url: str) -> None:
+    open_url(url)
     print(f"REKORD läuft: {url}  – beenden über Einstellungen → „REKORD beenden“ oder Strg+C.")
     while True:
         time.sleep(3600)
@@ -43,7 +63,7 @@ def run(port: int = 8765, lan: bool = False) -> None:
     # second click on the app icon: REKORD is already running → just show it
     if _port_open(port) and _is_rekord(port):
         if os.environ.get("REKORD_HEADLESS") != "1":
-            webbrowser.open(url)
+            open_url(url)
         return
 
     from .__main__ import serve

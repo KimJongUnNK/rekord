@@ -25,6 +25,10 @@ cat <&3 | grep -q "<title>REKORD</title>" && echo "web ui: ok" || { echo "web ui
 "$REKORD" models list 2>/dev/null | grep -q "whisper-small" && echo "cli: ok" || { echo "cli: FAILED"; exit 1; }
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}' \
   | timeout 30 "$REKORD" mcp 2>/dev/null | head -c 400 | grep -q '"serverInfo"' && echo "mcp: ok" || { echo "mcp: FAILED"; exit 1; }
+# real HTTPS model download (catches CA-path problems; skipped when models are mounted)
+if [ -z "${MODELS:-}" ]; then
+  "$REKORD" models download silero-vad > /tmp/dl.log 2>&1 && echo "https download: ok" || { echo "https download: FAILED"; tail -3 /tmp/dl.log; exit 1; }
+fi
 if [ "$FULL" = full ]; then
   out=$(REKORD_PORT=0 timeout 300 "$REKORD" process /fx/meeting1.wav 2>/dev/null)
   echo "transcribe: $(echo "$out" | grep -c '^\*\*Sprecher') lines, speakers: $(echo "$out" | grep -o '^\*\*Sprecher [0-9]' | sort -u | tr '\n' ' ')"

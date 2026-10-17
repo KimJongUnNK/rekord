@@ -16,6 +16,11 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.0.3
+- **Behoben (Linux):** Der Modell-Download schlug auf Fedora, Arch und openSUSE mit einem SSL-Fehler fehl. REKORD bringt jetzt seine eigene Zertifikatsliste mit.
+- **Behoben (Linux):** Das Öffnen des Browsers ist unter KDE abgestürzt (`kde-open`, falsche Systembibliotheken).
+- Die Release-Tests machen jetzt auf jeder Distro einen echten HTTPS-Download.
+
 ### Neu in 1.0.2
 - **Neue Anleitung** ([docs/ANLEITUNG.md](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)): Installation pro Plattform, die iPhone-Wege im Vergleich, KI verbinden und jeder Menüpunkt erklärt. Ein Test sorgt dafür, dass sie jeden Knopf der App abdeckt.
 - **Behoben:** *Einstellungen → Claude Desktop (MCP)* zeigte in der fertigen Mac/Windows/Linux-App einen Befehl, der dort nicht funktioniert.
