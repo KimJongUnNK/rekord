@@ -106,9 +106,9 @@ def remember_speaker(rid: str, speaker_id: int, name: str) -> dict:
         e = _embedding_from_segments(rid, speaker_id)
     if e is None:
         raise ValueError("Zu wenig Sprache für einen Stimmabdruck (mind. ~1 Sekunde)")
+    # Only ever merge into the profile of the person the user named. If REKORD had matched this voice to
+    # someone else ("Lisa") and the user corrects it ("Anna"), Lisa's voiceprint must stay untouched.
     existing = next((p for p in db.list_profiles(with_embedding=True) if p["name"].lower() == name.lower()), None)
-    if existing is None and sp.get("profile_id"):
-        existing = db.get_profile(sp["profile_id"], with_embedding=True)
     if existing is not None:
         merged = voiceprint.update_mean(existing["embedding"], existing["samples"], e) \
             if len(existing["embedding"]) == len(e) else e

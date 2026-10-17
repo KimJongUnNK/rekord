@@ -73,6 +73,23 @@ ESSENTIAL = ["pyannote-segmentation", "eres2net-base", "silero-vad"]
 
 _progress: dict[str, dict] = {}
 _plock = threading.Lock()
+_dl_locks: dict[str, threading.Lock] = {}
+
+
+def _dl_lock(model_id: str) -> threading.Lock:
+    with _plock:
+        return _dl_locks.setdefault(model_id, threading.Lock())
+
+
+def _extract(archive: Path, dest: Path) -> None:
+    with tarfile.open(archive, "r:bz2") as t:
+        try:
+            t.extractall(dest, filter="data")
+        except TypeError:  # Python builds without tarfile filters (< 3.10.12 / 3.11.4)
+            for m in t.getmembers():
+                if m.name.startswith(("/", "..")) or ".." in Path(m.name).parts or m.issym() or m.islnk():
+                    raise RuntimeError(f"unsicherer Pfad im Archiv: {m.name}")
+            t.extractall(dest)
 
 
 def model_dir(spec: ModelSpec) -> Path:
@@ -105,7 +122,12 @@ def _set(mid: str, **kw) -> None:
 
 
 def download(model_id: str) -> None:
-    """Blocking download + extract. Progress via status()."""
+    """Blocking download + extract. Progress via status(). Concurrent callers wait for the same download."""
+    with _dl_lock(model_id):
+        _download(model_id)
+
+
+def _download(model_id: str) -> None:
     spec = REGISTRY[model_id]
     if installed(model_id):
         return
@@ -125,8 +147,7 @@ def download(model_id: str) -> None:
                 _set(model_id, done=done)
         if spec.archive_dir:
             _set(model_id, state="extracting")
-            with tarfile.open(tmp, "r:bz2") as t:
-                t.extractall(config.MODELS_DIR, filter="data")
+            _extract(tmp, config.MODELS_DIR)
             target = model_dir(spec)
             if target.exists():
                 shutil.rmtree(target)
@@ -148,6 +169,8 @@ def download(model_id: str) -> None:
 
 
 def download_async(model_id: str) -> None:
+    if _dl_lock(model_id).locked():
+        return  # already running
     def run():
         try:
             download(model_id)

@@ -7,6 +7,12 @@ Das ist die Plaud-Note-Pro-Idee, nur ohne Cloud-Zwang, ohne Abo und ohne Minuten
 |---|---|---|---|
 | ![](docs/04-live-running.png) | ![](docs/20-summary-dark.png) | ![](docs/21-mindmap.png) | ![](docs/13-mobile-detail.png) |
 
+## Download
+
+**[→ Neueste Version](https://github.com/KimJongUnNK/rekord/releases/latest)**: Windows (`.zip` → `REKORD.exe`), Mac mit Apple-Chip (`.zip` → `REKORD.app`), iPhone (`.ipa` zum Sideloaden).
+Entpacken, starten, fertig. Beim ersten Start werden die Sprachmodelle geladen (~700 MB), danach läuft alles offline.
+Die Apps sind nicht signiert, deshalb beim ersten Öffnen: Windows *Weitere Informationen → Trotzdem ausführen*, Mac *Rechtsklick → Öffnen*.
+
 ---
 
 ## Was es kann
@@ -55,6 +61,8 @@ Optional: `faster-whisper` für NVIDIA-GPUs.
 ---
 
 ## Installation
+
+Lieber aus dem Quellcode (für Entwickler oder Linux):
 
 ### Windows
 ```powershell
@@ -140,6 +148,7 @@ pip install -e ".[all,dev]"
 pytest -m "not models"                                   # Unit- + API-Tests, Sekunden
 python scripts/make_test_audio.py && pytest -m models    # End-to-End mit echten Modellen
 ```
+Die Unit-Tests prüfen unter anderem die exakte Claude-API-Anfrage (gegen einen lokalen Nachbau der Anthropic-API) und den MCP-Server per echtem Protokoll-Handshake.
 Die End-to-End-Tests erzeugen Meetings mit mehreren Sprechern über offene TTS-Stimmen. Sie prüfen die Diarization, die Wiedererkennung von Personen über zwei Meetings, die Live-Erkennung in Echtzeit und die geschlossene Runde.
 
 ## Grenzen (ehrlich)

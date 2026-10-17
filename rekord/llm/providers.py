@@ -3,6 +3,7 @@ OpenAI-compatible server (LM Studio, llama.cpp, Jan, vLLM, OpenRouter, Groq ...)
 from __future__ import annotations
 
 import json
+import os
 from typing import Iterator
 
 import httpx
@@ -27,6 +28,25 @@ class LLMError(RuntimeError):
 def active(settings: dict) -> tuple[str, dict]:
     p = settings["llm"]["provider"]
     return p, settings["llm"].get(p, {})
+
+
+def configured(settings: dict) -> tuple[bool, str]:
+    """Is the chosen AI usable at all? (cheap check, no network) -> (ok, reason)"""
+    p, cfg = active(settings)
+    if p == "none":
+        return False, "Keine KI gewählt"
+    if p == "anthropic" and not (cfg.get("api_key") or os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+        return False, "Claude: API-Key fehlt"
+    if p == "openai":
+        if not (cfg.get("api_key") or os.environ.get("OPENAI_API_KEY")):
+            return False, "ChatGPT: API-Key fehlt"
+        if not cfg.get("model"):
+            return False, "ChatGPT: Modell fehlt"
+    if p == "compatible" and not (cfg.get("base_url") and cfg.get("model")):
+        return False, "Server-Adresse oder Modell fehlt"
+    if p == "ollama" and not cfg.get("model"):
+        return False, "Ollama: Modell fehlt"
+    return True, ""
 
 
 def model_name(settings: dict) -> str:
@@ -77,7 +97,9 @@ def _anthropic(cfg: dict, system: str, messages: list[dict], max_tokens: int) ->
         betas.append("server-side-fallback-2026-07-01")
         kwargs["fallbacks"] = "default"
     try:
-        with client.beta.messages.stream(betas=betas, **kwargs) as st:
+        if betas:
+            kwargs["betas"] = betas
+        with client.beta.messages.stream(**kwargs) as st:
             yield from st.text_stream
             final = st.get_final_message()
         if final.stop_reason == "refusal":

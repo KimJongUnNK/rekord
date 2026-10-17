@@ -71,6 +71,20 @@ def test_templates_api(client):
     client.delete(f"/api/templates/{t['id']}")
 
 
+def test_colors_are_validated(client):
+    pid = db.create_profile("Farbtest", __import__("numpy").ones(3, dtype="float32"))
+    assert client.patch(f"/api/profiles/{pid}", json={"color": '"><script>alert(1)</script>'}).status_code == 400
+    assert client.patch(f"/api/profiles/{pid}", json={"color": "#14b8a6"}).json()["color"] == "#14B8A6"
+    db.delete_profile(pid)
+
+
+def test_status_reports_missing_ai(client, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    config.save({"llm": {"provider": "anthropic", "anthropic": {"api_key": ""}}})
+    st = client.get("/api/status").json()
+    assert st["ai_ready"] is False and "API-Key" in st["ai_problem"]
+
+
 def test_pairing_qr(client):
     p = client.get("/api/pair").json()
     assert p["token"] == config.load()["pair_token"] and p["qr_app"].lstrip().startswith("<?xml")

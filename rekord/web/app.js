@@ -144,7 +144,8 @@ async function refreshStatus() {
     $("#engine-status").innerHTML = `
       <div><span class="dot ${!s.ready ? "busy" : busy ? "busy" : "ok"}"></span><b>${!s.ready ? "Modelle werden geladen" : busy ? "Arbeitet …" : "Bereit · lokal"}</b></div>
       ${dl ? `<div>${esc(dl.name)} ${Math.round((dl.progress.done / dl.progress.total) * 100)} %</div>` : ""}
-      <div>KI: ${esc(s.provider === "none" ? "aus" : s.provider_name)}${s.model ? ` · ${esc(s.model)}` : ""}</div>`;
+      ${s.ai_ready ? `<div>KI: ${esc(s.provider_name)}${s.model ? ` · ${esc(s.model)}` : ""}</div>`
+        : `<div><a href="#/settings?s=ai" style="color:var(--accent)">KI verbinden →</a></div>`}`;
   } catch (e) {
     $("#engine-status").innerHTML = `<span class="dot err"></span><b>Hub nicht erreichbar</b>`;
   }
@@ -172,8 +173,15 @@ const routes = [
   [/^#\/settings/, () => viewSettings()],
 ];
 let cleanup = null;
+// listeners on long-lived elements (view, document) are registered here and removed on every navigation
+let disposers = [];
+function listen(target, type, fn, opts) {
+  target.addEventListener(type, fn, opts);
+  disposers.push(() => target.removeEventListener(type, fn, opts));
+}
 async function route() {
   if (cleanup) { try { cleanup(); } catch (e) {} cleanup = null; }
+  disposers.splice(0).forEach((d) => d());
   const h = location.hash || "#/";
   const nav = h.startsWith("#/live") ? "live" : h.startsWith("#/ask") ? "ask" : h.startsWith("#/people") ? "people"
     : h.startsWith("#/templates") ? "templates" : h.startsWith("#/settings") ? "settings" : "library";
@@ -242,9 +250,9 @@ async function viewLibrary() {
   $("#q").addEventListener("input", debounce((e) => { q = e.target.value.trim(); load(); }, 250));
   $("#file").addEventListener("change", (e) => upload([...e.target.files]));
   const drop = $("#drop");
-  ["dragenter", "dragover"].forEach((t) => view.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
-  ["dragleave", "drop"].forEach((t) => view.addEventListener(t, (e) => { e.preventDefault(); if (t === "drop" || e.target === drop) drop.classList.remove("over"); }));
-  view.addEventListener("drop", (e) => { const fs = [...(e.dataTransfer?.files || [])]; if (fs.length) upload(fs); });
+  ["dragenter", "dragover"].forEach((t) => listen(view, t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => listen(view, t, (e) => { e.preventDefault(); if (t === "drop" || e.target === drop) drop.classList.remove("over"); }));
+  listen(view, "drop", (e) => { const fs = [...(e.dataTransfer?.files || [])]; if (fs.length) upload(fs); });
 
   async function upload(files) {
     if (!files.length) return;
@@ -623,7 +631,7 @@ async function viewDetail(id) {
   const segs = () => rec.segments;
   const spk = (sid) => rec.speakers.find((s) => s.id === sid) || { name: "?", color: "var(--fg3)" };
   const seek = (t) => { audio.currentTime = t; if (audio.paused) audio.play().catch(() => {}); };
-  view.addEventListener("click", (e) => {
+  listen(view, "click", (e) => {
     const a = e.target.closest("a.tsl,[data-seek]");
     if (a) { e.preventDefault(); seek(Number(a.dataset.t ?? a.dataset.seek)); }
   });
@@ -819,12 +827,13 @@ async function viewDetail(id) {
 
   function tabSummary() {
     const list = rec.summaries.filter((s) => s.template_id !== "mindmap");
-    const noAi = state.status && state.status.provider === "none";
+    const noAi = state.status && !state.status.ai_ready;
     $("#tab").innerHTML = `<div class="row" style="margin-bottom:16px">
         <select id="tpl" style="max-width:340px">${tplOptions()}</select>
         <button class="btn primary" id="gen" ${!segs().length ? "disabled" : ""}>Zusammenfassen</button>
         <span class="muted" style="font-size:13px">Mehrere Vorlagen = mehrere Blickwinkel auf dasselbe Gespräch.</span></div>
-      ${noAi ? `<div class="card" style="margin-bottom:14px">Keine KI verbunden. <a href="#/settings?s=ai">Claude, ChatGPT oder lokal (Ollama) verbinden →</a></div>` : ""}
+      ${noAi ? `<div class="card" style="margin-bottom:14px"><b>${esc(state.status.ai_problem || "Keine KI verbunden")}.</b> <a href="#/settings?s=ai">Claude, ChatGPT oder lokal (Ollama) verbinden →</a>
+        <div class="muted" style="font-size:13px">Transkript und Sprecher funktionieren auch ohne KI.</div></div>` : ""}
       <div id="sums">${list.length ? "" : `<div class="empty" style="padding:40px"><p>${segs().length ? "Noch keine Zusammenfassung. Vorlage wählen und los." : "Wartet auf das Transkript …"}</p></div>`}</div>`;
     const box = $("#sums");
     list.forEach((s) => box.appendChild(sumCard(s)));
@@ -1216,7 +1225,7 @@ async function viewSettings() {
     const mics = await listMics();
     $("#mic").innerHTML = `<option value="">Systemstandard</option>` + mics.map((m) => opt(m.deviceId, prefs.micId, m.label || "Mikrofon " + m.deviceId.slice(0, 5))).join("");
   };
-  if (navigator.mediaDevices) { fillMics(); navigator.mediaDevices.addEventListener?.("devicechange", fillMics); }
+  if (navigator.mediaDevices) { fillMics(); if (navigator.mediaDevices.addEventListener) listen(navigator.mediaDevices, "devicechange", fillMics); }
   $("#mic").onchange = (e) => setPref("micId", e.target.value);
   let testCap = null;
   $("#mic-test").onclick = async () => {

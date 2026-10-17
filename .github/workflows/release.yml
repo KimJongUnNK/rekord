@@ -20,8 +20,8 @@ jobs:
             asset: REKORD-macOS-AppleSilicon.zip
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
       - run: pip install -e ".[all]" pyinstaller pillow
       - name: build
@@ -44,13 +44,13 @@ jobs:
           cd desktop/dist
           if [ "$RUNNER_OS" = "macOS" ]; then ditto -c -k --keepParent REKORD.app "../../${{ matrix.asset }}";
           else 7z a "../../${{ matrix.asset }}" REKORD > /dev/null; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: "${{ matrix.asset }}", path: "${{ matrix.asset }}" }
 
   ios:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: brew install xcodegen
       - name: build unsigned IPA (sideload with Sideloadly/AltStore, or re-sign with your Apple ID)
         run: |
@@ -60,7 +60,7 @@ jobs:
             || { echo "::error title=ios::$(tail -c 3000 build.log | tr '\n' ' ')"; exit 1; }
           mkdir -p Payload && cp -R build/Build/Products/Release-iphoneos/Rekord.app Payload/
           zip -qry ../REKORD-iOS-unsigned.ipa Payload
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: REKORD-iOS-unsigned.ipa, path: REKORD-iOS-unsigned.ipa }
 
   publish:
@@ -68,8 +68,8 @@ jobs:
     if: ${{ !cancelled() }}  # publish whatever built, even if one platform failed
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with: { path: dist, merge-multiple: true }
       - id: v
         run: echo "tag=v$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
@@ -79,7 +79,7 @@ jobs:
           gh release view "${{ steps.v.outputs.tag }}" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null | while read -r a; do
             [ -f "dist/$a" ] || gh release delete-asset "${{ steps.v.outputs.tag }}" "$a" --repo "$GITHUB_REPOSITORY" -y
           done
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           body_path: docs/RELEASE_NOTES.md

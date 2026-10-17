@@ -16,7 +16,7 @@ for pkg in ("sherpa_onnx", "av", "webview", "uvicorn", "anthropic", "openai", "z
 datas += [(os.path.join(ROOT, "rekord", "web"), os.path.join("rekord", "web"))]  # the UI
 
 a = Analysis([os.path.join(SPECPATH, "launch.py")], pathex=[ROOT], binaries=binaries, datas=datas,
-             hiddenimports=hidden + ["rekord.server", "rekord.mcp_server", "mcp.server.fastmcp"],
+             hiddenimports=hidden + ["rekord.server", "rekord.mcp_server", "mcp.server.mcpserver", "mcp.server.fastmcp"],
              excludes=["tkinter", "matplotlib", "torch"])
 pyz = PYZ(a.pure)
 icon = os.path.join(SPECPATH, "icon.ico" if sys.platform == "win32" else "icon.png")

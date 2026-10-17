@@ -7,6 +7,7 @@ import threading
 import traceback
 
 from . import config, db
+from .llm import providers
 
 log = logging.getLogger("rekord.jobs")
 
@@ -44,6 +45,11 @@ def enqueue(rid: str, kind: str = "process") -> None:
     emit({"type": "queued", "id": rid})
 
 
+def wants_auto_summary(settings: dict) -> bool:
+    """Only queue a summary when an AI is actually set up - no key yet means no failing jobs."""
+    return bool(settings.get("auto_summary")) and providers.configured(settings)[0]
+
+
 def pending() -> int:
     return _q.qsize()
 
@@ -55,8 +61,7 @@ def _run() -> None:
         try:
             if kind == "process":
                 pipeline.process(rid, on_event=emit)
-                s = config.load()
-                if s.get("auto_summary") and s["llm"]["provider"] != "none":
+                if wants_auto_summary(config.load()):
                     _q.put(("summary", rid))
             elif kind == "summary":
                 emit({"type": "summary_started", "id": rid})

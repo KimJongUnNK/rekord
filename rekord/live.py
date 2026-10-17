@@ -87,6 +87,7 @@ class LiveSession:
         self._worker.start()
         self._closed = False
         self._last_probe: dict | None = None
+        self._lock = threading.RLock()  # clusters/segments are touched by the worker and by name_speaker()
         self._unclear_before = False
 
     # ------------------------------------------------------------ input
@@ -132,6 +133,10 @@ class LiveSession:
 
     def name_speaker(self, key: int, name: str) -> None:
         """Name an unknown live voice. Creates a voice profile immediately -> recognized now and in future meetings."""
+        with self._lock:
+            self._name_speaker(key, name)
+
+    def _name_speaker(self, key: int, name: str) -> None:
         c = next((c for c in self.cluster.clusters if c["key"] == key), None)
         if c is None or not name.strip():
             return
@@ -177,7 +182,8 @@ class LiveSession:
             log.warning("m4a encode failed, keeping wav: %s", e)
         db.update_recording(self.rid, audio_path=str(final), duration=duration, highlights=self.highlights, peaks=peaks)
         # keep the live transcript right away; the offline pass then upgrades it (better diarization + model)
-        self._save_live_transcript()
+        with self._lock:
+            self._save_live_transcript()
         if duration >= 1.0:
             jobs.enqueue(self.rid)
         else:
@@ -198,8 +204,9 @@ class LiveSession:
                         continue
                     e = self.embedder.embed(samples)
                     if e is not None:
-                        r = self.cluster.assign(e, update=False)
-                        lab = self._label(r)
+                        with self._lock:
+                            r = self.cluster.assign(e, update=False)
+                            lab = self._label(r)
                         # smoothing: a single unclear probe (overlap, cough, turn boundary) keeps the last speaker
                         unclear = lab["key"] is None and not lab["known"]
                         if unclear and self._last_probe is not None and not self._unclear_before:
@@ -217,22 +224,24 @@ class LiveSession:
     def _segment(self, samples: np.ndarray, start: float) -> None:
         end = start + len(samples) / SR
         e = self.embedder.embed(samples)
-        if e is None:
-            r = {"key": self.segments[-1]["key"] if self.segments else 0, "profile_id": None, "name": None, "color": None,
-                 "score": 0, "new": False}
-            if not self.cluster.clusters:
-                return
-        else:
-            r = self.cluster.assign(e)
-            if r["new"]:
-                self._roster()
+        with self._lock:
+            if e is None:
+                if not self.cluster.clusters:
+                    return
+                r = {"key": self.segments[-1]["key"] if self.segments else self.cluster.clusters[-1]["key"],
+                     "profile_id": None, "name": None, "color": None, "score": 0, "new": False}
+            else:
+                r = self.cluster.assign(e)
+                if r["new"]:
+                    self._roster()
         text = ""
         if self.engine is not None:
             clips = asr.split_long(0, len(samples) / SR, samples)
             parts = [self.engine.transcribe_clip(samples[int(a * SR):int(b * SR)])[0] for a, b in clips]
             text = asr.apply_vocabulary(asr.clean_text(" ".join(parts)), self.s.get("vocabulary", []))
-        seg = {"start": round(start, 2), "end": round(end, 2), "text": text, **self._label(r)}
-        self.segments.append(seg)
+        with self._lock:
+            seg = {"start": round(start, 2), "end": round(end, 2), "text": text, **self._label(r)}
+            self.segments.append(seg)
         self.emit({"type": "segment", **seg})
 
     def _label(self, r: dict) -> dict:

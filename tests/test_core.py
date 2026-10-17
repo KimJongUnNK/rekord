@@ -301,3 +301,49 @@ def test_model_registry_urls_are_sane():
         assert isinstance(m.size_mb, int) and m.size_mb > 0, m.id
         assert m.files and isinstance(m.description, str), m.id
     assert set(models.ESSENTIAL) <= set(models.REGISTRY)
+
+
+def test_correcting_a_misidentified_speaker_keeps_the_other_profile(rec):
+    from rekord import pipeline
+    lisa = db.create_profile("Lisa", _unit([0, 1, 0]))
+    sp = db.list_speakers(rec["id"])[0]  # Emil's voice, wrongly matched to Lisa
+    db.update_speaker(sp["id"], name="Lisa", profile_id=lisa)
+    prof = pipeline.remember_speaker(rec["id"], sp["id"], "Anna")
+    assert prof["name"] == "Anna" and prof["id"] != lisa
+    lisa_now = db.get_profile(lisa, with_embedding=True)
+    assert lisa_now["name"] == "Lisa" and lisa_now["samples"] == 1
+    assert np.allclose(lisa_now["embedding"], _unit([0, 1, 0]))
+    # confirming the same person again merges into that person
+    again = pipeline.remember_speaker(rec["id"], sp["id"], "anna")
+    assert again["id"] == prof["id"] and again["samples"] == 2
+    db.delete_profile(lisa)
+    db.delete_profile(prof["id"])
+
+
+def test_concurrent_model_downloads_run_once(monkeypatch):
+    from rekord import models
+    calls = []
+
+    def fake(mid):
+        calls.append(mid)
+        time.sleep(0.3)
+    monkeypatch.setattr(models, "_download", fake)
+    ts = [threading.Thread(target=models.download, args=("silero-vad",)) for _ in range(3)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert len(calls) == 3  # serialized (each call re-checks installed() inside the lock)
+    lock = models._dl_lock("silero-vad")
+    assert not lock.locked()
+
+
+def test_auto_summary_only_with_configured_ai(monkeypatch):
+    from rekord import jobs
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    s = config.load()
+    s["auto_summary"] = True
+    s["llm"]["provider"], s["llm"]["anthropic"]["api_key"] = "anthropic", ""
+    assert not jobs.wants_auto_summary(s)
+    s["llm"]["anthropic"]["api_key"] = "sk-ant-x"
+    assert jobs.wants_auto_summary(s)
+    s["auto_summary"] = False
+    assert not jobs.wants_auto_summary(s)

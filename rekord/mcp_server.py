@@ -8,12 +8,16 @@ from __future__ import annotations
 
 import datetime as dt
 
-from mcp.server.fastmcp import FastMCP
+try:  # MCP Python SDK 2.x
+    from mcp.server.mcpserver import MCPServer
+except ImportError:  # 1.x
+    from mcp.server.fastmcp import FastMCP as MCPServer
 
 from . import db, export
 from .summarize import fmt_time
 
-mcp = FastMCP("rekord")
+mcp = MCPServer("rekord",
+                instructions="REKORD: the user's locally recorded meetings - transcripts with speaker names, summaries, voice-recognized people.")
 
 
 @mcp.tool()

@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import io
 import json
 import logging
+import re
 import shutil
 import socket
 import sys
@@ -133,7 +135,19 @@ def _is_local(host: str | None) -> bool:
 
 
 def _token_ok(req_token: str | None) -> bool:
-    return bool(req_token) and req_token == config.load()["pair_token"]
+    return bool(req_token) and hmac.compare_digest(req_token.encode(), config.load()["pair_token"].encode())
+
+
+_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _color(value):
+    """Colors end up in HTML/SVG attributes - only accept #RRGGBB."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not _HEX.match(value):
+        raise HTTPException(400, "Farbe muss #RRGGBB sein")
+    return value.upper()
 
 
 @app.middleware("http")
@@ -214,6 +228,8 @@ def status():
             s["asr_engine"] == "faster-whisper" or models.installed(s["asr_model"])),
         "models": models.status(),
         "provider": s["llm"]["provider"],
+        "ai_ready": providers.configured(s)[0],
+        "ai_problem": providers.configured(s)[1],
         "provider_name": providers.PROVIDERS.get(s["llm"]["provider"]),
         "model": providers.model_name(s),
         "jobs_pending": jobs.pending(),
@@ -442,7 +458,7 @@ async def patch_speaker(sid: int, request: Request):
         except ValueError as e:
             raise HTTPException(400, str(e))
         return {"ok": True, "profile": prof}
-    db.update_speaker(sid, name=name, **({"color": b["color"]} if b.get("color") else {}))
+    db.update_speaker(sid, name=name, **({"color": _color(b["color"])} if b.get("color") else {}))
     return {"ok": True}
 
 
@@ -468,10 +484,12 @@ def profiles():
 @app.patch("/api/profiles/{pid}")
 async def patch_profile(pid: int, request: Request):
     b = await request.json()
-    db.update_profile(pid, name=b.get("name"), color=b.get("color"))
-    if b.get("color"):
+    color = _color(b.get("color"))
+    name = (b.get("name") or "").strip() or None
+    db.update_profile(pid, name=name, color=color)
+    if color:
         with db.tx() as c:
-            c.execute("UPDATE speakers SET color=? WHERE profile_id=?", (b["color"], pid))
+            c.execute("UPDATE speakers SET color=? WHERE profile_id=?", (color, pid))
     return db.get_profile(pid)
 
 
