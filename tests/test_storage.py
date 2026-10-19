@@ -29,7 +29,8 @@ def test_drives_always_offer_this_computer():
     assert ds and ds[0]["kind"] == "internal" and ds[0]["free_gb"] > 0
     assert all({"path", "name", "kind_label", "free_gb", "writable"} <= set(d) for d in ds)
     assert storage.suggest(str(Path.home()))["home"] == str(config.DEFAULT_HOME)
-    assert storage.suggest("/Volumes/T7") == {"home": "/Volumes/T7/Rekord", "models": "/Volumes/T7/Rekord/models"}
+    t7 = Path("/Volumes/T7")
+    assert storage.suggest(str(t7)) == {"home": str(t7 / "Rekord"), "models": str(t7 / "Rekord" / "models")}
 
 
 def test_pointer_file_decides_the_data_folder(tmp_path, monkeypatch):

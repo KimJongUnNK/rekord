@@ -14,7 +14,7 @@ jobs:
       - run: pip install -e ".[all,dev]"
       - name: unit + api tests
         shell: bash
-        run: pytest -m "not models" -q -rf --tb=line > unit.log 2>&1 || { echo "::error title=tests::$(tail -c 3000 unit.log | tr '\n' ' ')"; exit 1; }
+        run: pytest -m "not models" -q -rf --tb=line > unit.log 2>&1 || { echo "::error title=tests::$(grep -E '^(FAILED|ERROR)|Error|assert' unit.log | tail -c 3000 | tr '\n%' ' _')"; exit 1; }
       - name: end-to-end with real models (downloads ~250 MB)
         if: matrix.os == 'ubuntu-latest'
         run: |
