@@ -123,11 +123,11 @@ def start(base_url: str | None = None, wait: float = 20) -> bool:
     b = binary()
     if not b:
         return False
-    env = system.child_env()
-    if b.endswith(".app"):
-        subprocess.Popen(["open", "-g", "-a", b, "--args", "hidden"], env=env)  # menu bar app, no window
-    else:
-        subprocess.Popen([b, "serve"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **system.hidden())
+    # macOS: the server inside the app bundle, not the menu bar app – on its first start the app asks for an admin
+    # password (CLI symlink) and only then starts serving
+    exe = str(Path(b) / "Contents/Resources/ollama") if b.endswith(".app") else b
+    subprocess.Popen([exe, "serve"], env=system.child_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, **system.hidden())
     t0 = time.time()
     while time.time() - t0 < wait:
         time.sleep(0.5)

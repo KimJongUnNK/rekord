@@ -61,7 +61,12 @@ jobs:
       - run: pip install -e .
       - name: install Ollama from inside REKORD, pull a model, summarize
         shell: bash
-        run: python scripts/ollama_smoke.py qwen3:0.6b 2>&1 | tee ollama.log; test "${PIPESTATUS[0]}" = 0 || { echo "::error title=ollama ${{ runner.os }}::$(tail -c 2500 ollama.log | tr '\n' ' ')"; exit 1; }
+        run: |
+          set +e
+          python scripts/ollama_smoke.py qwen3:0.6b > ollama.log 2>&1; rc=$?
+          cat ollama.log
+          if [ $rc -ne 0 ]; then echo "::error title=ollama ${{ runner.os }}::$(tail -c 2500 ollama.log | tr '\n' ' ')"; exit 1; fi
+          echo "::notice title=ollama ${{ runner.os }}::$(grep -E '^(installed|running|answer|OK)' ollama.log | tr '\n' ' ' | cut -c1-900)"
   installers:
     # the one-line installers (against the latest published release)
     strategy:
