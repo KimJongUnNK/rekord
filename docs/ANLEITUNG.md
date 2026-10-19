@@ -22,6 +22,7 @@ Das **iPhone ist optional**: Es verbindet sich übers WLAN mit dem Computer.
 | **4** | [KI verbinden](#4-ki-verbinden) *(für Zusammenfassungen)* |
 | **5** | [Erste Aufnahme](#5-erste-aufnahme) |
 | **6** | [Das Menü: jeder Punkt erklärt](#6-das-menü-jeder-punkt-erklärt) |
+| ↻ | [Updates](#updates) |
 | ? | [Wenn was nicht klappt](#wenn-was-nicht-klappt) |
 
 ---
@@ -38,7 +39,7 @@ Das **iPhone ist optional**: Es verbindet sich übers WLAN mit dem Computer.
 curl -fsSL https://github.com/KimJongUnNK/rekord/releases/latest/download/install.sh | sh
 ```
 
-REKORD landet in **Programme** und startet sofort. Keine Sicherheitswarnung, kein Freischalten. Dieselbe Zeile macht später Updates.
+REKORD landet in **Programme** und startet sofort. Keine Sicherheitswarnung, kein Freischalten. Updates danach mit einem Klick in der App, siehe [Updates](#updates).
 
 <details><summary><b>Lieber ohne Terminal?</b> (Download + einmal freischalten)</summary>
 
@@ -69,7 +70,7 @@ Start → **PowerShell** öffnen, diese Zeile einfügen, **Enter**:
 irm https://github.com/KimJongUnNK/rekord/releases/latest/download/install.ps1 | iex
 ```
 
-REKORD wird installiert (ohne Admin), bekommt einen Eintrag im **Startmenü** und auf dem **Desktop** und startet. Kein blaues Warnfenster. Dieselbe Zeile macht später Updates.
+REKORD wird installiert (ohne Admin), bekommt einen Eintrag im **Startmenü** und auf dem **Desktop** und startet. Kein blaues Warnfenster. Updates danach mit einem Klick in der App, siehe [Updates](#updates).
 
 <details><summary><b>Lieber ohne PowerShell?</b> (Zip + einmal freischalten)</summary>
 
@@ -191,6 +192,7 @@ Danach kannst du Claude direkt fragen: *„Was haben wir im letzten Meeting ents
 
 1. **Leute einmal anlernen:** *Personen* → **Person einsprechen** → den eigenen Text vorlesen (ca. 45 s). Ab dann erkennt REKORD die Person mit Namen.
 2. **Roter Knopf** → REKORD fragt **„Wer ist dabei?“** – das ist Pflicht, sonst startet keine Aufnahme:
+   - **Wo findet das Meeting statt?** – **Vor Ort** oder **Online (Teams, Zoom, Meet …)**. Bei Online nimmt REKORD den Ton des Calls mit auf.
    - **Wie viele sprechen?** – dich mitgezählt (Zahl antippen oder **−/+**).
    - **Wer davon ist bekannt?** – die Leute antippen, die REKORD schon kennt.
    - Alle anderen zählen als neu. Am besten gleich **„… jetzt einsprechen“** – jede neue Person liest ihren Text, dann ist sie ab sofort bekannt.
@@ -241,7 +243,9 @@ Der **rote Knopf** unten rechts (in Aufnahmen, Fragen, Personen und Vorlagen) sp
 
 ### Live
 - Am Handy im Browser steht beim ersten Mal **„Für Aufnahmen im Handy-Browser fehlt noch ein Schritt“** → **Jetzt einrichten** (siehe [Weg A](#weg-a--web-app)).
-- Oben: **Mikrofon** oder **Mikro + Call-Ton**. Mit Call-Ton nimmst du am Computer auch Zoom, Teams oder Meet mit auf (Chrome/Edge).
+- Oben: **Vor Ort** oder **Online**.
+  - **Vor Ort** – alle sitzen im Raum, das Mikrofon reicht.
+  - **Online** – Teams, Zoom, Meet …: REKORD nimmt am Computer zusätzlich den **Ton des Calls** auf, also die anderen Teilnehmer, direkt aus dem Lautsprecher-Signal. Kopfhörer sind kein Problem. Nur Ton, kein Bild. Am Mac fragt macOS beim ersten Mal nach **Bildschirm- & Systemaudioaufnahme** → REKORD erlauben (macOS 13 oder neuer). Am Handy geht das nicht – dort das Handy neben den Lautsprecher legen.
 - **Titel** eingeben (optional).
 - **Wer ist dabei?** Die Karte zeigt, wer angekündigt ist; **Festlegen** ändert es. **Vorstellungsrunde** lässt eine neue Person ihren Text einsprechen.
 - **Roter Knopf** (oder **Leertaste**) → zuerst **Wer ist dabei?** (Anzahl + Bekannte, siehe [Erste Aufnahme](#5-erste-aufnahme)), dann läuft die Aufnahme. Nochmal drücken stoppt · **★** (oder Taste **H**) markiert einen wichtigen Moment · **Pause**.
@@ -268,17 +272,40 @@ Oben gibt's Sprung-Knöpfe zu den Bereichen. *Darstellung* und *Audio & Mikrofon
 | Bereich | Felder (so heißen sie in der App) |
 |---|---|
 | **Darstellung** | **Erscheinungsbild** System / Hell / Dunkel · **Akzentfarbe** (9 fertige oder eigene) · **Dichte** Luftig / Kompakt |
-| **Audio & Mikrofon** | **Mikrofon** wählen + *Pegel testen* · **Standard-Quelle** Mikrofon oder Mikro + Call-Ton · **Audio-Verarbeitung**: Rauschunterdrückung, Echo-Unterdrückung, automatische Lautstärke · **Live-Erkennung** an/aus (aus spart Akku) · **Bildschirm wach halten** |
+| **Audio & Mikrofon** | **Mikrofon** wählen + *Pegel testen* · **Meeting-Art** Vor Ort oder Online (Vorauswahl, wird vor jeder Aufnahme bestätigt) · **Audio-Verarbeitung**: Rauschunterdrückung, Echo-Unterdrückung, automatische Lautstärke · **Live-Erkennung** an/aus (aus spart Akku) · **Bildschirm wach halten** |
 | **KI** | Anbieter wählen: Claude, ChatGPT, Lokal, Kompatibel, Aus · Lokal: **Lokales Modell** – **Lokal einrichten** (installiert alles), danach Modelle per *Laden* holen, deine Modelle antippen zum Verwenden, **Löschen** entfernt ein geladenes Modell (war es aktiv, springt REKORD auf ein anderes) · Claude/ChatGPT: **Key erstellen ↗** · **API-Key** · **Modell** (*Laden* holt die Liste) · Claude: **Denkaufwand**, **Ausweichmodell** · Lokal/Kompatibel: **Ollama-Adresse** bzw. **Server-Adresse**, **Kontextlänge** · **Verbindung** → *Testen* · **Sprache der Zusammenfassungen** · **Automatisch zusammenfassen** + Standard-Vorlage |
 | **Transkription** | **Sprache** (fest eingestellt = genauer, *Automatisch* für gemischte Meetings) · **Engine** · **Modell** (*small* = Standard, *turbo* = beste Qualität) · **CPU-Threads** · **Vokabular** für Namen, die falsch erkannt werden |
 | **Sprecher-Erkennung** | **Personen-Erkennung (Aufnahmen)** und **Personen-Erkennung (live)**: wie streng (höher = weniger Verwechslungen) · **Sprecher trennen**: erscheint eine Person doppelt, runterdrehen · **Anzahl Sprecher**: wenn bekannt, fest einstellen · **Stimmabdruck-Modell** |
 | **Modelle** | Sprachmodelle *Laden* oder *Entfernen* |
 | **iPhone & Geräte** | **QR-Codes** (links iPhone-App, rechts Browser) · **Adresse** · **Kopplungs-Code** *Neu erzeugen* (trennt alle gekoppelten Geräte) · Linux: **Firewall** → *Für iPhone freigeben*, falls sie das iPhone blockiert |
 | **Claude Desktop (MCP)** | **Claude Desktop**: *Mit Claude Desktop verbinden*, danach *Claude neu starten* · **Claude Code**: *Mit Claude Code verbinden* · *Von Hand eintragen*: Konfiguration zum **Kopieren** |
-| **Speicher & Datenschutz** | **Speicherort**: wo Aufnahmen, Datenbank und Stimmabdrücke liegen – *Ändern …* → Laufwerk wählen (eingebaut, extern, NVMe, NAS) → **Umziehen**; REKORD kopiert alles, startet neu, der alte Ordner bleibt als Sicherheitskopie · **KI-Modelle**: wo Sprachmodelle und lokale KI liegen – eigenes Laufwerk möglich, *Ändern …* nimmt vorhandene Modelle mit · **Eingangsordner**: Dateien, die hier landen, werden automatisch verarbeitet · **Was verlässt das Gerät?** · **Mit dem Computer starten**: REKORD läuft ab dem Einschalten im Hintergrund, das iPhone kann sich jederzeit verbinden · **Hilfe**: *Einführung starten*, *Anleitung ↗* · **Version** · **Beenden** → *REKORD beenden* |
+| **Speicher & Datenschutz** | **Speicherort**: wo Aufnahmen, Datenbank und Stimmabdrücke liegen – *Ändern …* → Laufwerk wählen (eingebaut, extern, NVMe, NAS) → **Umziehen**; REKORD kopiert alles, startet neu, der alte Ordner bleibt als Sicherheitskopie · **KI-Modelle**: wo Sprachmodelle und lokale KI liegen – eigenes Laufwerk möglich, *Ändern …* nimmt vorhandene Modelle mit · **Eingangsordner**: Dateien, die hier landen, werden automatisch verarbeitet · **Was verlässt das Gerät?** · **Mit dem Computer starten**: REKORD läuft ab dem Einschalten im Hintergrund, das iPhone kann sich jederzeit verbinden · **Hilfe**: *Einführung starten*, *Anleitung ↗* · **Version & Updates**: *Nach Updates suchen*, **Jetzt auf … aktualisieren**, *Automatisch nach Updates suchen* (siehe [Updates](#updates)) · **Beenden** → *REKORD beenden* |
 
 **In der iPhone-App** gibt's die Reiter *Live*, *Aufnahmen*, *Personen* und *Einstellungen* (Theme, Akzentfarbe, Mikrofon, KI, Hub). *Fragen über alle* und *Vorlagen* laufen über die Web-App oder den Computer.
 Auch dort fragt der rote Knopf zuerst **Wer ist dabei?**. Starts über Sperrbildschirm-Widget, Kontrollzentrum oder Action Button nehmen die zuletzt bestätigte Runde.
+
+---
+
+## Updates
+
+Gibt es eine neue Version, steht links unter dem Status **„Update auf … →“**.
+**Einstellungen → Speicher & Datenschutz → Version & Updates → Jetzt auf … aktualisieren**:
+
+1. REKORD lädt die neue Version (Fortschritt wird angezeigt).
+2. Sie **ersetzt** die installierte App – am selben Ort, mit denselben Verknüpfungen. Keine zweite App daneben.
+3. REKORD startet neu und zeigt *„REKORD wurde auf … aktualisiert ✓“*. Aufnahmen, Personen und Einstellungen bleiben.
+
+| | |
+|---|---|
+| **Läuft gerade eine Aufnahme** | Das Update wartet – erst stoppen. Eine Aufnahme wird nie abgebrochen. |
+| **Neue Version von Hand gestartet**, während die alte noch offen ist | Die alte beendet sich von selbst, die neue übernimmt. Nimmt die alte gerade auf, übernimmt die neue direkt nach der Aufnahme. |
+| **REKORD zweimal geöffnet** | Es kommt das offene Fenster nach vorne – kein zweites. |
+| **Eine alte Kopie gestartet** (alte Verknüpfung, Kopie in *Downloads*) | Sie startet stattdessen die neueste installierte Version. |
+| **Linux mit Paket** (deb, rpm, pacman) | Linux fragt einmal nach deinem Passwort. AUR (*rekord-bin*): über deinen AUR-Helfer aktualisieren. |
+| **Mac** | Nach dem Update fragt macOS evtl. nochmal nach Mikrofon bzw. *Bildschirm- & Systemaudioaufnahme* – erlauben. |
+
+*Automatisch nach Updates suchen* (an): REKORD fragt beim Start und alle 6 Stunden bei GitHub nach. Installiert wird nur auf Klick.
+Die Installations-Zeile von oben funktioniert weiterhin auch als Update.
 
 ---
 
@@ -296,6 +323,7 @@ Auch dort fragt der rote Knopf zuerst **Wer ist dabei?**. Starts über Sperrbild
 | **Claude Desktop sieht REKORD nicht** | Claude ganz beenden und neu öffnen (*Claude neu starten*). Steht unter *Claude Desktop (MCP)* **Verbunden**? |
 | **Falsche Person erkannt** | Im Transkript auf den Namen tippen → richtigen Namen eingeben, *Stimme merken* bleibt an |
 | **REKORD beenden** | Fenster schließen. Läuft es im Browser: *Einstellungen* → ganz unten **REKORD beenden** |
+| **Zwei REKORD-Fenster / alte Version** | Ab 1.0.8 nicht mehr möglich (siehe [Updates](#updates)). Einmalig von einer älteren Version: alle REKORD-Fenster schließen, dann die neue öffnen. |
 | **Backup** | Den **Speicherort**-Ordner kopieren (steht unter *Einstellungen → Speicher & Datenschutz*). Da liegt alles drin. |
 | **„Laufwerk fehlt“ beim Start** | Der Speicherort liegt auf einer Festplatte oder einem Netzlaufwerk, das gerade nicht verbunden ist. Anschließen → **Nochmal prüfen**. Kommt es nicht mehr zurück: **Neu auf diesem Computer anfangen** (die Daten auf dem Laufwerk bleiben unberührt). |
 | **Person wird oft nicht erkannt** | Nochmal *einsprechen* (am besten mit dem Mikro, mit dem du aufnimmst) · vor der Aufnahme bei *Wer ist dabei?* die Leute antippen · nach der Aufnahme bei *Wer ist das?* bestätigen – jede Bestätigung macht die Erkennung besser. |

@@ -12,9 +12,20 @@ jobs:
       - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
       - run: pip install -e ".[all,dev]"
+      - name: virtual speaker for the online-meeting test (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q pulseaudio pulseaudio-utils
       - name: unit + api tests
         shell: bash
         run: pytest -m "not models" -q -rf --tb=line > unit.log 2>&1 || { echo "::error title=tests::$(grep -E '^(FAILED|ERROR)|Error|assert' unit.log | tail -c 3000 | tr '\n%' ' _')"; exit 1; }
+      - name: online meetings – call sound on the real OS (WASAPI / ScreenCaptureKit / Pulse)
+        shell: bash
+        run: |
+          set +e
+          python scripts/capture_smoke.py > capture.log 2>&1; rc=$?
+          cat capture.log
+          if [ $rc -ne 0 ]; then echo "::error title=call sound ${{ runner.os }}::$(tail -c 2500 capture.log | tr '\n%' ' _')"; exit 1; fi
+          echo "::notice title=call sound ${{ runner.os }}::$(tr '\n' ' ' < capture.log | cut -c1-900)"
       - name: end-to-end with real models (downloads ~250 MB)
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -30,7 +41,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -42,6 +53,14 @@ jobs:
         run: |
           cd desktop
           pyinstaller rekord.spec --noconfirm > build.log 2>&1 || { echo "::error title=pyinstaller::$(tail -c 3000 build.log | tr '\n' ' ')"; exit 1; }
+      - name: real in-app update (an old REKORD replaces itself with this build – same place, one process)
+        shell: bash
+        run: |
+          set +e
+          python scripts/update_smoke.py desktop/dist > update.log 2>&1; rc=$?
+          cat update.log
+          if [ $rc -ne 0 ]; then echo "::error title=update ${{ runner.os }}::$(tail -c 2500 update.log | tr '\n%' ' _')"; exit 1; fi
+          echo "::notice title=update ${{ runner.os }}::$(grep -E 'check:|now running|processes|OK' update.log | tr '\n' ' ' | cut -c1-900)"
       - uses: actions/upload-artifact@v7
         with:
           name: REKORD-${{ runner.os }}

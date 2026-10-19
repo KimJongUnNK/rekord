@@ -10,7 +10,7 @@ const TIPS = {
   // ---------------------------------------------------------------- Audio
   mic: "Welches Mikrofon dieses Gerät für Aufnahmen nutzt. <b>Systemstandard</b> ist das, was im Betriebssystem eingestellt ist. Die Namen der Mikrofone erscheinen erst, wenn du den Mikrofon-Zugriff einmal erlaubt hast.",
   mictest: "Zeigt live, wie laut das Mikrofon dich hört. Beim normalen Sprechen sollte der Balken etwa bis zur Mitte gehen. Bleibt er leer: anderes Mikrofon wählen oder den Zugriff erlauben.",
-  source: "<b>Mikrofon</b>: nur dein Mikro. <b>Mikro + Call-Ton</b>: zusätzlich der Ton eines Browser-Tabs (Zoom, Teams, Meet im Browser) – so kommen auch die Stimmen der anderen im Call auf die Aufnahme. Nur am Computer in Chrome oder Edge; beim Start fragt der Browser, welchen Tab er teilen soll.",
+  meeting: "<b>Vor Ort</b>: alle sitzen im Raum, das Mikrofon reicht. <b>Online</b>: Teams, Zoom, Meet … – REKORD nimmt zusätzlich den Ton des Calls direkt am Computer auf, also die Stimmen der anderen. Das geht auch, wenn der Call in der Teams- oder Zoom-App läuft. Nur Ton, kein Bild. Am Mac fragt macOS beim ersten Mal nach „Bildschirm- & Systemaudioaufnahme“ – das ist für den Ton nötig. Mit Kopfhörern ist der Ton am saubersten.",
   processing: "Filter, die das Gerät auf das Mikrofon anwendet, bevor REKORD es hört. Für Besprechungen im Raum meist alles an lassen.",
   noiseSuppression: "Filtert gleichmäßige Geräusche wie Lüfter, Klimaanlage oder Straßenlärm heraus. Bei Musik oder sehr leisen Stimmen eher aus.",
   echoCancellation: "Entfernt den Ton deiner eigenen Lautsprecher aus dem Mikrofon – wichtig, wenn ein Call laut über Boxen läuft. Mit Kopfhörern unnötig.",
@@ -61,7 +61,8 @@ const TIPS = {
   privacy: "Audio, Transkript und Stimmabdrücke bleiben immer auf diesem Computer. Nur wenn du Claude oder ChatGPT nutzt, geht der Text eines Gesprächs zum Zusammenfassen an den Anbieter.",
   autostart: "REKORD startet beim Einschalten des Computers unsichtbar im Hintergrund. So kann sich das iPhone jederzeit verbinden, ohne dass du REKORD erst öffnen musst. Das Fenster öffnest du wie gewohnt über das App-Symbol.",
   help: "Startet die Einführung vom ersten Start noch einmal: Speicherort, Aussehen, Sprache, Mikrofon, KI, deine Stimme, iPhone.",
-  version: "Die installierte Version. Update: dieselbe Installations-Zeile nochmal ausführen oder die neue Datei von der Release-Seite laden – deine Aufnahmen bleiben erhalten.",
+  version: "Die installierte Version. <b>Jetzt aktualisieren</b> lädt die neue Version, <b>ersetzt</b> die alte (keine zweite App daneben) und startet REKORD neu. Aufnahmen, Personen und Einstellungen bleiben. Läuft gerade eine Aufnahme, geht das erst danach. Startest du eine neuere REKORD-Version, während die alte noch offen ist, beendet sich die alte von selbst.",
+  updatecheck: "REKORD fragt beim Start und dann alle 6 Stunden bei GitHub nach, ob es eine neue Version gibt, und zeigt sie links an. Installiert wird nur, wenn du auf <b>Aktualisieren</b> klickst. Dabei wird nichts über dich gesendet.",
   quit: "Beendet REKORD komplett, auch den Teil im Hintergrund. Danach kann sich das iPhone nicht mehr verbinden, bis du REKORD wieder öffnest.",
   // ---------------------------------------------------------------- Live & Aufnahmen
   who: "Vor jeder Aufnahme: Wie viele Leute sprechen, und wer davon ist schon bekannt? Dann weiß REKORD genau, wie viele Stimmen es trennen muss, und vergleicht nur mit den Leuten im Raum – das verhindert fast alle Verwechslungen.",

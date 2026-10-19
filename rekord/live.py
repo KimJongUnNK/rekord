@@ -40,7 +40,10 @@ def resample(x: np.ndarray, sr_in: int, sr_out: int = SR) -> np.ndarray:
 
 class LiveSession:
     def __init__(self, emit, title: str = "", source: str = "live", sample_rate: int = SR,
-                 participants: list[int] | None = None, guests: int = 0):
+                 participants: list[int] | None = None, guests: int = 0, meeting: str = "person",
+                 call_audio: bool = False):
+        """meeting="online": with call_audio the computer's sound (the other people in Teams/Zoom/Meet) is mixed
+        into the microphone – sound only, no picture."""
         import sherpa_onnx
         self.s = config.load()
         self.emit = emit
@@ -71,8 +74,18 @@ class LiveSession:
         self.title = title or time.strftime("Meeting %d.%m.%Y %H:%M")
         self.rec = db.create_recording(self.title, "", source=source, status="recording")
         self.rid = self.rec["id"]
-        if self.participants or self.guests:
-            db.update_recording(self.rid, participants={"ids": self.participants, "guests": self.guests})
+        self.meeting = "online" if meeting == "online" else "person"
+        if self.participants or self.guests or self.meeting == "online":
+            db.update_recording(self.rid, participants={"ids": self.participants, "guests": self.guests, "meeting": self.meeting})
+        self.call = None
+        self.notes: list[str] = []
+        if self.meeting == "online" and call_audio:
+            from . import capture
+            self.call = capture.SystemAudio()
+            if not self.call.start():
+                self.notes.append(self.call.error)
+                self.call = None
+
         self.wav_path = config.AUDIO_DIR / f"{self.rid}.wav"
         self.wav = audio.WavAppender(self.wav_path)
         self.ring = np.zeros(0, dtype=np.float32)
@@ -93,8 +106,12 @@ class LiveSession:
 
     # ------------------------------------------------------------ input
     def feed_pcm16(self, data: bytes) -> None:
-        x = np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0
-        self.feed(resample(x, self.sr_in))
+        x = resample(np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0, self.sr_in)
+        if self.call is not None:  # online: the others in the call, in step with the microphone
+            call = self.call.read(len(x))
+            if not self.paused:
+                x = np.clip(x + call, -1.0, 1.0)
+        self.feed(x)
 
     def feed(self, x: np.ndarray) -> None:
         if self.paused or self._closed or len(x) == 0:
@@ -164,6 +181,8 @@ class LiveSession:
         if self._closed:
             return self.rid
         self._closed = True
+        if self.call is not None:
+            self.call.stop()
         self.vad.flush()
         self._drain_vad()
         self._work.put(None)

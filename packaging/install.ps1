@@ -15,8 +15,16 @@ try {
     Write-Host "> Lade REKORD (ca. 200 MB) ..." -ForegroundColor DarkYellow
     Invoke-WebRequest -Uri $url -OutFile "$tmp\rekord.zip" -UseBasicParsing
     Write-Host "> Installiere nach $dest ..." -ForegroundColor DarkYellow
-    Get-Process REKORD -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dest*" } | Stop-Process -Force
-    Start-Sleep -Milliseconds 500
+    # an update replaces REKORD: the running one quits first (never while it records) - every copy, old ones too
+    try { Invoke-WebRequest -Method Post -Uri "http://127.0.0.1:8765/api/shutdown" -UseBasicParsing -TimeoutSec 5 | Out-Null }
+    catch {
+        if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 409) {
+            throw "REKORD nimmt gerade auf - erst die Aufnahme beenden, dann diese Zeile nochmal."
+        }
+    }
+    Start-Sleep -Seconds 1
+    Get-Process REKORD -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 800
     Expand-Archive -Path "$tmp\rekord.zip" -DestinationPath $tmp -Force
     if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
     New-Item -ItemType Directory -Path (Split-Path $dest) -Force | Out-Null

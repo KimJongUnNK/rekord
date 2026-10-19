@@ -23,7 +23,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, Web
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, audio, config, db, export, jobs, live, models, pipeline, summarize
+from . import __version__, audio, config, db, export, jobs, live, models, pipeline, summarize, updater
 from .engines import asr
 from .llm import providers, templates
 
@@ -166,7 +166,11 @@ async def lifespan(app: FastAPI):
     port = getattr(app.state, "port", 8765)
     if getattr(app.state, "lan", False):
         threading.Thread(target=_advertise, args=(port,), daemon=True).start()
+    cleanup = threading.Timer(10, updater.cleanup)  # leftovers of the last update (the old app version …)
+    cleanup.daemon = True
+    cleanup.start()
     if getattr(app.state, "auto_download", True):
+        threading.Thread(target=updater.background_checks, args=(stop,), daemon=True, name="update-check").start()
         threading.Thread(target=_auto_ai, daemon=True, name="ai-auto").start()
         if config.load()["storage_chosen"]:
             start_downloads()
@@ -349,12 +353,38 @@ def status():
         "inbox": str(config.INBOX_DIR),
         "python": sys.executable,
         "https_port": getattr(app.state, "https_port", None),
+        "capture": _capture_caps(),
+        "window": _desktop_window(),
+        "exe": sys.executable if getattr(sys, "frozen", False) else "",
+        "update": updater.brief(),
         "storage_missing": str(config.HOME) if config.home_missing() else "",
         "models_missing": str(config.MODELS_DIR) if config.models_missing() else "",
         "storage_chosen": s["storage_chosen"], "welcome_done": s["welcome_done"],
         # packaged app (PyInstaller): the binary itself takes "mcp"; source install: python -m rekord mcp
         "mcp_command": [sys.executable, "mcp"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "rekord", "mcp"],
     }
+
+
+def _desktop_window() -> bool:
+    """Does this process show REKORD's window (a second start brings it to the front instead of opening another)?"""
+    mod = sys.modules.get("rekord.desktop")
+    return bool(mod and mod.window_open)
+
+
+_caps: tuple[float, dict] | None = None
+
+
+def _capture_caps() -> dict:
+    """Can this computer record the call sound? Asked once; a "no" is asked again after a minute (sound system started later)."""
+    global _caps
+    if _caps is None or (not _caps[1]["system_audio"] and time.time() - _caps[0] > 60):
+        from . import capture
+        try:
+            caps = capture.available()
+        except Exception as e:  # noqa: BLE001
+            caps = {"system_audio": False, "reason": str(e)}
+        _caps = (time.time(), caps)
+    return _caps[1]
 
 
 @app.get("/api/settings")
@@ -393,6 +423,38 @@ def shutdown(request: Request):
         raise HTTPException(409, "Es läuft gerade eine Live-Aufnahme")
     threading.Timer(0.5, lambda: os._exit(0)).start()
     return {"ok": True}
+
+
+@app.post("/api/window/focus")
+def window_focus(request: Request):
+    """REKORD was started a second time: bring the open window to the front instead of opening another one."""
+    _local_only(request)
+    from . import desktop
+    if not desktop.focus():
+        raise HTTPException(404, "Kein Fenster offen")
+    return {"ok": True}
+
+
+# ------------------------------------------------------------------ updates (the new version replaces the old one)
+
+@app.get("/api/update")
+def update_info():
+    return updater.info()
+
+
+@app.post("/api/update/check")
+async def update_check():
+    return await asyncio.to_thread(updater.check, True)
+
+
+@app.post("/api/update/install")
+def update_install(request: Request):
+    _local_only(request)
+    try:
+        updater.install()
+    except RuntimeError as e:
+        raise HTTPException(409, str(e)) from e
+    return updater.info()
 
 
 @app.post("/api/settings/rotate-token")
@@ -1038,15 +1100,19 @@ async def ws_live(ws: WebSocket):
             ctl = json.loads(msg.get("text") or "{}")
             kind = ctl.get("type")
             if kind == "start" and sess is None:
+                # the call sound of THIS computer: only for the app/browser on the computer itself
+                here = _is_local(ws.client.host if ws.client else None)
                 try:
                     sess = await asyncio.to_thread(live.LiveSession, emit, ctl.get("title", ""), ctl.get("source", "live"),
                                                    int(ctl.get("sample_rate", 16000)), ctl.get("participants") or [],
-                                                   int(ctl.get("guests", 0) or 0))
+                                                   int(ctl.get("guests", 0) or 0), ctl.get("meeting") or "person",
+                                                   here and bool(ctl.get("call_audio")))
                 except Exception as e:  # noqa: BLE001
                     await ws.send_json({"type": "error", "error": f"Live-Start fehlgeschlagen: {e}"})
                     continue
                 live.register(sess)
-                emit({"type": "started", "id": sess.rid, "title": sess.title})
+                emit({"type": "started", "id": sess.rid, "title": sess.title,
+                      "call_audio": sess.call is not None, "notes": sess.notes})
                 emit({"type": "speakers", "items": []})
             elif sess is None:
                 continue

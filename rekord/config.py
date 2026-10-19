@@ -74,6 +74,7 @@ DEFAULTS: dict = {
     "models_dir": "",  # "" = <data folder>/models; otherwise e.g. an external drive (local AI models go into …/ollama)
     "storage_chosen": False,  # first start: no big download before the user picked where REKORD stores things
     "welcome_done": False,
+    "update_check": True,  # look for a new REKORD version (GitHub releases) – installing always needs a click
 }
 
 _lock = threading.RLock()

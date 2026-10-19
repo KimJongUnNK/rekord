@@ -33,7 +33,8 @@ groups["Aufnahme: … Menü"] = {m.split(" (")[0] for m in re.findall(r'<button 
 groups["Einstellungen: Felder"] = {re.split(r"<span class=\"hint\">", m)[0] for m in re.findall(r'class="field"><(?:div class="lbl"|label[^>]*)>(.*?)</(?:div|label)>', app)}
 groups["Einstellungen: Auswahl"] = set(re.findall(r'\["(?:system|light|dark|comfortable|compact|mic|mic\+system)", "([^"]+)"[,\]]', app))
 groups["KI-Anbieter"] = set(re.findall(r'\["(?:anthropic|openai|ollama|compatible|none)", "([^"]+)", "', app))
-groups["Live"] = {"Wer ist dabei?", "Gäste", "Vorstellungsrunde", "Im Raum", "Mitschrift", "Pause"}
+groups["Live"] = {"Wer ist dabei?", "Gäste", "Vorstellungsrunde", "Im Raum", "Mitschrift", "Pause"} \
+    | set(re.findall(r'<button data-m="[^"]+"[^>]*>([^<]+)</button>', app))
 groups["Export"] = set(re.findall(r'\["(?:md|docx|txt|srt|vtt|json)", "([^"]+)"', app)) | {"Zwischenablage", "PDF", "Audio"}
 groups["Knöpfe"] = set(re.findall(r'id="(?:enroll|new|clr|gen|frep|mmgen|mcp-copy|quit|ltest|mic-test|oll-setup|cd-connect|cc-connect'
                                   r'|cd-restart|fw-open|key-get)"[^>]*>([^<]+)<', app))
@@ -52,7 +53,9 @@ groups["Handy-Einrichtung"] = set(re.findall(r'<h2>([^<]+)</h2>', ios)) | set(re
 welcome_js = (ROOT / "rekord/web/welcome.js").read_text("utf-8")
 groups["Einführung (erster Start)"] = set(re.findall(r'Schritt \$\{i \+ 1\} · ([^<]+)</div>', welcome_js)) | {"Erste Aufnahme", "Zur App", "Überspringen"}
 groups["Wer ist dabei? / Wer ist das?"] = {"Wie viele sprechen?", "Wer davon ist bekannt?", "Aufnahme starten", "Wer ist das?", "Merken",
-                                          "Wer sagt das?", "Zuordnen", "Nicht erkannte Stimme", "Anderer Text", "Stimme speichern"}
+                                          "Wer sagt das?", "Zuordnen", "Nicht erkannte Stimme", "Anderer Text", "Stimme speichern"} \
+    | set(re.findall(r'data-v="[^"]+">([^<]+)</button>', re.search(r'id="w-meet".*?</div>', app, re.S)[0])) \
+    | {"Wo findet das Meeting statt?"}
 groups["Speicherort"] = {"Speicherort", "KI-Modelle", "Laufwerk fehlt", "Nochmal prüfen", "Neu auf diesem Computer anfangen", "Umziehen"}
 
 missing = 0

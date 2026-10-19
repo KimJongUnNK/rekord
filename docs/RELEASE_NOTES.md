@@ -19,6 +19,14 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.0.8 – Online-Meetings und echte Updates
+- **Vor Ort oder Online:** Vor jeder Aufnahme fragt *„Wer ist dabei?“* auch, wo das Meeting stattfindet. **Online** (Teams, Zoom, Meet …) nimmt am Computer zusätzlich den **Ton des Calls** auf – also die Stimmen der anderen, direkt aus dem Lautsprecher-Signal, auch wenn Teams oder Zoom als App läuft und du Kopfhörer trägst. Nur Ton, kein Bild. Windows und Linux ohne Rückfrage; am Mac fragt macOS einmal nach *Bildschirm- & Systemaudioaufnahme* (macOS 13+). Klappt der Call-Ton nicht, läuft die Aufnahme mit dem Mikrofon weiter und REKORD sagt warum.
+- **Updates mit einem Klick, die wirklich ersetzen:** *Einstellungen → Version & Updates → Jetzt aktualisieren* lädt die neue Version, **ersetzt** die installierte App am selben Ort und startet neu – Aufnahmen, Personen und Einstellungen bleiben. Links erscheint *„Update auf … →“*, sobald es etwas Neues gibt. Läuft eine Aufnahme, wartet das Update.
+- **Nie mehr zwei REKORDs:** Startest du eine neuere Version, während die alte läuft, beendet sich die alte und die neue übernimmt (nimmt die alte gerade auf: direkt danach). REKORD zweimal öffnen holt das offene Fenster nach vorne. Eine alte Kopie (alte Verknüpfung, *Downloads*) startet stattdessen die neueste installierte Version; *Mit dem Computer starten* zeigt immer auf die neueste.
+- **Installations-Zeile** (`install.sh` / `install.ps1`) beendet jetzt zuerst jedes laufende REKORD – auch alte Kopien – und bricht ab, statt eine laufende Aufnahme abzuschneiden.
+- **Mac:** Nach diesem Update fragt macOS evtl. einmal neu nach Mikrofon bzw. Systemaudio – erlauben.
+- **Einmalig beim Wechsel von 1.0.7:** Die alte Version kennt das neue Update noch nicht. Am einfachsten die Installations-Zeile nochmal ausführen oder alle REKORD-Fenster schließen und die neue Version öffnen. Ab 1.0.8 geht alles in der App.
+
 ### Neu in 1.0.7 – Einführung, Hilfe, richtige Stimmen
 - **Einführung beim ersten Start:** Speicherort → Aussehen → Sprache → Mikrofon → KI → deine Stimme → iPhone. Alles überspringbar, jederzeit wiederholbar (*Einstellungen → Hilfe → Einführung starten*).
 - **ⓘ an jedem Punkt:** Neben jeder Einstellung und jedem Begriff erklärt ein ⓘ, was er macht – Maus drüber oder antippen.

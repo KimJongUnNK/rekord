@@ -142,10 +142,20 @@ const state = { status: null, recordings: null, current: null, templates: null }
 const listeners = new Set();
 function onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
+let seenVersion = null;
 async function refreshStatus() {
   try {
     state.status = await api("/api/status");
     const s = state.status;
+    if (seenVersion && s.version !== seenVersion) { location.reload(); return; }  // REKORD was updated → its new interface
+    if (!seenVersion) {
+      seenVersion = s.version;
+      const up = s.update || {};
+      if (up.just_updated && localStorage.getItem("rekord-updated") !== s.version) {
+        localStorage.setItem("rekord-updated", s.version);
+        setTimeout(() => toast(`REKORD wurde auf ${s.version} aktualisiert ✓`, 5000), 800);
+      }
+    }
     const busy = s.jobs_pending > 0 || s.live.length > 0;
     const dl = s.models.find((m) => m.progress && m.progress.state === "downloading");
     $("#engine-status").innerHTML = `
@@ -153,7 +163,8 @@ async function refreshStatus() {
         : !s.ready ? (s.storage_chosen === false ? "Speicherort wählen" : "Modelle werden geladen") : busy ? "Arbeitet …" : "Bereit · lokal"}</b></div>
       ${dl ? `<div>${esc(dl.name)} ${Math.round((dl.progress.done / dl.progress.total) * 100)} %</div>` : ""}
       ${s.ai_ready ? `<div>KI: ${esc(s.provider_name)}${s.model ? ` · ${esc(s.model)}` : ""}</div>`
-        : `<div><a href="#/settings?s=ai" style="color:var(--accent)">KI verbinden →</a></div>`}`;
+        : `<div><a href="#/settings?s=ai" style="color:var(--accent)">KI verbinden →</a></div>`}
+      ${s.update && s.update.available ? `<div><a href="#/settings?s=data" style="color:var(--accent)">Update auf ${esc(s.update.latest)} →</a></div>` : ""}`;
   } catch (e) {
     $("#engine-status").innerHTML = `<span class="dot err"></span><b>Hub nicht erreichbar</b>`;
   }
@@ -455,7 +466,7 @@ function viewLive() {
   const secure = window.isSecureContext;
   view.innerHTML = `<div class="page">
     <div class="row"><span class="eyebrow">Live · Sprecher-Erkennung in Echtzeit</span><span class="spacer"></span>
-      <div class="seg" id="mode"><button data-m="mic">Mikrofon</button><button data-m="mic+system">Mikro + Call-Ton</button></div></div>
+      <div class="seg" id="mode"><button data-m="mic" title="Alle sitzen im Raum – das Mikrofon reicht">Vor Ort</button><button data-m="mic+system" title="Teams, Zoom, Meet … – der Ton des Calls wird mit aufgenommen">Online</button></div>${tip("meeting")}</div>
     <h1 class="big" style="margin-bottom:16px"><input id="title" class="det-title" style="background:none;border:0;width:100%;padding:0;font:inherit;letter-spacing:inherit"
       placeholder="Meeting ${new Date().toLocaleDateString("de-AT")}"></h1>
     ${secure ? "" : `<div class="card" style="border-color:var(--accent);margin-bottom:14px"><b>Für Aufnahmen im Handy-Browser fehlt noch ein Schritt.</b>
@@ -489,7 +500,6 @@ function viewLive() {
     b.classList.toggle("on", b.dataset.m === prefs.inputMode);
     b.onclick = () => { setPref("inputMode", b.dataset.m); $$("#mode button").forEach((x) => x.classList.toggle("on", x === b)); };
   });
-  if (!navigator.mediaDevices?.getDisplayMedia || /iPhone|iPad|Android/.test(navigator.userAgent)) $('#mode [data-m="mic+system"]').remove();
 
   const ui = {
     render() {
@@ -560,6 +570,17 @@ let liveUI = null;
 
 // "Wer ist dabei?" — asked before EVERY recording: how many people talk, who of them REKORD knows.
 // With the headcount REKORD separates exactly that many voices; known people are matched only against each other.
+// online: the call's sound – natively on this computer (any app: Teams, Zoom …), otherwise via the browser's tab sharing
+const callNative = () => IS_LOCAL && !!(state.status && state.status.capture && state.status.capture.system_audio);
+const callBrowser = () => !!navigator.mediaDevices?.getDisplayMedia && !IS_MOBILE;
+function callHint() {
+  if (callNative()) return `<span style="color:#22C55E">✓</span> REKORD nimmt den Ton des Calls direkt am Computer auf – auch wenn Teams oder Zoom als App läuft. Mit Kopfhörern am saubersten.`
+    + (/Mac/.test(navigator.platform) ? " Beim ersten Mal fragt macOS nach „Bildschirm- & Systemaudioaufnahme“ – erlauben." : "");
+  if (callBrowser()) return "Beim Start fragt der Browser, was geteilt wird: den Tab mit dem Call wählen und <b>Audio teilen</b> anhaken.";
+  return IS_MOBILE ? "Am Handy: Handy neben den Lautsprecher des Computers legen – REKORD hört über das Mikrofon mit."
+    : esc((state.status && state.status.capture && state.status.capture.reason) || "Call-Ton geht hier nicht – nur Mikrofon.");
+}
+
 async function beginRecording(title) {
   if (liveSession) return;
   if (await askParticipants()) startLive(title);
@@ -570,8 +591,12 @@ async function askParticipants() {
   try { people = (await api("/api/profiles")).items; } catch (e) {}
   const ids = new Set(prefs.participants.filter((id) => people.some((p) => p.id === id)));
   let total = prefs.whoTotal ? Math.max(prefs.whoTotal, ids.size) : 0;  // 0 = not answered yet
+  let meeting = prefs.inputMode === "mic+system" ? "mic+system" : "mic";
   for (;;) {
     const r = await dialog(`<h2>Wer ist dabei?${tip("who")}</h2>
+      <div><b>Wo findet das Meeting statt?</b>${tip("meeting")}</div>
+      <div class="seg" id="w-meet" style="align-self:flex-start"><button type="button" data-v="mic">Vor Ort</button><button type="button" data-v="mic+system">Online (Teams, Zoom, Meet …)</button></div>
+      <div id="w-meet-hint" class="muted" style="font-size:13px;margin-top:-4px"></div>
       <p class="muted" style="margin:0">Damit REKORD weiß, wie viele Stimmen es trennen muss – und wen es schon kennt.</p>
       <div class="who-q"><div><b>Wie viele sprechen?</b>${tip("total")}<div class="muted" style="font-size:13px">dich mitgezählt</div></div>
         <div class="stepper"><button type="button" class="btn icon" id="w-minus" aria-label="weniger">−</button><b id="w-total">–</b>
@@ -584,6 +609,8 @@ async function askParticipants() {
       <div class="row"><span class="spacer"></span><button class="btn" value="cancel">Abbrechen</button><button class="btn primary" value="ok" id="w-ok">● Aufnahme starten</button></div>`,
     (b) => {
       const draw = () => {
+        $$("#w-meet button", b).forEach((x) => x.classList.toggle("on", x.dataset.v === meeting));
+        $("#w-meet-hint", b).innerHTML = meeting === "mic" ? "Alle im Raum – das Mikrofon reicht." : callHint();
         $("#w-total", b).textContent = total || "–";
         $$("#w-quick [data-n]", b).forEach((x) => x.classList.toggle("primary", Number(x.dataset.n) === total));
         $$("#w-ppl [data-id]", b).forEach((x) => {
@@ -601,6 +628,7 @@ async function askParticipants() {
         const intro = $("#w-intro", b);
         if (intro) intro.onclick = () => { b.closest("dialog").close("intro"); };
       };
+      $$("#w-meet button", b).forEach((x) => x.onclick = () => { meeting = x.dataset.v; draw(); });
       $("#w-minus", b).onclick = () => { total = Math.max(ids.size || 1, (total || 1) - 1); draw(); };
       $("#w-plus", b).onclick = () => { total = Math.min(30, (total || 0) + 1); draw(); };
       $$("#w-quick [data-n]", b).forEach((x) => x.onclick = () => { total = Math.max(Number(x.dataset.n), ids.size); draw(); });
@@ -624,6 +652,7 @@ async function askParticipants() {
     }
     if (r !== "ok" || !total) return false;
     setPref("participants", [...ids]);
+    setPref("inputMode", meeting);
     setPref("guests", Math.max(0, total - ids.size));
     setPref("whoTotal", total);
     return true;
@@ -665,7 +694,9 @@ async function startLive(title) {
       onPcm: (buf) => { if (s.paused) return; if (s.started && !s.offline && s.ws && s.ws.readyState === 1) s.ws.send(buf); else s.chunks.push(buf); },
       onLevel: (v) => { const l = $("#lvl"); if (l) l.style.width = v * 100 + "%"; const r = $("#ring"); if (r) r.style.setProperty("--lvl", v.toFixed(2)); },
     });
-    await s.capture.start(prefs.inputMode);
+    s.online = prefs.inputMode === "mic+system";
+    s.native = s.online && callNative();
+    await s.capture.start(s.online && !s.native && callBrowser() ? "mic+system" : "mic");
   } catch (e) {
     liveSession = null; liveUI && liveUI.render();
     toast("Mikrofon nicht verfügbar: " + e.message, 5000);
@@ -676,7 +707,8 @@ async function startLive(title) {
   if (!useWs) { goOffline(); return; }
   s.ws = new WebSocket(wsUrl("/ws/live"));
   s.ws.binaryType = "arraybuffer";
-  s.ws.onopen = () => s.ws.send(JSON.stringify({ type: "start", sample_rate: 16000, title: s.title, participants: s.participants, guests: s.guests }));
+  s.ws.onopen = () => s.ws.send(JSON.stringify({ type: "start", sample_rate: 16000, title: s.title, participants: s.participants, guests: s.guests,
+    meeting: s.online ? "online" : "person", call_audio: !!s.native }));
   s.ws.onerror = () => { if (!s.started) { toast("Hub nicht erreichbar – nehme offline auf."); goOffline(); } };
   setTimeout(() => {  // hub too slow to answer: keep recording, evaluate afterwards
     if (liveSession === s && !s.started && !s.offline && !s.stopping) { toast("Live-Erkennung startet nicht – nehme trotzdem auf, Auswertung danach.", 5000); goOffline(); try { s.ws.close(); } catch (e) {} }
@@ -686,6 +718,7 @@ async function startLive(title) {
     const ev = JSON.parse(m.data);
     if (ev.type === "started") {
       s.started = true; s.id = ev.id;
+      if (s.native) toast(ev.call_audio ? "Call-Ton läuft – die anderen im Call werden mit aufgenommen." : `Nur Mikrofon: ${(ev.notes || []).join(" ")}`, ev.call_audio ? 3500 : 9000);
       if (!s.offline) { s.chunks.splice(0).forEach((b) => s.ws.send(b)); }  // what was said while the hub got ready
     }
     else if (ev.type === "error") { toast(ev.error, 6000); goOffline(); }
@@ -1658,6 +1691,44 @@ function integrations(fresh = false) {
   return intCache;
 }
 
+// ================================================================ updates: the new version replaces the installed one
+async function renderUpdate(box, check = false) {
+  if (!box) return;
+  let u;
+  try { u = await api(check ? "/api/update/check" : "/api/update", check ? { method: "POST" } : {}); }
+  catch (e) { box.innerHTML = `REKORD ${esc((state.status || {}).version || "")} · ${esc(e.message)}`; return; }
+  const again = () => setTimeout(() => box.isConnected && renderUpdate(box), 700);
+  const ago = u.checked ? Math.max(1, Math.round((Date.now() / 1000 - u.checked) / 60)) : 0;
+  const head = `<div>REKORD <b>${esc(u.current)}</b>${u.available ? ` · neu: <b style="color:var(--accent)">${esc(u.latest)}</b>` : ""}</div>`;
+  if (u.state === "downloading") {
+    const pct = u.total ? Math.round((u.done / u.total) * 100) : 0;
+    box.innerHTML = head + `<div style="margin-top:8px">Lade Version ${esc(u.latest)} … ${pct} %</div><div class="progress" style="width:100%;margin-top:6px"><i style="width:${pct}%"></i></div>`;
+    return again();
+  }
+  if (u.state === "installing") { box.innerHTML = head + `<div style="margin-top:8px">Installiere – ersetzt die alte Version …</div>`; return again(); }
+  if (u.state === "restarting") { box.innerHTML = head + `<div style="margin-top:8px">REKORD startet neu …</div>`; return waitForNewVersion(u.current); }
+  box.innerHTML = head + (u.error ? `<div style="color:var(--danger,#E5484D);margin-top:6px">${esc(u.error)}</div>` : "")
+    + (u.available ? `${u.notes ? `<details style="margin-top:8px"><summary>Was ist neu in ${esc(u.latest)}?</summary><div class="md" style="margin-top:6px">${MD.render(u.notes)}</div></details>` : ""}
+        ${u.can_install && IS_LOCAL ? `<div class="row" style="margin-top:10px"><button class="btn primary sm" id="upd-go">Jetzt auf ${esc(u.latest)} aktualisieren</button></div>`
+          : `<div style="margin-top:8px">${IS_LOCAL ? MD.render(u.manual || "") : "Am Computer aktualisieren: Einstellungen → Version & Updates."}</div>`}`
+      : `<div style="margin-top:6px">${u.latest ? "✓ Aktuell" : u.check_error ? esc(u.check_error) : "Noch nicht geprüft"}${ago && u.latest ? ` · geprüft vor ${ago} min` : ""}</div>`)
+    + `<div class="row" style="margin-top:8px"><button class="btn sm" id="upd-check">Nach Updates suchen</button>${u.page ? `<a class="btn sm" href="${esc(u.page)}" target="_blank" rel="noopener">Release-Seite ↗</a>` : ""}</div>`;
+  $("#upd-check", box).onclick = (e) => { e.target.disabled = true; e.target.textContent = "Suche …"; renderUpdate(box, true); };
+  $("#upd-go", box) && ($("#upd-go", box).onclick = async (e) => {
+    if (!(await confirmBox(`Auf ${u.latest} aktualisieren?`, "REKORD lädt die neue Version, ersetzt die alte und startet neu. Aufnahmen, Personen und Einstellungen bleiben.", "Aktualisieren"))) return;
+    e.target.disabled = true;
+    try { await api("/api/update/install", { method: "POST" }); renderUpdate(box); }
+    catch (err) { toast(err.message, 6000); renderUpdate(box); }
+  });
+}
+
+function waitForNewVersion(old) {
+  // the hub is gone for a moment; when it's back with another version, load its new interface
+  setTimeout(function wait() {
+    api("/api/status").then((s) => s.version !== old ? location.reload() : setTimeout(wait, 1000)).catch(() => setTimeout(wait, 1000));
+  }, 1500);
+}
+
 async function viewSettings() {
   let s = await api("/api/settings");
   const st = state.status || (await api("/api/status"));
@@ -1685,8 +1756,9 @@ async function viewSettings() {
       <div class="field"><label for="mic">Mikrofon${tip("mic")}<span class="hint">USB-Mikro, Headset, Konferenz-Speaker, AirPods …</span></label>
         <div><select id="mic"><option value="">Systemstandard</option></select><div class="row" style="margin-top:8px"><button class="btn sm" id="mic-test">Pegel testen</button>${tip("mictest")}
         <div class="level" style="flex:1"><i id="mic-lvl"></i></div></div></div></div>
-      <div class="field"><div class="lbl">Standard-Quelle${tip("source")}<span class="hint">"Call-Ton" nimmt in Chrome/Edge am Computer zusätzlich Zoom/Teams/Meet auf.</span></div>
-        <div class="seg" id="imode">${[["mic", "Mikrofon", "Nur dein Mikrofon"], ["mic+system", "Mikro + Call-Ton", "Mikrofon plus Ton eines Browser-Tabs (Zoom, Teams, Meet)"]].map(([k, n, t]) => `<button data-v="${k}" title="${t}" class="${prefs.inputMode === k ? "on" : ""}">${n}</button>`).join("")}</div></div>
+      <div class="field"><div class="lbl">Meeting-Art${tip("meeting")}<span class="hint">Vorauswahl – wird vor jeder Aufnahme bei „Wer ist dabei?“ bestätigt.</span></div>
+        <div><div class="seg" id="imode">${[["mic", "Vor Ort", "Alle im Raum – das Mikrofon reicht"], ["mic+system", "Online", "Teams, Zoom, Meet … – der Ton des Calls wird mit aufgenommen"]].map(([k, n, t]) => `<button data-v="${k}" title="${t}" class="${prefs.inputMode === k ? "on" : ""}">${n}</button>`).join("")}</div>
+        <div class="hint" id="call-hint" style="margin-top:6px"></div></div></div>
       <div class="field"><div class="lbl">Audio-Verarbeitung${tip("processing")}<span class="hint">Für Raum-Meetings meist alles an. Für Musik/Interviews mit gutem Mikro: aus.</span></div><div>
         ${[["noiseSuppression", "Rauschunterdrückung"], ["echoCancellation", "Echo-Unterdrückung"], ["autoGainControl", "Automatische Lautstärke"]].map(([k, n]) =>
           `<label class="row" style="margin-bottom:6px"><input type="checkbox" data-pref="${k}" ${prefs[k] ? "checked" : ""}> ${n}${tip(k)}</label>`).join("")}</div></div>
@@ -1750,12 +1822,14 @@ async function viewSettings() {
       <div class="field"><div class="lbl">Eingangsordner${tip("inbox")}<span class="hint">Dateien, die hier landen, werden automatisch verarbeitet – z. B. per iCloud/Dropbox-Sync vom Handy oder Diktiergerät.</span></div>
         <div><span class="kbd">${esc(st.inbox)}</span><label class="row" style="margin-top:8px"><input type="checkbox" id="inbox" ${s.inbox_enabled ? "checked" : ""}> Überwachen</label></div></div>
       <div class="field"><div class="lbl">Was verlässt das Gerät?${tip("privacy")}</div><div class="muted">Audio, Transkription, Sprecher-Erkennung: <b>nie</b>. Für Zusammenfassungen geht nur der
-        <b>Text</b> an die gewählte KI – bei Ollama/LM Studio auch das nicht. Keine Telemetrie, kein Konto.</div></div>
+        <b>Text</b> an die gewählte KI – bei Ollama/LM Studio auch das nicht. Keine Telemetrie, kein Konto. Die Update-Suche fragt GitHub nur nach der neuesten Versionsnummer (abschaltbar unter <i>Version & Updates</i>).</div></div>
       ${IS_LOCAL ? `<div class="field"><div class="lbl">Mit dem Computer starten${tip("autostart")}<span class="hint">REKORD läuft dann ab dem Einschalten im Hintergrund – das iPhone kann sich jederzeit verbinden.</span></div>
         <div id="autost" class="muted">prüfe …</div></div>` : ""}
       <div class="field"><div class="lbl">Hilfe${tip("help")}<span class="hint">Jeder Punkt hat ein ⓘ – drüberfahren oder antippen.</span></div>
         <div class="row"><button class="btn sm" id="tour">Einführung starten</button><a class="btn sm" href="https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md" target="_blank" rel="noopener">Anleitung ↗</a></div></div>
-      <div class="field"><div class="lbl">Version${tip("version")}</div><div class="muted">REKORD ${esc(st.version)}</div></div>
+      <div class="field"><div class="lbl">Version & Updates${tip("version")}<span class="hint">Ein Update ersetzt die installierte App und startet sie neu – Aufnahmen und Einstellungen bleiben.</span></div>
+        <div><div id="upd" class="muted">REKORD ${esc(st.version)}</div>
+        <label class="row" style="margin-top:8px"><input type="checkbox" id="upd-auto" ${s.update_check !== false ? "checked" : ""}> Automatisch nach Updates suchen${tip("updatecheck")}</label></div></div>
       ${["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) ? `<div class="field"><div class="lbl">Beenden${tip("quit")}<span class="hint">Stoppt REKORD auf diesem Computer (läuft sonst im Hintergrund weiter, damit das iPhone verbunden bleibt).</span></div>
         <div><button class="btn danger" id="quit">REKORD beenden</button></div></div>` : ""}
     </div></section></div>`;
@@ -1783,6 +1857,7 @@ async function viewSettings() {
     try { await testCap.start("mic"); $("#mic-test").textContent = "Stopp"; fillMics(); } catch (e) { toast(e.message); testCap = null; }
   };
   $$("#imode button").forEach((b) => b.onclick = () => { setPref("inputMode", b.dataset.v); $$("#imode button").forEach((x) => x.classList.toggle("on", x === b)); });
+  $("#call-hint").innerHTML = "Online: " + callHint();
   $$("[data-pref]").forEach((cb) => cb.onchange = () => setPref(cb.dataset.pref, cb.checked));
 
   // AI
@@ -1969,8 +2044,10 @@ async function viewSettings() {
   integrations().then((it) => { renderInt(it); renderAutostart(it); }).catch((e) => { $("#int-cd").textContent = e.message; });
 
   $("#inbox").onchange = (e) => save({ inbox_enabled: e.target.checked });
+  $("#upd-auto").onchange = (e) => save({ update_check: e.target.checked });
   $("#tour").onclick = () => welcome(true);
   renderStorage();
+  renderUpdate($("#upd"));
   $("#quit") && ($("#quit").onclick = async () => {
     if (!(await confirmBox("REKORD beenden?", "Laufende Verarbeitungen werden beim nächsten Start fortgesetzt.", "Beenden"))) return;
     try { await api("/api/shutdown", { method: "POST" }); view.innerHTML = `<div class="page empty"><h2>REKORD ist beendet.</h2><p>Du kannst dieses Fenster schließen.</p></div>`; }

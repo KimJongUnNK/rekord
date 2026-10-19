@@ -14,6 +14,20 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
+# an update replaces REKORD: the running one quits first (never while it records), also old copies elsewhere
+stop_rekord() {
+  code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -m 5 http://127.0.0.1:8765/api/shutdown 2>/dev/null || true)"
+  [ "$code" = "409" ] && fail "REKORD nimmt gerade auf – erst die Aufnahme beenden, dann diese Zeile nochmal."
+  i=0; while [ $i -lt 20 ] && curl -s -o /dev/null -m 1 http://127.0.0.1:8765/api/status 2>/dev/null; do sleep 0.5; i=$((i+1)); done
+  if [ "$OS" = "Darwin" ]; then
+    osascript -e 'tell application "REKORD" to quit' >/dev/null 2>&1 || true
+    pkill -f 'REKORD.app/Contents/MacOS/REKORD' 2>/dev/null || true
+  else
+    pkill -x REKORD 2>/dev/null || true
+  fi
+  sleep 1
+}
+
 if [ "$OS" = "Darwin" ]; then
   [ "$ARCH" = "arm64" ] || fail "REKORD für Mac braucht einen Apple-Chip (M1 oder neuer)."
   say "Lade REKORD für Mac …"
@@ -21,8 +35,13 @@ if [ "$OS" = "Darwin" ]; then
   DEST=/Applications
   [ -w "$DEST" ] || DEST="$HOME/Applications"
   mkdir -p "$DEST"
-  osascript -e 'tell application "REKORD" to quit' >/dev/null 2>&1 || true
+  stop_rekord
   rm -rf "$DEST/REKORD.app"
+  # the other Applications folder may hold an older copy from before – only one REKORD
+  for OTHER in /Applications/REKORD.app "$HOME/Applications/REKORD.app"; do
+    [ "$OTHER" = "$DEST/REKORD.app" ] && continue
+    [ "$(defaults read "$OTHER/Contents/Info" CFBundleIdentifier 2>/dev/null)" = "app.rekord.desktop" ] && rm -rf "$OTHER" 2>/dev/null || true
+  done
   ditto -x -k "$TMP/rekord.zip" "$DEST"
   xattr -dr com.apple.quarantine "$DEST/REKORD.app" 2>/dev/null || true
   say "Installiert: $DEST/REKORD.app – startet jetzt."
@@ -41,6 +60,7 @@ SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
   command -v sudo >/dev/null 2>&1 && SUDO="sudo"
 fi
+stop_rekord
 DONE=""
 if [ "$(id -u)" -eq 0 ] || [ -n "$SUDO" ]; then
   [ -n "$SUDO" ] && say "Für die Installation fragt Linux nach deinem Passwort."

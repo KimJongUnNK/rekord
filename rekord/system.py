@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -168,6 +169,65 @@ def ensure_start_menu() -> None:
             stamp.write_text(sys.executable, "utf-8")
     except OSError:
         pass
+
+
+# ------------------------------------------------------------------ other REKORD processes (updates: never two versions)
+
+_EXE = re.compile(r'(?:^|[/\\])REKORD(?:\.exe)?"?(?=\s|$)', re.I)  # the packaged app's executable, end of its path
+CLI = {"mcp", "serve", "process", "models", "enroll", "desktop"}  # CLI uses (e.g. Claude Desktop's MCP server) stay
+
+
+def rekord_processes() -> list[tuple[int, str]]:
+    """Other running REKORD apps (packaged): [(pid, first argument)], this process excluded. Only processes whose
+    program IS REKORD count – not e.g. a terminal command that merely mentions a REKORD path."""
+    me = {os.getpid(), os.getppid()}
+    rows: list[tuple[str, str]] = []
+    try:
+        if sys.platform == "win32":
+            r = run(["powershell", "-NoProfile", "-Command",
+                     "Get-CimInstance Win32_Process -Filter \"Name='REKORD.exe'\" | "
+                     "ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }"], timeout=30)
+            rows = [tuple((ln.split("\t", 1) + [""])[:2]) for ln in r.stdout.splitlines() if ln.strip()]
+        else:
+            # program name first (Linux: "REKORD", macOS: the full path …/MacOS/REKORD), then its arguments
+            r = run(["ps", "-axo", "pid=,comm="], timeout=15)
+            pids = [ln.split(None, 1)[0] for ln in r.stdout.splitlines()
+                    if len(ln.split(None, 1)) == 2 and re.split(r"[/\\]", ln.split(None, 1)[1].strip())[-1] == "REKORD"]
+            for pid in pids:
+                a = run(["ps", "-o", "args=", "-p", pid], timeout=15).stdout.strip()
+                if a:
+                    rows.append((pid, a))
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    for pid, cmd in rows:
+        m = ([None] + list(_EXE.finditer(cmd)))[-1]  # the last one: folders like "REKORD 2.app" come before it
+        if not pid.strip().isdigit() or int(pid) in me:
+            continue
+        rest = cmd[m.end():].split() if m else []
+        out.append((int(pid), rest[0].strip('"') if rest else ""))
+    return out
+
+
+def stop_other_instances() -> list[int]:
+    """End other REKORD app processes (e.g. the window of an older version). CLI uses like `REKORD mcp` stay.
+    Only the installed app does this – never a source checkout or the tests."""
+    stopped: list[int] = []
+    if not frozen():
+        return stopped
+    for pid, first in rekord_processes():
+        if first in CLI:
+            continue
+        try:
+            if sys.platform == "win32":
+                run(["taskkill", "/PID", str(pid), "/F"], timeout=15)
+            else:
+                import signal
+                os.kill(pid, signal.SIGTERM)
+            stopped.append(pid)
+        except OSError:
+            pass
+    return stopped
 
 
 # ------------------------------------------------------------------ start with the computer (hub in the background)

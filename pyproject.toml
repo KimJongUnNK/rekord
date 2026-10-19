@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rekord"
-version = "1.0.7"
+version = "1.0.8"
 description = "Lokaler KI-Notizrekorder: aufnehmen, transkribieren, live erkennen wer spricht, zusammenfassen mit Claude/ChatGPT/Ollama."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,6 +23,11 @@ dependencies = [
   "zeroconf>=0.130",
   "cryptography>=42",
   "zstandard>=0.22; sys_platform == 'linux'",  # unpack Ollama for the one-click local AI
+  # online meetings: the call's sound (Windows WASAPI loopback, Linux PulseAudio/PipeWire, macOS ScreenCaptureKit)
+  "soundcard>=0.4.6; sys_platform != 'darwin'",
+  "pyobjc-framework-ScreenCaptureKit>=10; sys_platform == 'darwin'",
+  "pyobjc-framework-CoreMedia>=10; sys_platform == 'darwin'",
+  "pyobjc-framework-libdispatch>=10; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]

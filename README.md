@@ -37,7 +37,7 @@ In ~5 Minuten startklar: Sprachmodelle, lokale KI, Claude-Desktop-Anbindung und 
 | „Ask Plaud" | ja | **Fragen** pro Aufnahme und über alle Aufnahmen, mit klickbaren Quellen [mm:ss] |
 | Mind Map | ja | ja (SVG/PNG-Export) |
 | Highlight-Knopf | Hardware-Taste | ★-Button, Taste `H`, Live Activity, Siri, Action Button |
-| Call-Aufnahme | Vibrationssensor | Mikro + Systemton (Zoom/Teams/Meet-Tab) am Computer |
+| Call-Aufnahme | Vibrationssensor | **Online-Modus**: Mikro + Ton des Calls direkt am Computer (Teams, Zoom, Meet – auch als App) |
 | Export | PDF, Word, TXT … | Markdown, Word, TXT, SRT, VTT, JSON, PDF, Audio |
 | Claude-Anbindung | – | **MCP-Server**: Claude Desktop/Claude Code liest deine Bibliothek, läuft mit normalem Claude-Abo |
 | Lockscreen | – | **Live Activity + Dynamic Island** (aktueller Sprecher), Sperrbildschirm-Widgets, Kontrollzentrum-Button |

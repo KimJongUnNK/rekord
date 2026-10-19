@@ -157,3 +157,39 @@ def _short(path):
         w.setparams(r.getparams())
         w.writeframes(r.readframes(16000 * 3))
     return True
+
+
+def test_online_meeting_hears_the_people_in_the_call(people, pulse, tmp_path):
+    """Online: the others talk only through the computer's speaker (virtual), the microphone hears nothing.
+    REKORD records the call's sound, transcribes it and knows who speaks."""
+    import json
+    import subprocess
+    import sys
+    script = f"""
+import json, subprocess, sys, time
+sys.path.insert(0, {str(Path(__file__).resolve().parent.parent)!r})
+from rekord import db, live
+ev = []
+s = live.LiveSession(ev.append, "Call", meeting="online", call_audio=True)
+assert s.call is not None, s.notes
+p = subprocess.Popen(["paplay", "--device=speakers", {str(FIX / "meeting1.wav")!r}])
+last = t0 = time.time()
+while time.time() - t0 < 38:  # the microphone: silence, at the real pace of a microphone
+    time.sleep(0.1)
+    now = time.time()
+    s.feed_pcm16(bytes(int((now - last) * 16000) * 2))
+    last = now
+p.wait()
+rid = s.stop()
+print(json.dumps({{"segs": [e["name"] for e in ev if e["type"] == "segment"],
+                  "text": " ".join(e.get("text", "") for e in ev if e["type"] == "segment"),
+                  "participants": db.get_recording(rid)["participants"]}}))
+"""
+    (tmp_path / "call.py").write_text(script)
+    out = subprocess.run([sys.executable, str(tmp_path / "call.py")], env=pulse, capture_output=True, text=True, timeout=240)
+    assert out.returncode == 0, out.stderr[-3000:]
+    r = json.loads(out.stdout.strip().splitlines()[-1])
+    assert len(r["segs"]) >= 5, r
+    assert {"Emil", "Lisa"} <= set(r["segs"]), r["segs"]  # known people, heard only through the call
+    assert len(r["text"]) > 100
+    assert r["participants"]["meeting"] == "online"

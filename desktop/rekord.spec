@@ -7,7 +7,7 @@ from PyInstaller.utils.hooks import collect_all
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 
 datas, binaries, hidden = [], [], []
-for pkg in ("sherpa_onnx", "av", "webview", "uvicorn", "anthropic", "openai", "zeroconf", "docx", "qrcode", "certifi", "zstandard"):
+for pkg in ("sherpa_onnx", "av", "webview", "uvicorn", "anthropic", "openai", "zeroconf", "docx", "qrcode", "certifi", "zstandard", "soundcard"):
     try:
         d, b, h = collect_all(pkg)
         datas += d; binaries += b; hidden += h
@@ -17,7 +17,8 @@ datas += [(os.path.join(ROOT, "rekord", "web"), os.path.join("rekord", "web"))] 
 
 a = Analysis([os.path.join(SPECPATH, "launch.py")], pathex=[ROOT], binaries=binaries, datas=datas,
              hiddenimports=hidden + ["rekord.server", "rekord.mcp_server", "rekord.integrations", "rekord.tls", "rekord.llm.auto", "rekord.storage",
-                                      "mcp.server.mcpserver", "mcp.server.fastmcp"],
+                                      "rekord.capture", "rekord.updater", "mcp.server.mcpserver", "mcp.server.fastmcp"]
+                           + (["ScreenCaptureKit", "CoreMedia", "dispatch", "Foundation"] if sys.platform == "darwin" else ["soundcard", "cffi"]),
              excludes=["tkinter", "matplotlib", "torch", "PIL"])  # PIL: only needed at build time for the icon
 pyz = PYZ(a.pure)
 icon = os.path.join(SPECPATH, "icon.ico" if sys.platform == "win32" else "icon.png")

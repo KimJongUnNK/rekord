@@ -1,7 +1,9 @@
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 # isolated data dir for the whole test session – must be set before rekord is imported
@@ -22,6 +24,29 @@ import pytest  # noqa: E402
 @pytest.fixture(scope="session")
 def home() -> Path:
     return _HOME
+
+
+@pytest.fixture
+def pulse(tmp_path):
+    """A virtual speaker (PulseAudio null sink "speakers") = the other people in an online meeting.
+    Yields the environment for processes that play into it or record from it. Linux only."""
+    if not (sys.platform.startswith("linux") and all(shutil.which(t) for t in ("pulseaudio", "pactl", "paplay"))):
+        pytest.skip("needs PulseAudio (apt install pulseaudio pulseaudio-utils)")
+    xdg = tmp_path / "xdg"
+    xdg.mkdir(mode=0o700)
+    env = dict(os.environ, XDG_RUNTIME_DIR=str(xdg), PULSE_RUNTIME_PATH=str(xdg / "pulse"))
+    subprocess.run(["pulseaudio", "-D", "--exit-idle-time=-1", "--system=false", "-n", "--disallow-exit",
+                    "--load=module-native-protocol-unix", "--load=module-null-sink sink_name=speakers",
+                    "--load=module-always-sink"], env=env, check=True, capture_output=True, timeout=20)
+    try:
+        for _ in range(50):
+            if subprocess.run(["pactl", "info"], env=env, capture_output=True).returncode == 0:
+                break
+            time.sleep(0.1)
+        subprocess.run(["pactl", "set-default-sink", "speakers"], env=env, check=True, capture_output=True)
+        yield env
+    finally:
+        subprocess.run(["pulseaudio", "--kill"], env=env, capture_output=True)
 
 
 def pytest_sessionfinish(session, exitstatus):
