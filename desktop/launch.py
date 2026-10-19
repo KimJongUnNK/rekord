@@ -12,6 +12,8 @@ from rekord.desktop import run
 COMMANDS = {"serve", "desktop", "process", "models", "enroll", "mcp", "-h", "--help"}
 
 if __name__ == "__main__":
+    from rekord.system import ensure_output
+    ensure_output()  # windowed app without a console (double-click on Windows) → rekord.log instead of a crash
     if len(sys.argv) > 1 and sys.argv[1] in COMMANDS:
         cli(sys.argv[1:])
     else:

@@ -16,6 +16,26 @@ def frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
+def ensure_output() -> Path | None:
+    """A windowed app started by double-click (Windows) has no console: sys.stdout/sys.stderr are None, and the
+    web server crashes when it sets up its log output. Then everything goes into a log file next to the
+    settings (…/REKORD/rekord.log) – which also helps when something needs explaining. Returns that file."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return None
+    from . import config
+    path = config.pointer_path().parent / "rekord.log"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists() and path.stat().st_size > 5 * 2**20:  # keep it small: start over at 5 MB
+            path.replace(path.with_suffix(".old.log"))
+        out = open(path, "a", encoding="utf-8", buffering=1)  # noqa: SIM115 - lives as long as the app
+    except OSError:
+        path, out = None, open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
+    sys.stdout = sys.stdout or out
+    sys.stderr = sys.stderr or out
+    return path
+
+
 def child_env() -> dict:
     """Environment for programs we start (xdg-open, pkexec, ollama, claude …). The packaged Linux app puts
     its own libraries on LD_LIBRARY_PATH; system programs must get the original value back."""

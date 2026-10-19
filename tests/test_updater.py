@@ -461,3 +461,22 @@ def test_real_hubs_never_run_twice(tmp_path):
             if p.poll() is None:
                 p.kill()
                 p.wait()
+
+
+def test_starts_without_a_console(tmp_path):
+    """Double-click on Windows: the app has no console (stdout/stderr are None). The web server used to crash
+    setting up its logs – the hub must come up anyway and write its output to rekord.log."""
+    port = _free_port()
+    env = dict(os.environ, REKORD_HOME=str(tmp_path / "home"), REKORD_UPDATE_URL="http://127.0.0.1:9/none",
+               HOME=str(tmp_path), USERPROFILE=str(tmp_path), APPDATA=str(tmp_path / "appdata"),
+               XDG_CONFIG_HOME=str(tmp_path / "cfg"))
+    env.pop("REKORD_TEST_VERSION", None)
+    code = (f"import sys; sys.path.insert(0, {str(ROOT)!r}); sys.stdout = None; sys.stderr = None\n"
+            f"from rekord.desktop import run; run({port}, background=True)")
+    p = subprocess.Popen([sys.executable, "-c", code], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        assert _wait_version(port, __version__), "hub did not come up without a console"
+        assert list(tmp_path.rglob("rekord.log")), "no log file"
+    finally:
+        p.kill()
+        p.wait()

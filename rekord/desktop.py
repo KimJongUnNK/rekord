@@ -205,7 +205,8 @@ def run(port: int = 8765, lan: bool = False, background: bool = False) -> None:
 
     Never two REKORDs: an older copy hands over to the newest installed one; if REKORD already runs, its window
     comes to the front; if an older version runs, it quits and this one takes its place."""
-    from . import __version__, updater
+    from . import __version__, system, updater
+    system.ensure_output()  # double-click on Windows: no console – the server would crash setting up its logs
     url = f"http://localhost:{port}"
     host = "0.0.0.0" if lan else "127.0.0.1"
     background = background or os.environ.get("REKORD_HEADLESS") == "1"

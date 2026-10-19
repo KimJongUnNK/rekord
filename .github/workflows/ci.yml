@@ -56,6 +56,17 @@ jobs:
         run: |
           cd desktop
           pyinstaller rekord.spec --noconfirm > build.log 2>&1 || { echo "::error title=pyinstaller::$(tail -c 3000 build.log | tr '\n' ' ')"; exit 1; }
+      - name: started like a double-click (Windows, no console) – the hub must answer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:REKORD_HOME = "$env:RUNNER_TEMP\dc"; $env:REKORD_PORT = "8798"; $env:REKORD_LAN = "0"; $env:REKORD_HEADLESS = "1"
+          $p = Start-Process -FilePath "desktop\dist\REKORD\REKORD.exe" -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 90 -and -not $ok; $i++) { Start-Sleep 2; try { Invoke-RestMethod http://127.0.0.1:8798/api/status | Out-Null; $ok = $true } catch {} }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          if (-not $ok) { Write-Host "::error title=double-click::REKORD started without a console does not answer"; exit 1 }
+          Write-Host "::notice title=double-click::REKORD started without a console answers"
       - name: real in-app update (an old REKORD replaces itself with this build – same place, one process)
         shell: bash
         run: |

@@ -323,6 +323,7 @@ Die Installations-Zeile von oben funktioniert weiterhin auch als Update.
 | **Claude Desktop sieht REKORD nicht** | Claude ganz beenden und neu öffnen (*Claude neu starten*). Steht unter *Claude Desktop (MCP)* **Verbunden**? |
 | **Falsche Person erkannt** | Im Transkript auf den Namen tippen → richtigen Namen eingeben, *Stimme merken* bleibt an |
 | **REKORD beenden** | Fenster schließen. Läuft es im Browser: *Einstellungen* → ganz unten **REKORD beenden** |
+| **Fenster bleibt leer / Fehler suchen** | REKORD schreibt Meldungen in **rekord.log**: Mac `~/Library/Application Support/REKORD/`, Windows `%APPDATA%\REKORD\`, Linux `~/.config/REKORD/`. Beim [Problem melden](https://github.com/KimJongUnNK/rekord/issues/new) gern mitschicken. |
 | **Zwei REKORD-Fenster / alte Version** | Ab 1.0.8 nicht mehr möglich (siehe [Updates](#updates)). Einmalig von einer älteren Version: alle REKORD-Fenster schließen, dann die neue öffnen. |
 | **Backup** | Den **Speicherort**-Ordner kopieren (steht unter *Einstellungen → Speicher & Datenschutz*). Da liegt alles drin. |
 | **„Laufwerk fehlt“ beim Start** | Der Speicherort liegt auf einer Festplatte oder einem Netzlaufwerk, das gerade nicht verbunden ist. Anschließen → **Nochmal prüfen**. Kommt es nicht mehr zurück: **Neu auf diesem Computer anfangen** (die Daten auf dem Laufwerk bleiben unberührt). |

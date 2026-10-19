@@ -83,6 +83,8 @@ def serve(host: str, port: int, https: bool, open_browser: bool, auto_download: 
 
 
 def main(argv: list[str] | None = None) -> None:
+    from .system import ensure_output
+    ensure_output()  # started without a console (pythonw, windowed app): log to a file instead of crashing
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     p = argparse.ArgumentParser(prog="rekord", description="REKORD – lokaler KI-Notizrekorder")
     sub = p.add_subparsers(dest="cmd")
