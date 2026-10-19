@@ -8,6 +8,9 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const view = $("#view");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const debounce = (fn, ms = 400) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+const IS_LOCAL = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname); // this computer (not a phone in the Wi-Fi)
+const IS_MOBILE = /iPhone|iPad|Android/i.test(navigator.userAgent);
+const gbFmt = (n) => (n || 0).toLocaleString("de-AT", { maximumFractionDigits: 1 }) + " GB";
 const initials = (n) => (n || "?").replace(/^Sprecher\s*/, "S").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
 function fmtTime(t) {
@@ -32,8 +35,11 @@ function toast(msg, ms = 2600) {
   const tok = u.searchParams.get("token");
   if (tok) {
     try { localStorage.setItem("rekord.token", tok); } catch (e) {}
-    u.searchParams.delete("token");
-    history.replaceState(null, "", u.pathname + u.hash);
+    // phones keep it in the address: iOS starts home-screen apps without Safari's storage
+    if (!IS_MOBILE) {
+      u.searchParams.delete("token");
+      history.replaceState(null, "", u.pathname + u.hash);
+    }
   }
 })();
 const token = () => { try { return localStorage.getItem("rekord.token") || ""; } catch (e) { return ""; } };
@@ -196,6 +202,63 @@ async function route() {
 window.addEventListener("hashchange", route);
 const qs = () => new URLSearchParams((location.hash.split("?")[1]) || "");
 
+// ================================================================ first start: pick an AI in one click
+async function onboarding(box) {
+  const st = state.status || (await api("/api/status").catch(() => null));
+  if (!box || !st || st.ai_ready || st.provider === "none") { if (box) box.innerHTML = ""; return; }
+  const oll = await api("/api/ollama").catch(() => null);
+  const busy = oll && ["installing", "starting", "pulling"].includes(oll.setup.state);
+  box.innerHTML = `<div class="card onboard">
+    <div class="eyebrow">Noch ein Schritt</div>
+    <h2 style="margin:4px 0 6px">KI für Protokolle, To-dos und Mind Maps</h2>
+    <p class="muted" style="margin-top:0">Aufnehmen, Transkript und Sprecher-Erkennung laufen schon. Für Zusammenfassungen eine KI wählen – jederzeit änderbar unter Einstellungen → KI.</p>
+    <div class="provider-grid">
+      <button class="prov" data-ob="local"><b>Lokal · gratis</b><small>Ein Klick. REKORD lädt Ollama und ein passendes Modell${oll ? ` (${esc(oll.default)})` : ""}. Nichts verlässt den Computer.</small></button>
+      <button class="prov" data-ob="anthropic"><b>Claude</b><small>Beste Qualität. API-Key einfügen, fertig.</small></button>
+      <button class="prov" data-ob="openai"><b>ChatGPT</b><small>API-Key einfügen, fertig.</small></button>
+    </div>
+    <div id="ob-prog" style="margin-top:12px"></div>
+    <button class="btn ghost sm" data-ob="none" style="margin-top:8px">Ohne KI weiter</button></div>`;
+  const prog = $("#ob-prog", box);
+  $$("[data-ob]", box).forEach((b) => b.onclick = async () => {
+    const k = b.dataset.ob;
+    if (k === "local") {
+      if (!IS_LOCAL && !(oll && oll.installed)) { toast("Die lokale KI wird am Computer eingerichtet – dort REKORD öffnen.", 5000); return; }
+      b.disabled = true;
+      try { await api("/api/ollama/setup", { method: "POST", json: {} }); } catch (e) { toast(e.message, 5000); b.disabled = false; return; }
+      localSetupProgress(prog, () => setTimeout(() => refreshStatus().then(() => onboarding(box)), 2500));
+      return;
+    }
+    await api("/api/settings", { method: "PUT", json: { llm: { provider: k } } });
+    await refreshStatus();
+    if (k === "none") { box.innerHTML = ""; toast("Ohne KI – jederzeit unter Einstellungen → KI änderbar."); return; }
+    location.hash = "#/settings?s=ai&key=1";
+  });
+  if (busy) localSetupProgress(prog, () => setTimeout(() => refreshStatus().then(() => onboarding(box)), 2500));
+}
+
+// progress of "Lokal einrichten": install Ollama → start → download model → ready
+function localSetupProgress(el, onDone) {
+  let stopped = false;
+  const tick = async () => {
+    if (stopped || !el.isConnected) return;
+    let o;
+    try { o = await api("/api/ollama"); } catch (e) { setTimeout(tick, 2000); return; }
+    const su = o.setup, pr = su.model ? o.pulls[su.model] || {} : {};
+    const pct = su.state === "installing" && su.total ? su.done / su.total : su.state === "pulling" && pr.total ? pr.done / pr.total : 0;
+    if (su.state === "error") { el.innerHTML = `<div style="color:#EF4444">✗ ${esc(su.error)}</div>`; return; }
+    if (su.state === "done") { el.innerHTML = `<div style="color:#22C55E">✓ Lokale KI bereit · ${esc(su.model)}</div>`; toast("Lokale KI ist bereit."); onDone && onDone(o); return; }
+    const extra = su.state === "installing" && su.total ? ` · ${gbFmt(su.done / 1e9)} von ${gbFmt(su.total / 1e9)}`
+      : su.state === "pulling" && pr.total ? ` · ${gbFmt(pr.done / 1e9)} von ${gbFmt(pr.total / 1e9)}` : "";
+    el.innerHTML = `<div class="muted" style="font-size:14px">${esc(su.step || "…")}${extra}</div>
+      <div class="progress" style="width:100%"><i style="width:${Math.round(pct * 100)}%"></i></div>
+      <div class="muted" style="font-size:12px;margin-top:4px">Läuft im Hintergrund weiter – du kannst REKORD schon benutzen.</div>`;
+    setTimeout(tick, 1000);
+  };
+  tick();
+  return () => { stopped = true; };
+}
+
 // ================================================================ LIBRARY
 async function viewLibrary() {
   let q = "", folder = null;
@@ -209,6 +272,7 @@ async function viewLibrary() {
         <input type="file" id="file" accept="audio/*,video/*,.m4a,.mp3,.wav,.webm,.ogg,.opus,.flac,.mp4,.mov" multiple hidden></label>
       <a class="btn primary" href="#/live"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="currentColor"/></svg>Aufnehmen</a>
     </div>
+    <div id="onboard"></div>
     <div id="folders" class="row" style="margin-top:14px"></div>
     <div class="drop" id="drop">Audio- oder Videodateien hierher ziehen – Sprachmemos, Zoom-Aufnahmen, Diktiergerät …</div>
     <div id="list"></div></div>`;
@@ -247,6 +311,7 @@ async function viewLibrary() {
       <div class="muted">${r.language ? r.language.toUpperCase() : ""}</div></a>`;
   };
 
+  onboarding($("#onboard"));
   $("#q").addEventListener("input", debounce((e) => { q = e.target.value.trim(); load(); }, 250));
   $("#file").addEventListener("change", (e) => upload([...e.target.files]));
   const drop = $("#drop");
@@ -390,8 +455,9 @@ function viewLive() {
       <div class="seg" id="mode"><button data-m="mic">Mikrofon</button><button data-m="mic+system">Mikro + Call-Ton</button></div></div>
     <h1 class="big" style="margin-bottom:16px"><input id="title" class="det-title" style="background:none;border:0;width:100%;padding:0;font:inherit;letter-spacing:inherit"
       placeholder="Meeting ${new Date().toLocaleDateString("de-AT")}"></h1>
-    ${secure ? "" : `<div class="card" style="border-color:var(--accent);margin-bottom:14px"><b>Hier im Browser kann nicht aufgenommen werden.</b>
-      <span class="muted">Handy-Browser geben das Mikrofon nur über HTTPS frei. Nimm mit der REKORD-App auf dem iPhone auf oder direkt am Computer.</span></div>`}
+    ${secure ? "" : `<div class="card" style="border-color:var(--accent);margin-bottom:14px"><b>Für Aufnahmen im Handy-Browser fehlt noch ein Schritt.</b>
+      <span class="muted">Browser geben das Mikrofon nur über eine sichere Verbindung frei. Einmal einrichten, dauert 1 Minute.</span>
+      <div style="margin-top:10px"><a class="btn primary" href="/setup">Jetzt einrichten</a></div></div>`}
     <div class="live">
       <section class="stage">
         <div class="stage-top"><span class="rec-pill" id="pill"><i></i>BEREIT</span><span class="spacer"></span><span class="timer" id="timer">00:00</span></div>
@@ -520,14 +586,15 @@ async function renderSetup() {
 
 async function startLive(title) {
   const s = liveSession = { title: title || `Meeting ${new Date().toLocaleString("de-AT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`,
-    speakers: [], lines: [], now: null, paused: false, offline: false, highlights: [], t0: Date.now(), pausedMs: 0, pausedAt: 0,
+    speakers: [], lines: [], now: null, paused: false, offline: false, highlights: [], t0: Date.now(), pausedMs: 0, pausedAt: 0, chunks: [],
     participants: [...prefs.participants], guests: prefs.guests,
     elapsed() { return ((this.pausedAt || Date.now()) - this.t0 - this.pausedMs) / 1000; } };
   liveUI && liveUI.render();
   const useWs = prefs.liveDetect;
   try {
     s.capture = new Capture({
-      onPcm: (buf) => { if (s.paused) return; if (s.ws && s.ws.readyState === 1) s.ws.send(buf); else if (s.offline) s.chunks.push(buf); },
+      // until the hub confirms the session (first start loads the models) audio is kept here – nothing gets lost
+      onPcm: (buf) => { if (s.paused) return; if (s.started && !s.offline && s.ws && s.ws.readyState === 1) s.ws.send(buf); else s.chunks.push(buf); },
       onLevel: (v) => { const l = $("#lvl"); if (l) l.style.width = v * 100 + "%"; const r = $("#ring"); if (r) r.style.setProperty("--lvl", v.toFixed(2)); },
     });
     await s.capture.start(prefs.inputMode);
@@ -537,16 +604,22 @@ async function startLive(title) {
     return;
   }
   if (prefs.wakeLock && navigator.wakeLock) { try { s.wake = await navigator.wakeLock.request("screen"); } catch (e) {} }
-  const goOffline = () => { s.offline = true; s.chunks = s.chunks || []; liveUI && liveUI.render(); };
+  const goOffline = () => { s.offline = true; liveUI && liveUI.render(); };
   if (!useWs) { goOffline(); return; }
   s.ws = new WebSocket(wsUrl("/ws/live"));
   s.ws.binaryType = "arraybuffer";
   s.ws.onopen = () => s.ws.send(JSON.stringify({ type: "start", sample_rate: 16000, title: s.title, participants: s.participants, guests: s.guests }));
   s.ws.onerror = () => { if (!s.started) { toast("Hub nicht erreichbar – nehme offline auf."); goOffline(); } };
+  setTimeout(() => {  // hub too slow to answer: keep recording, evaluate afterwards
+    if (liveSession === s && !s.started && !s.offline && !s.stopping) { toast("Live-Erkennung startet nicht – nehme trotzdem auf, Auswertung danach.", 5000); goOffline(); try { s.ws.close(); } catch (e) {} }
+  }, 45000);
   s.ws.onclose = () => { if (!s.stopping && s.started) { toast("Verbindung verloren – Aufnahme wird lokal fortgesetzt."); goOffline(); } };
   s.ws.onmessage = (m) => {
     const ev = JSON.parse(m.data);
-    if (ev.type === "started") { s.started = true; s.id = ev.id; }
+    if (ev.type === "started") {
+      s.started = true; s.id = ev.id;
+      if (!s.offline) { s.chunks.splice(0).forEach((b) => s.ws.send(b)); }  // what was said while the hub got ready
+    }
     else if (ev.type === "error") { toast(ev.error, 6000); goOffline(); }
     else if (ev.type === "speaking") { s.now = ev; liveUI && (liveUI.now(ev), liveUI.roster()); }
     else if (ev.type === "silence") { s.now = { silence: true }; liveUI && liveUI.now(s.now); }
@@ -581,7 +654,7 @@ async function stopLive() {
   s.stopping = true; liveUI && liveUI.render();
   s.capture.stop();
   if (s.wake) s.wake.release().catch(() => {});
-  if (s.offline && s.chunks && s.chunks.length) {
+  if ((s.offline || !s.started) && s.chunks.length) {
     // upload what we captured as WAV
     const wav = pcmToWav(s.chunks);
     const fd = new FormData();
@@ -1139,42 +1212,56 @@ const LANGS = [["", "Automatisch (pro Satz)"], ["de", "Deutsch"], ["en", "Englis
   ["nl", "Niederländisch"], ["pt", "Portugiesisch"], ["pl", "Polnisch"], ["tr", "Türkisch"], ["ru", "Russisch"], ["uk", "Ukrainisch"], ["hr", "Kroatisch"],
   ["sr", "Serbisch"], ["ar", "Arabisch"], ["zh", "Chinesisch"], ["ja", "Japanisch"], ["ko", "Koreanisch"]];
 
-// Lokal (Ollama): detect, start, one-click model downloads with progress – no terminal
-let ollTimer = null;
+// Lokal (Ollama): install, start, one-click model downloads with progress – no terminal, no website
+let ollTimer = null, ollStop = null;
 async function ollamaPanel(cfg) {
-  clearTimeout(ollTimer);
+  clearTimeout(ollTimer); if (ollStop) { ollStop(); ollStop = null; }
   const box = $("#oll"); if (!box) return;
   let st;
   try { st = await api("/api/ollama"); } catch (e) { box.textContent = e.message; return; }
-  const gb = (n) => n.toLocaleString("de-AT", { maximumFractionDigits: 1 }) + " GB";
   const pulling = Object.entries(st.pulls).filter(([, v]) => v.state === "downloading");
   const installed = new Set(st.models.map((m) => m.name));
+  const settingUp = ["installing", "starting", "pulling"].includes(st.setup.state);
+  const fits = `passend zu deinen ${gbFmt(st.ram_gb)} RAM`;
   let html = "";
-  if (!st.installed) {
-    html = `<p style="margin-top:0"><b>Dafür braucht es das kostenlose Programm Ollama.</b> Einmal installieren, den Rest macht REKORD.</p>
-      <div class="row"><a class="btn primary" href="${st.download_url}" target="_blank" rel="noopener">Ollama herunterladen</a>
-      <button class="btn" id="oll-recheck">Ist installiert – prüfen</button></div>`;
+  if (settingUp) {
+    html = `<div id="oll-prog"></div>`;
+  } else if (!st.installed) {
+    html = IS_LOCAL && st.can_install
+      ? `<p style="margin-top:0">Ein Klick: REKORD installiert <b>Ollama</b> (das kostenlose Programm für lokale KI) und lädt <b>${esc(st.default)}</b>, ${fits}.
+          Dauert je nach Internet 5–15 Minuten, danach läuft alles offline.</p>
+         <div class="row"><button class="btn primary" id="oll-setup">Lokal einrichten</button></div>
+         ${st.setup.state === "error" ? `<p style="color:#EF4444">✗ ${esc(st.setup.error)}</p>` : ""}`
+      : `<p style="margin-top:0">Die lokale KI wird <b>am Computer</b> eingerichtet: dort REKORD öffnen → Einstellungen → KI → Lokal → <b>Lokal einrichten</b>.</p>`;
   } else if (!st.running) {
     html = `<div class="row"><span class="muted">Ollama ist installiert, läuft aber nicht.</span><button class="btn primary" id="oll-start">Ollama starten</button></div>`;
   } else {
-    html = `<div class="muted" style="font-size:13px;margin-bottom:10px"><span class="dot ok"></span>Ollama läuft${st.version ? " · v" + esc(st.version) : ""}</div>`;
+    html = `<div class="muted" style="font-size:13px;margin-bottom:10px"><span class="dot ok"></span>Ollama läuft${st.version ? " · v" + esc(st.version) : ""} · ${gbFmt(st.ram_gb)} RAM</div>`;
     if (st.models.length) html += `<div class="eyebrow" style="margin-bottom:6px">Deine Modelle – antippen zum Verwenden</div>
-      <div class="row" style="margin-bottom:14px">${st.models.map((m) => `<button class="btn sm ${m.name === cfg.model ? "primary" : ""}" data-use="${esc(m.name)}">${m.name === cfg.model ? "✓ " : ""}${esc(m.name)} <span class="muted">${gb(m.size_gb)}</span></button>`).join("")}</div>`;
+      <div class="row" style="margin-bottom:14px">${st.models.map((m) => `<button class="btn sm ${m.name === cfg.model ? "primary" : ""}" data-use="${esc(m.name)}">${m.name === cfg.model ? "✓ " : ""}${esc(m.name)} <span class="muted">${gbFmt(m.size_gb)}</span></button>`).join("")}</div>`;
     html += `<div class="eyebrow" style="margin-bottom:6px">${st.models.length ? "Weitere laden" : "Modell laden"}</div>` + st.recommended.map((r) => {
       const pr = st.pulls[r.name] || {};
       const pct = pr.total ? Math.round((pr.done / pr.total) * 100) : 0;
       const right = installed.has(r.name) ? `<span class="badge">geladen</span>`
         : pr.state === "downloading" ? `<span class="muted">${pct ? pct + " %" : esc(pr.status || "…")}</span>`
-        : `<button class="btn sm" data-pull="${esc(r.name)}">Laden</button>`;
-      return `<div class="model-row"><div><b>${esc(r.name)}</b> <span class="muted">${gb(r.size_gb)} · ab ${r.ram_gb} GB RAM</span>
+        : `<button class="btn sm ${r.name === st.default && !st.models.length ? "primary" : ""}" data-pull="${esc(r.name)}">Laden</button>`;
+      return `<div class="model-row"><div><b>${esc(r.name)}</b> ${r.name === st.default ? `<span class="badge acc">empfohlen für diesen Computer</span>` : ""}
+        <span class="muted">${gbFmt(r.size_gb)} · ab ${r.ram_gb} GB RAM</span>
         <div class="muted" style="font-size:13px">${esc(r.note)}${pr.state === "error" ? ` · <span style="color:#EF4444">${esc(pr.error)}</span>` : ""}</div>
         ${pr.state === "downloading" ? `<div class="progress" style="width:100%"><i style="width:${pct}%"></i></div>` : ""}</div><div>${right}</div></div>`;
     }).join("");
   }
   box.innerHTML = html;
-  $("#oll-recheck") && ($("#oll-recheck").onclick = () => ollamaPanel(cfg));
+  if (settingUp) ollStop = localSetupProgress($("#oll-prog"), async () => {
+    const s2 = await api("/api/settings"); cfg.model = s2.llm.ollama.model; refreshStatus(); setTimeout(() => ollamaPanel(cfg), 1500);
+  });
+  $("#oll-setup") && ($("#oll-setup").onclick = async (e) => {
+    e.target.disabled = true;
+    try { await api("/api/ollama/setup", { method: "POST", json: {} }); } catch (err) { toast(err.message, 5000); }
+    ollamaPanel(cfg);
+  });
   $("#oll-start") && ($("#oll-start").onclick = async (e) => { e.target.disabled = true; e.target.textContent = "Startet …";
-    const r = await api("/api/ollama/start", { method: "POST" }); if (!r.ok) toast("Ollama startet nicht – einmal manuell öffnen.", 5000); ollamaPanel(cfg); });
+    const r = await api("/api/ollama/start", { method: "POST" }); if (!r.ok) toast("Ollama startet nicht – Computer einmal neu starten.", 5000); ollamaPanel(cfg); });
   $$("#oll [data-use]").forEach((b) => b.onclick = async () => {
     await api("/api/settings", { method: "PUT", json: { llm: { ollama: { model: b.dataset.use } } } });
     cfg.model = b.dataset.use; toast(`${b.dataset.use} wird verwendet`); refreshStatus(); ollamaPanel(cfg);
@@ -1184,11 +1271,17 @@ async function ollamaPanel(cfg) {
     await api("/api/ollama/pull", { method: "POST", json: { model: b.dataset.pull } }); ollamaPanel(cfg);
   });
   const wasPulling = pulling.length > 0;
-  if (wasPulling || !st.running) ollTimer = setTimeout(async () => {
+  if (!settingUp && (wasPulling || (st.installed && !st.running))) ollTimer = setTimeout(async () => {
     if (!$("#oll")) return;
     const s = await api("/api/settings"); cfg.model = s.llm.ollama.model;  // a finished first download is auto-selected
     ollamaPanel(cfg); refreshStatus();
   }, wasPulling ? 1000 : 4000);
+}
+
+let intCache = null;
+function integrations(fresh = false) {
+  if (fresh || !intCache) intCache = api("/api/integrations").catch((e) => { intCache = null; throw e; });
+  return intCache;
 }
 
 async function viewSettings() {
@@ -1270,9 +1363,12 @@ async function viewSettings() {
     <section class="set-sec" id="s-int"><h2>Claude Desktop (MCP)</h2><div class="card">
       <p style="margin-top:0">Verbinde deine REKORD-Bibliothek direkt mit <b>Claude Desktop</b> oder <b>Claude Code</b>. Claude kann dann alle Transkripte durchsuchen,
         lesen und Zusammenfassungen zurückspeichern – mit deinem normalen Claude-Abo, ohne API-Key.</p>
-      <p class="muted">Claude Desktop → Einstellungen → Entwickler → Konfiguration bearbeiten, und eintragen:</p>
-      <pre class="code" id="mcp"></pre><button class="btn sm" id="mcp-copy">Kopieren</button>
-      <p class="muted" style="margin-bottom:0">Claude Code: <span class="kbd" id="mcp-cc"></span></p></div></section>
+      <div class="field"><div class="lbl">Claude Desktop<span class="hint">Die App von claude.ai/download.</span></div><div id="int-cd" class="muted">prüfe …</div></div>
+      <div class="field"><div class="lbl">Claude Code<span class="hint">Claude im Terminal.</span></div><div id="int-cc" class="muted">prüfe …</div></div>
+      <details><summary class="muted" style="cursor:pointer">Von Hand eintragen</summary>
+        <p class="muted">Claude Desktop → Einstellungen → Entwickler → Konfiguration bearbeiten, und eintragen:</p>
+        <pre class="code" id="mcp"></pre><button class="btn sm" id="mcp-copy">Kopieren</button>
+        <p class="muted" style="margin-bottom:0">Claude Code: <span class="kbd" id="mcp-cc"></span></p></details></div></section>
 
     <section class="set-sec" id="s-data"><h2>Speicher & Datenschutz</h2><div class="card">
       <div class="field"><div class="lbl">Datenordner</div><div><span class="kbd">${esc(st.home)}</span><span class="hint">Audio, Datenbank, Modelle. Backup = diesen Ordner kopieren.</span></div></div>
@@ -1280,6 +1376,8 @@ async function viewSettings() {
         <div><span class="kbd">${esc(st.inbox)}</span><label class="row" style="margin-top:8px"><input type="checkbox" id="inbox" ${s.inbox_enabled ? "checked" : ""}> Überwachen</label></div></div>
       <div class="field"><div class="lbl">Was verlässt das Gerät?</div><div class="muted">Audio, Transkription, Sprecher-Erkennung: <b>nie</b>. Für Zusammenfassungen geht nur der
         <b>Text</b> an die gewählte KI – bei Ollama/LM Studio auch das nicht. Keine Telemetrie, kein Konto.</div></div>
+      ${IS_LOCAL ? `<div class="field"><div class="lbl">Mit dem Computer starten<span class="hint">REKORD läuft dann ab dem Einschalten im Hintergrund – das iPhone kann sich jederzeit verbinden.</span></div>
+        <div id="autost" class="muted">prüfe …</div></div>` : ""}
       <div class="field"><div class="lbl">Version</div><div class="muted">REKORD ${esc(st.version)}</div></div>
       ${["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) ? `<div class="field"><div class="lbl">Beenden<span class="hint">Stoppt REKORD auf diesem Computer (läuft sonst im Hintergrund weiter, damit das iPhone verbunden bleibt).</span></div>
         <div><button class="btn danger" id="quit">REKORD beenden</button></div></div>` : ""}
@@ -1313,15 +1411,16 @@ async function viewSettings() {
   // AI
   const provCfg = () => {
     const p = s.llm.provider, c = s.llm[p] || {};
-    const keyField = (label, hint) => `<div class="field"><label for="k">${label}<span class="hint">${hint}</span></label>
-      <input type="password" id="k" placeholder="${c.has_key ? c.api_key : "nicht gesetzt"}" autocomplete="off"></div>`;
+    const keyField = (label, hint, url) => `<div class="field"><label for="k">${label}<span class="hint">${hint}</span></label>
+      <div><div class="row"><input type="password" id="k" placeholder="${c.has_key ? c.api_key : "Key hier einfügen"}" autocomplete="off" style="flex:1">
+      ${url ? `<a class="btn sm" id="key-get" href="${url}" target="_blank" rel="noopener">Key erstellen ↗</a>` : ""}</div></div></div>`;
     const modelField = (hint) => `<div class="field"><label for="m">Modell<span class="hint">${hint}</span></label><div class="row">
       <input type="text" id="m" list="mlist" value="${esc(c.model || "")}" style="flex:1"><datalist id="mlist"></datalist><button class="btn sm" id="mload">Laden</button></div></div>`;
     let html = "";
-    if (p === "anthropic") html = keyField("API-Key", "console.anthropic.com → API Keys. Leer = ANTHROPIC_API_KEY aus der Umgebung.") + modelField("claude-opus-5-5 = beste Qualität, claude-haiku-5-5 = günstig & schnell.")
+    if (p === "anthropic") html = keyField("API-Key", "Auf „Key erstellen“ klicken, Key kopieren, hier einfügen – REKORD testet sofort.", "https://console.anthropic.com/settings/keys") + modelField("claude-opus-5-5 = beste Qualität, claude-haiku-5-5 = günstig & schnell.")
       + `<div class="field"><label for="eff">Denkaufwand<span class="hint">Höher = gründlicher, langsamer, teurer.</span></label><select id="eff">${["low", "medium", "high", "xhigh", "max"].map((e) => opt(e, c.effort, e)).join("")}</select></div>
          <div class="field"><div class="lbl">Ausweichmodell<span class="hint">Lehnt das Modell ab, springt automatisch ein anderes Claude-Modell ein.</span></div><label class="row"><input type="checkbox" id="fb" ${c.fallbacks ? "checked" : ""}> Aktiv</label></div>`;
-    if (p === "openai") html = keyField("API-Key", "platform.openai.com → API Keys. Achtung: ChatGPT-Plus-Abo ≠ API-Guthaben.") + modelField("Auf „Laden“ klicken, um deine verfügbaren Modelle zu sehen.");
+    if (p === "openai") html = keyField("API-Key", "Auf „Key erstellen“ klicken, Key kopieren, hier einfügen. Achtung: ChatGPT-Plus-Abo ≠ API-Guthaben.", "https://platform.openai.com/api-keys") + modelField("Wird nach dem Key automatisch gewählt. „Laden“ zeigt alle deine Modelle.");
     if (p === "ollama") html = `<div class="field"><div class="lbl">Lokales Modell<span class="hint">Läuft komplett auf diesem Computer, gratis. Ein Klick auf <b>Laden</b> lädt es herunter.</span></div>
         <div id="oll">Prüfe Ollama …</div></div>
       <div class="field"><label for="bu">Ollama-Adresse<span class="hint">Nur ändern, wenn Ollama auf einem anderen Rechner läuft.</span></label>
@@ -1334,9 +1433,12 @@ async function viewSettings() {
     $("#prov-cfg").innerHTML = html;
     if (p === "ollama") ollamaPanel(c);
     const patch = (obj) => saveNow({ llm: { [p]: obj } });
-    $("#k") && $("#k").addEventListener("change", (e) => e.target.value && patch({ api_key: e.target.value.trim() }).then(() => { e.target.value = ""; provCfg(); toast("Key gespeichert"); }));
+    $("#k") && $("#k").addEventListener("change", (e) => e.target.value && patch({ api_key: e.target.value.trim() }).then(() => {
+      e.target.value = ""; provCfg(); toast("Key gespeichert – teste …"); setTimeout(() => $("#ltest") && $("#ltest").click(), 100);
+    }));
+    if (qs().get("key") === "1" && $("#k")) setTimeout(() => $("#k") && $("#k").focus(), 300);
     $("#m") && $("#m").addEventListener("change", (e) => patch({ model: e.target.value.trim() }).then(() => toast("Modell gespeichert")));
-    $("#bu") && $("#bu").addEventListener("change", (e) => patch({ base_url: e.target.value.trim() }));
+    $("#bu") && $("#bu").addEventListener("change", (e) => patch({ base_url: e.target.value.trim() }).then(() => p === "compatible" && provCfg()));
     $("#eff") && $("#eff").addEventListener("change", (e) => patch({ effort: e.target.value }));
     $("#fb") && $("#fb").addEventListener("change", (e) => patch({ fallbacks: e.target.checked }));
     $("#ctx") && $("#ctx").addEventListener("change", (e) => patch(p === "ollama" ? { num_ctx: Number(e.target.value) } : { context_tokens: Number(e.target.value) }));
@@ -1351,6 +1453,7 @@ async function viewSettings() {
       $("#lres").textContent = "teste …";
       const r = await api("/api/llm/test", { method: "POST" });
       $("#lres").innerHTML = r.ok ? `<span style="color:#22C55E">✓ verbunden</span> · „${esc(r.reply)}“ · ${r.ms} ms` : `<span style="color:#EF4444">✗ ${esc(r.error)}</span>`;
+      refreshStatus();
     });
   };
   $$("#prov .prov").forEach((b) => b.onclick = async () => {
@@ -1431,13 +1534,25 @@ async function viewSettings() {
         dann ist es automatisch im WLAN sichtbar. Im Terminal: <span class="kbd">rekord serve --host 0.0.0.0</span></p>`}
       <div class="row" style="align-items:flex-start;gap:28px">
         <div><div class="qr">${p.qr_app}</div><p style="max-width:220px"><b>REKORD iOS-App</b><br><span class="muted">Aufnehmen am iPhone, live sehen wer spricht, Sperrbildschirm-Widget. In der App „QR-Code scannen“.</span></p></div>
-        <div><div class="qr">${p.qr_web}</div><p style="max-width:220px"><b>Im Browser (jedes Handy)</b><br><span class="muted">Kamera auf den Code → Link öffnen → Teilen → „Zum Home-Bildschirm“.
-          Ansehen, anhören, Fragen stellen. Aufnehmen am Handy geht mit der REKORD-App.</span></p></div>
+        <div><div class="qr">${p.qr_web}</div><p style="max-width:240px"><b>Im Browser (jedes Handy)</b><br><span class="muted">Kamera auf den Code → Link öffnen.
+          Die Seite führt dich in 1 Minute durch alles. Danach nimmst du auch im Browser auf, mit Live-Erkennung.</span></p></div>
       </div>
+      <div id="fw"></div>
       <div class="field"><div class="lbl">Adresse</div><div>${p.urls.map((u) => `<span class="kbd">${esc(u)}</span>`).join(" ") || "–"}</div></div>
       <div class="field"><div class="lbl">Kopplungs-Code<span class="hint">Neu erzeugen trennt alle gekoppelten Geräte.</span></div>
         <div class="row"><span class="kbd" id="tok" style="filter:blur(4px);cursor:pointer" title="anzeigen">${esc(p.token)}</span><button class="btn sm" id="rot">Neu erzeugen</button></div></div>`;
     $("#tok").onclick = (e) => (e.target.style.filter = "none");
+    if (IS_LOCAL) integrations().then((it) => {
+      const fw = it.firewall, box = $("#fw");
+      if (!box || !fw.tool || fw.open === true) return;
+      box.innerHTML = `<div class="field"><div class="lbl">Firewall<span class="hint">Die ${esc(fw.tool)}-Firewall dieses Computers blockiert das iPhone.</span></div>
+        <div class="row"><button class="btn primary" id="fw-open">Für iPhone freigeben</button><span class="muted" id="fw-res"></span></div></div>`;
+      $("#fw-open").onclick = async (e) => {
+        e.target.disabled = true; $("#fw-res").textContent = "Passwort-Fenster beachten …";
+        try { const r = await api("/api/integrations/firewall", { method: "POST" }); $("#fw-res").innerHTML = `<span style="color:#22C55E">✓ ${esc(r.message)}</span>`; }
+        catch (err) { $("#fw-res").innerHTML = `<span style="color:#EF4444">✗ ${esc(err.message)}</span>`; e.target.disabled = false; }
+      };
+    });
     $("#rot").onclick = async () => { if (await confirmBox("Code neu erzeugen?", "Alle gekoppelten Geräte müssen neu koppeln.", "Neu erzeugen")) { await api("/api/settings/rotate-token", { method: "POST" }); viewSettings(); } };
   } catch (e) { $("#pair").textContent = e.message; }
 
@@ -1447,6 +1562,34 @@ async function viewSettings() {
   $("#mcp").textContent = JSON.stringify(cfg, null, 2);
   $("#mcp-cc").textContent = `claude mcp add rekord -e REKORD_HOME="${st.home}" -- "${cmd}" ${args.join(" ")}`;
   $("#mcp-copy").onclick = () => { navigator.clipboard.writeText($("#mcp").textContent); toast("Kopiert"); };
+  const renderInt = (it) => {
+    const cd = it.claude_desktop, cc = it.claude_code, ok = (t) => `<span style="color:#22C55E">✓ ${t}</span>`;
+    if (!IS_LOCAL) { $("#int-cd").textContent = $("#int-cc").textContent = "Nur am Computer selbst einrichtbar."; return; }
+    $("#int-cd").innerHTML = `<div class="row">${cd.connected ? ok("Verbunden") : `<button class="btn ${cd.installed ? "primary" : ""}" id="cd-connect">Mit Claude Desktop verbinden</button>`}
+      ${cd.connected && cd.running ? `<button class="btn sm" id="cd-restart">Claude neu starten</button>` : ""}
+      ${cd.installed ? "" : `<a class="btn sm" href="${cd.download_url}" target="_blank" rel="noopener">Claude Desktop laden ↗</a>`}</div>
+      ${cd.connected ? `<span class="hint">Claude einmal neu starten, dann im Chat fragen: „Was haben wir im letzten Meeting entschieden?“</span>` : ""}`;
+    $("#int-cc").innerHTML = cc.connected ? ok("Verbunden") : cc.installed ? `<button class="btn" id="cc-connect">Mit Claude Code verbinden</button>`
+      : `<span class="muted">Nicht installiert – brauchst du nur, wenn du Claude im Terminal nutzt.</span>`;
+    const act = (id, path, done) => $(id) && ($(id).onclick = async (e) => {
+      e.target.disabled = true;
+      try { const r = await api(path, { method: "POST" }); done(r); renderInt(await integrations(true)); }
+      catch (err) { toast(err.message, 6000); e.target.disabled = false; }
+    });
+    act("#cd-connect", "/api/integrations/claude-desktop", (r) => toast(r.running ? "Eingetragen – Claude jetzt neu starten." : "Eingetragen – beim nächsten Start von Claude ist REKORD da.", 5000));
+    act("#cd-restart", "/api/integrations/claude-desktop/restart", () => toast("Claude startet neu."));
+    act("#cc-connect", "/api/integrations/claude-code", () => toast("Claude Code ist verbunden."));
+  };
+  const renderAutostart = (it) => {
+    const box = $("#autost"); if (!box) return;
+    const a = it.autostart;
+    box.innerHTML = a.supported ? `<label class="row"><input type="checkbox" id="autost-cb" ${a.enabled ? "checked" : ""}> Aktiv</label>` : esc(a.reason);
+    $("#autost-cb") && ($("#autost-cb").onchange = async (e) => {
+      try { const r = await api("/api/integrations/autostart", { method: "POST", json: { enabled: e.target.checked } }); e.target.checked = r.enabled; toast(r.enabled ? "Startet ab jetzt mit dem Computer" : "Startet nicht mehr automatisch"); }
+      catch (err) { toast(err.message, 5000); e.target.checked = !e.target.checked; }
+    });
+  };
+  integrations().then((it) => { renderInt(it); renderAutostart(it); }).catch((e) => { $("#int-cd").textContent = e.message; });
 
   $("#inbox").onchange = (e) => save({ inbox_enabled: e.target.checked });
   $("#quit") && ($("#quit").onclick = async () => {
@@ -1454,7 +1597,7 @@ async function viewSettings() {
     try { await api("/api/shutdown", { method: "POST" }); view.innerHTML = `<div class="page empty"><h2>REKORD ist beendet.</h2><p>Du kannst dieses Fenster schließen.</p></div>`; }
     catch (e) { toast(e.message, 5000); }
   });
-  cleanup = () => { if (testCap) testCap.stop(); clearTimeout(ollTimer); };
+  cleanup = () => { if (testCap) testCap.stop(); clearTimeout(ollTimer); if (ollStop) { ollStop(); ollStop = null; } };
 }
 
 // ================================================================ mind map renderer (pure SVG, horizontal tree)

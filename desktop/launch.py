@@ -1,6 +1,6 @@
 """Entry point for the packaged desktop app (PyInstaller).
 
-No arguments (double-click, app menu)  → hub + window/browser.
+No arguments (double-click, app menu)  → hub + window/browser.  --background → hub only.
 With a subcommand → the normal CLI, e.g.  `rekord mcp`, `rekord serve --host 0.0.0.0`, `rekord models list`.
 """
 import os
@@ -18,4 +18,5 @@ if __name__ == "__main__":
         # packaged app: reachable in the Wi-Fi by default so the iPhone can pair (protected by the pairing code);
         # REKORD_LAN=0 or --local keeps it on this computer only
         lan = "--local" not in sys.argv and os.environ.get("REKORD_LAN", "1") != "0"
-        run(port=int(os.environ.get("REKORD_PORT", "8765")), lan=lan)
+        # --background: started with the computer (Einstellungen → Speicher → Mit dem Computer starten)
+        run(port=int(os.environ.get("REKORD_PORT", "8765")), lan=lan, background="--background" in sys.argv)

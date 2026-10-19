@@ -36,51 +36,54 @@ def open_url(url: str) -> None:
     libraries (LD_LIBRARY_PATH), or system tools like kde-open/xdg-open crash on the old libstdc++."""
     import subprocess
     import sys
+
+    from .system import child_env
     if sys.platform.startswith("linux") and getattr(sys, "frozen", False):
-        env = dict(os.environ)
-        orig = env.pop("LD_LIBRARY_PATH_ORIG", None)
-        if orig is not None:
-            env["LD_LIBRARY_PATH"] = orig
-        else:
-            env.pop("LD_LIBRARY_PATH", None)
         try:
-            subprocess.Popen(["xdg-open", url], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen(["xdg-open", url], env=child_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
         except OSError:
             pass
     webbrowser.open(url)
 
 
-def _browser_mode(url: str) -> None:
+def _window(url: str, own_hub: bool) -> None:
+    """Native window (pywebview) or, where there is none, the browser. Without our own hub there is nothing
+    to keep alive after the browser opened."""
+    try:
+        import webview  # pip install pywebview
+    except ImportError:
+        webview = None
+    if webview is not None:
+        try:
+            webview.create_window("REKORD", url, width=1320, height=860, min_size=(380, 600))
+            webview.start()
+            return
+        except Exception as e:  # noqa: BLE001 - no GUI backend (e.g. Linux without WebKitGTK/Qt)
+            print(f"Kein natives Fenster ({e}) – öffne im Browser.")
     open_url(url)
-    print(f"REKORD läuft: {url}  – beenden über Einstellungen → „REKORD beenden“ oder Strg+C.")
-    while True:
-        time.sleep(3600)
+    if own_hub:
+        print(f"REKORD läuft: {url}  – beenden über Einstellungen → „REKORD beenden“ oder Strg+C.")
+        while True:
+            time.sleep(3600)
 
 
-def run(port: int = 8765, lan: bool = False) -> None:
+def run(port: int = 8765, lan: bool = False, background: bool = False) -> None:
+    """background: hub only (started with the computer), the window comes from the next click on the icon."""
+    from . import system
     url = f"http://localhost:{port}"
-    # second click on the app icon: REKORD is already running → just show it
-    if _port_open(port) and _is_rekord(port):
-        if os.environ.get("REKORD_HEADLESS") != "1":
-            open_url(url)
+    background = background or os.environ.get("REKORD_HEADLESS") == "1"
+    system.ensure_start_menu()
+    if _port_open(port) and _is_rekord(port):  # REKORD already runs (window or in the background) → just show it
+        if not background:
+            _window(url, own_hub=False)
         return
 
     from .__main__ import serve
     host = "0.0.0.0" if lan else "127.0.0.1"
     threading.Thread(target=serve, args=(host, port, False, False), daemon=True).start()
     _wait(port)
-    if os.environ.get("REKORD_HEADLESS") == "1":  # CI smoke test / server-only mode
+    if background:  # CI smoke test / started with the computer
         while True:
             time.sleep(3600)
-    try:
-        import webview  # pip install pywebview
-    except ImportError:
-        _browser_mode(url)
-        return
-    try:
-        webview.create_window("REKORD", url, width=1320, height=860, min_size=(380, 600))
-        webview.start()
-    except Exception as e:  # noqa: BLE001 - no GUI backend (e.g. Linux without WebKitGTK/Qt): use the browser
-        print(f"Kein natives Fenster ({e}) – öffne im Browser.")
-        _browser_mode(url)
+    _window(url, own_hub=True)

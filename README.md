@@ -9,10 +9,17 @@ Das ist die Plaud-Note-Pro-Idee, nur ohne Cloud-Zwang, ohne Abo und ohne Minuten
 
 ## Loslegen
 
-1. **[Download](https://github.com/KimJongUnNK/rekord/releases/latest)**: Mac (Apple-Chip), Windows, Linux, iPhone
-2. **[Schritt-für-Schritt-Anleitung](docs/ANLEITUNG.md)**: Installation, iPhone verbinden, KI verbinden, jeder Menüpunkt erklärt
+**Mac & Linux** (Terminal):
+```
+curl -fsSL https://github.com/KimJongUnNK/rekord/releases/latest/download/install.sh | sh
+```
+**Windows** (PowerShell):
+```
+irm https://github.com/KimJongUnNK/rekord/releases/latest/download/install.ps1 | iex
+```
+Oder klassisch: **[Download](https://github.com/KimJongUnNK/rekord/releases/latest)** · **[Schritt-für-Schritt-Anleitung](docs/ANLEITUNG.md)** (Installation, iPhone, KI, jeder Menüpunkt erklärt)
 
-In ~10 Minuten startklar. Danach läuft alles offline.
+In ~5 Minuten startklar: Sprachmodelle, lokale KI, Claude-Desktop-Anbindung und iPhone-Zertifikat richtet REKORD per Klick selbst ein. Danach läuft alles offline.
 
 ---
 

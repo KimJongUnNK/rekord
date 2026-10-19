@@ -123,8 +123,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with: { path: dist, merge-multiple: true }
-      - name: drop build intermediates
-        run: rm -f dist/rekord-linux-dist.tar.gz
+      - name: drop build intermediates, add the one-line installers
+        run: rm -f dist/rekord-linux-dist.tar.gz && cp packaging/install.sh packaging/install.ps1 dist/
       - id: v
         run: echo "tag=v$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
       - name: remove assets that are no longer built

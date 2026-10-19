@@ -34,11 +34,19 @@ groups["Einstellungen: Auswahl"] = set(re.findall(r'\["(?:system|light|dark|comf
 groups["KI-Anbieter"] = set(re.findall(r'\["(?:anthropic|openai|ollama|compatible|none)", "([^"]+)", "', app))
 groups["Live"] = {"Wer ist dabei?", "Gäste", "Vorstellungsrunde", "Im Raum", "Mitschrift", "Pause"}
 groups["Export"] = set(re.findall(r'\["(?:md|docx|txt|srt|vtt|json)", "([^"]+)"', app)) | {"Zwischenablage", "PDF", "Audio"}
-groups["Knöpfe"] = set(re.findall(r'id="(?:enroll|new|clr|gen|frep|mmgen|mcp-copy|quit|ltest|mic-test)"[^>]*>([^<]+)<', app))
+groups["Knöpfe"] = set(re.findall(r'id="(?:enroll|new|clr|gen|frep|mmgen|mcp-copy|quit|ltest|mic-test|oll-setup|cd-connect|cc-connect'
+                                  r'|cd-restart|fw-open|key-get)"[^>]*>([^<]+)<', app))
 groups["Knöpfe"] |= {"Importieren", "Suchen & Ersetzen", "Stimme merken", "zusammenführen", "Mind Map erstellen", "Laden", "Testen"}
 pc = app[app.index("const provCfg = () => {"):app.index('$$("#prov .prov")')]
 groups["KI: Felder je Anbieter"] = set(re.findall(r'<label for="\w+">([^<]+)<span', pc)) | set(re.findall(r'keyField\("([^"]+)"', pc)) \
     | set(re.findall(r'class="lbl">([^<]+)<', pc))
+
+groups["Erster Start"] = set(re.findall(r'data-ob="\w+"><b>([^<]+)</b>', app)) | set(re.findall(r'data-ob="none"[^>]*>([^<]+)<', app)) \
+    | set(re.findall(r'href="/setup">([^<]+)<', app))
+setup = (ROOT / "rekord/web/setup.html").read_text("utf-8")
+ios = re.sub(r'<p class="android.*?</p>', "", setup, flags=re.S)  # the guide describes the iPhone way
+groups["Handy-Einrichtung"] = set(re.findall(r'<h2>([^<]+)</h2>', ios)) | set(re.findall(r'class="path">([^<]+)<', ios)) \
+    | set(re.findall(r'<summary>([^<]+)</summary>', ios))
 
 missing = 0
 for name, labels in groups.items():

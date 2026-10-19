@@ -11,10 +11,25 @@
 | `rekord-<ver>-1-x86_64.pkg.tar.zst` | Arch, Manjaro, EndeavourOS: `sudo pacman -U rekord-*.pkg.tar.zst` |
 | `REKORD-<ver>-Linux-x86_64.tar.gz` | Linux ohne root: entpacken, `./install.sh` |
 | `PKGBUILD` | Arch/AUR (`rekord-bin`): `makepkg -si` |
+| `install.sh` / `install.ps1` | Installation in einer Zeile (siehe oben) |
 | `REKORD-iOS-unsigned.ipa` | iPhone – per [Sideloadly](https://sideloadly.io) oder AltStore mit deiner Apple-ID installieren |
+
+**Am schnellsten:** Mac/Linux `curl -fsSL https://github.com/KimJongUnNK/rekord/releases/latest/download/install.sh | sh` · Windows (PowerShell) `irm https://github.com/KimJongUnNK/rekord/releases/latest/download/install.ps1 | iex`
 
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
+
+### Neu in 1.0.5 – alles mit einem Klick
+- **Lokale KI in einem Klick:** *Lokal einrichten* installiert Ollama selbst (Mac, Windows, Linux – ohne Website, ohne Terminal), lädt das Modell, das zu deinem Arbeitsspeicher passt, und schaltet es ein. Mit Fortschrittsanzeige.
+- **Erster Start:** Die Karte *„Noch ein Schritt“* fragt einmal: Lokal, Claude, ChatGPT oder ohne KI. Ist schon Ollama oder LM Studio mit einem Modell da, nimmt REKORD das automatisch.
+- **Claude & ChatGPT:** Knopf *Key erstellen ↗* führt direkt zur richtigen Seite. Nach dem Einfügen testet REKORD sofort; bei ChatGPT wählt es das Modell selbst.
+- **Claude Desktop & Claude Code:** *Mit Claude Desktop verbinden* trägt REKORD in Claudes Konfiguration ein (bestehende Einträge bleiben), *Claude neu starten* erledigt den Rest. Claude Code genauso.
+- **iPhone: Aufnehmen im Browser** – ohne Sideloadly. Der rechte QR-Code öffnet eine Einrichtungs-Seite, die in 2 Minuten ein Zertifikat für die sichere Verbindung installiert. Danach Live-Aufnahme mit Sprecher-Erkennung direkt in Safari. Das Zertifikat gilt nur für Adressen im eigenen Netz.
+- **Installation in einer Zeile** für Mac, Linux (`install.sh`) und Windows (`install.ps1`): ohne Gatekeeper-/SmartScreen-Umweg, mit Startmenü- und Desktop-Eintrag. Dieselbe Zeile macht Updates.
+- **Windows:** Der Startmenü-Eintrag wird beim ersten Start automatisch angelegt.
+- **Linux:** Die Pakete öffnen die Firewall-Ports fürs iPhone selbst; für AppImage/tar.gz gibt es *Für iPhone freigeben*.
+- **Mit dem Computer starten:** REKORD läuft auf Wunsch ab dem Einschalten im Hintergrund, damit sich das iPhone jederzeit verbinden kann.
+- **Behoben:** Bei der ersten Live-Aufnahme nach dem Start gingen die ersten Sekunden verloren, während die Modelle luden. Jetzt wird zwischengespeichert, und die Modelle werden schon beim Start vorgeladen.
 
 ### Neu in 1.0.4
 - **Lokale KI ohne Terminal:** Unter *Einstellungen → KI → Lokal* erkennt REKORD Ollama und startet es bei Bedarf. Deine vorhandenen Modelle sind antippbar, neue lädst du per **Laden**-Knopf mit Fortschrittsbalken. Das erste geladene Modell wird automatisch verwendet.

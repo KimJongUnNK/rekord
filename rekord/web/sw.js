@@ -1,5 +1,5 @@
 // App-shell cache: the UI opens instantly, even before the hub answers. API calls always go to the network.
-const CACHE = "rekord-shell-v4";
+const CACHE = "rekord-shell-v5";
 const SHELL = ["/", "/static/app.css", "/static/app.js", "/static/md.js", "/manifest.webmanifest", "/icons/icon-192.png"];
 self.addEventListener("install", (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (e) => e.waitUntil(

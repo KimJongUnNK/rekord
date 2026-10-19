@@ -2,69 +2,75 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
+import socket
 import sys
 import webbrowser
 
 
-def _tls(host_names: list[str]):
-    """Self-signed cert so phones can use the mic via the browser over Wi-Fi (Safari needs HTTPS)."""
-    import datetime as dt
-    import ipaddress
-
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.x509.oid import NameOID
-
-    from . import config
-    d = config.HOME / "tls"
-    d.mkdir(exist_ok=True)
-    crt, key = d / "rekord.crt", d / "rekord.key"
-    if crt.exists() and key.exists():
-        return str(crt), str(key)
-    k = ec.generate_private_key(ec.SECP256R1())
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "REKORD local hub")])
-    alt = [x509.DNSName("localhost")]
-    for h in host_names:
+def _free(host: str, port: int) -> bool:
+    with socket.socket() as s:
         try:
-            alt.append(x509.IPAddress(ipaddress.ip_address(h)))
-        except ValueError:
-            alt.append(x509.DNSName(h))
-    now = dt.datetime.now(dt.timezone.utc)
-    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(k.public_key())
-            .serial_number(x509.random_serial_number()).not_valid_before(now - dt.timedelta(days=1))
-            .not_valid_after(now + dt.timedelta(days=825))
-            .add_extension(x509.SubjectAlternativeName(alt), critical=False)
-            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-            .sign(k, hashes.SHA256()))
-    crt.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
-    key.write_bytes(k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
-                                    serialization.NoEncryption()))
-    return str(crt), str(key)
+            s.bind((host, port))
+            return True
+        except OSError:
+            return False
+
+
+async def _serve_all(main, extra: list) -> None:
+    """Main server + optional HTTPS twin in one event loop. The twin must never take the main server down."""
+    async def guarded(srv):
+        try:
+            await srv.serve()
+        except (SystemExit, Exception) as e:  # noqa: BLE001 - e.g. port taken: phones fall back to the app
+            logging.getLogger("rekord").warning("HTTPS-Server nicht gestartet: %s", e)
+
+    tasks = [asyncio.create_task(guarded(s)) for s in extra]
+    try:
+        await main.serve()
+    finally:
+        for s in extra:
+            s.should_exit = True
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def serve(host: str, port: int, https: bool, open_browser: bool, auto_download: bool = True) -> None:
     import uvicorn
 
+    from . import tls
     from .server import app, lan_ips
     app.state.port = port
     app.state.lan = host not in ("127.0.0.1", "localhost")
     app.state.auto_download = auto_download
-    ssl = {}
-    if https:
-        crt, key = _tls(lan_ips())
-        ssl = {"ssl_certfile": crt, "ssl_keyfile": key}
+    common = {"log_level": "warning", "ws_max_size": 16 * 1024 * 1024}
+    extra = []
+    app.state.https_port, app.state.https_config = None, None
+    if https:  # everything over HTTPS on one port
+        crt, key = tls.ensure(lan_ips())
+        main = uvicorn.Config(app, host=host, port=port, ssl_certfile=crt, ssl_keyfile=key, **common)
+        app.state.https_port, app.state.https_config = port, main
+    else:
+        main = uvicorn.Config(app, host=host, port=port, **common)
+        # in the Wi-Fi: HTTPS twin on port+1, so phone browsers may use the microphone
+        if app.state.lan and _free(host, port + 1):
+            try:
+                crt, key = tls.ensure(lan_ips())
+                twin = uvicorn.Config(app, host=host, port=port + 1, ssl_certfile=crt, ssl_keyfile=key, lifespan="off", **common)
+                extra.append(uvicorn.Server(twin))
+                app.state.https_port, app.state.https_config = port + 1, twin
+            except Exception as e:  # noqa: BLE001
+                logging.getLogger("rekord").warning("kein HTTPS: %s", e)
     scheme = "https" if https else "http"
     print(f"\n  REKORD läuft:  {scheme}://localhost:{port}")
     if app.state.lan:
         for ip in lan_ips():
-            print(f"  Im WLAN:       {scheme}://{ip}:{port}   (iPhone: Einstellungen → Gerät koppeln)")
+            print(f"  Im WLAN:       {scheme}://{ip}:{port}   (iPhone: Einstellungen → iPhone & Geräte)")
     print()
     if open_browser:
         import threading
         threading.Timer(1.2, lambda: webbrowser.open(f"{scheme}://localhost:{port}")).start()
-    uvicorn.run(app, host=host, port=port, log_level="warning", ws_max_size=16 * 1024 * 1024, **ssl)
+    asyncio.run(_serve_all(uvicorn.Server(main), extra))
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -74,7 +80,7 @@ def main(argv: list[str] | None = None) -> None:
     sv = sub.add_parser("serve", help="Hub starten (Standard)")
     sv.add_argument("--host", default="127.0.0.1", help="0.0.0.0 = im WLAN erreichbar (für iPhone)")
     sv.add_argument("--port", type=int, default=8765)
-    sv.add_argument("--https", action="store_true", help="Selbstsigniertes Zertifikat (Mikrofon im Handy-Browser)")
+    sv.add_argument("--https", action="store_true", help="Nur HTTPS (sonst im WLAN automatisch zusätzlich auf Port+1)")
     sv.add_argument("--no-browser", action="store_true")
     sv.add_argument("--no-download", action="store_true", help="Modelle nicht automatisch laden")
     dk = sub.add_parser("desktop", help="Als Desktop-App-Fenster starten (pywebview)")

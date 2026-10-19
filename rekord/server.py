@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -99,6 +100,27 @@ def _advertise(port: int) -> None:
         log.info("bonjour off: %s", e)
 
 
+def _warmup() -> None:
+    """Load the speech models once in the background, so the first live recording starts instantly."""
+    from .engines import voiceprint
+    s = config.load()
+    try:
+        if models.installed(s["embedding_model"]):
+            voiceprint.get_embedder(s["embedding_model"], 2)
+        if s["asr_engine"] != "faster-whisper" and models.installed(s["asr_model"]):
+            asr.get_engine(s)
+    except Exception as e:  # noqa: BLE001 - loaded on first use instead
+        log.info("warmup: %s", e)
+
+
+def _auto_ai() -> None:
+    from .llm import auto
+    try:
+        auto.autoconfigure()
+    except Exception as e:  # noqa: BLE001 - best effort, the UI offers manual setup
+        log.info("ai auto: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     config.ensure_dirs()
@@ -111,15 +133,19 @@ async def lifespan(app: FastAPI):
     port = getattr(app.state, "port", 8765)
     if getattr(app.state, "lan", False):
         threading.Thread(target=_advertise, args=(port,), daemon=True).start()
+    if getattr(app.state, "auto_download", True):
+        threading.Thread(target=_auto_ai, daemon=True, name="ai-auto").start()
     missing = [m for m in models.ESSENTIAL + [config.load()["asr_model"]] if not models.installed(m)]
-    if missing and getattr(app.state, "auto_download", True):
-        def dl():
-            for m in missing:
-                try:
-                    models.download(m)
-                except Exception as e:  # noqa: BLE001
-                    log.warning("download %s failed: %s", m, e)
-        threading.Thread(target=dl, daemon=True, name="models").start()
+    auto = getattr(app.state, "auto_download", True)
+
+    def prepare():
+        for m in missing if auto else []:
+            try:
+                models.download(m)
+            except Exception as e:  # noqa: BLE001
+                log.warning("download %s failed: %s", m, e)
+        _warmup()
+    threading.Thread(target=prepare, daemon=True, name="models").start()
     yield
     stop.set()
     if _zc:
@@ -155,7 +181,8 @@ def _color(value):
 async def auth(request: Request, call_next):
     host = request.client.host if request.client else None
     path = request.url.path
-    open_paths = path in ("/manifest.webmanifest", "/sw.js", "/pair") or path.startswith("/static/") or path.startswith("/icons/")
+    open_paths = (path in ("/manifest.webmanifest", "/sw.js", "/pair", "/rekord.mobileconfig", "/rekord-ca.crt")
+                  or path.startswith("/static/") or path.startswith("/icons/"))
     tok = request.headers.get("x-rekord-token") or request.query_params.get("token") or request.cookies.get("rekord_token")
     if not _is_local(host) and not open_paths and not _token_ok(tok):
         if path == "/" or not path.startswith("/api"):
@@ -184,8 +211,64 @@ def index():
 
 
 @app.get("/manifest.webmanifest")
-def manifest():
-    return FileResponse(WEB / "manifest.webmanifest", media_type="application/manifest+json")
+def manifest(request: Request):
+    """Home-screen apps on iOS start without Safari's storage: carry the pairing token in the start URL."""
+    m = json.loads((WEB / "manifest.webmanifest").read_text("utf-8"))
+    tok = request.cookies.get("rekord_token")
+    if not _is_local(request.client.host if request.client else None) and _token_ok(tok):
+        m["start_url"] = f"/?token={tok}"
+    return JSONResponse(m, media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
+
+
+# ------------------------------------------------------------------ HTTPS for phone browsers (see tls.py)
+
+def _refresh_tls() -> None:
+    """New Wi-Fi / new IP → re-issue the server certificate and hot-swap it (new connections use it)."""
+    cfg = getattr(app.state, "https_config", None)
+    if cfg is None:
+        return
+    from . import tls
+    ips = lan_ips()
+    if tls.needs_renewal(ips):
+        crt, key = tls.ensure(ips)
+        if getattr(cfg, "ssl", None) is not None:
+            cfg.ssl.load_cert_chain(crt, key)
+
+
+def _https_url(request: Request, path: str = "/") -> str:
+    port = getattr(app.state, "https_port", None)
+    if not port:
+        return ""
+    host = request.url.hostname or "localhost"
+    host = f"[{host}]" if ":" in host else host
+    return f"https://{host}:{port}{path}"
+
+
+@app.get("/rekord.mobileconfig")
+def mobileconfig():
+    from . import tls
+    return Response(tls.mobileconfig(), media_type="application/x-apple-aspen-config",
+                    headers={"Content-Disposition": 'attachment; filename="REKORD.mobileconfig"'})
+
+
+@app.get("/rekord-ca.crt")
+def ca_cert():
+    from . import tls
+    return Response(tls.ca_pem(), media_type="application/x-x509-ca-cert",
+                    headers={"Content-Disposition": 'attachment; filename="REKORD-Heimnetz.crt"'})
+
+
+@app.get("/setup")
+def phone_setup(request: Request):
+    """Guided phone setup: install the certificate, then continue on HTTPS (microphone in the browser)."""
+    _refresh_tls()
+    tok = config.load()["pair_token"]
+    url = _https_url(request)
+    html = (WEB / "setup.html").read_text("utf-8")
+    js = lambda v: json.dumps(v).replace("</", "<\\/")  # noqa: E731 - safe inside <script>
+    html = html.replace("{{HTTPS_URL}}", js(f"{url}?token={tok}" if url else "")).replace(
+        "{{CHECK_URL}}", js(_https_url(request, "/icons/icon-192.png")))
+    return Response(html, media_type="text/html; charset=utf-8", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/sw.js")
@@ -204,11 +287,12 @@ def icons(name: str):
 # ------------------------------------------------------------------ status & settings
 
 def lan_ips() -> list[str]:
-    ips = set()
+    """This computer's Wi-Fi/LAN addresses – the one with the default route first (QR codes use the first)."""
+    primary, ips = None, set()
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("10.254.254.254", 1))
-        ips.add(s.getsockname()[0])
+        primary = s.getsockname()[0]
         s.close()
     except OSError:
         pass
@@ -217,7 +301,8 @@ def lan_ips() -> list[str]:
             ips.add(info[4][0])
     except OSError:
         pass
-    return sorted(ip for ip in ips if not ip.startswith("127."))
+    rest = sorted(ip for ip in ips if not ip.startswith("127.") and ip != primary)
+    return ([primary] if primary and not primary.startswith("127.") else []) + rest
 
 
 @app.get("/api/status")
@@ -239,6 +324,7 @@ def status():
         "home": str(config.HOME),
         "inbox": str(config.INBOX_DIR),
         "python": sys.executable,
+        "https_port": getattr(app.state, "https_port", None),
         # packaged app (PyInstaller): the binary itself takes "mcp"; source install: python -m rekord mcp
         "mcp_command": [sys.executable, "mcp"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "rekord", "mcp"],
     }
@@ -259,9 +345,15 @@ async def put_settings(request: Request):
             k.pop("api_key")
         k.pop("has_key", None)
     patch.pop("providers", None)
-    config.save(patch)
+    s = config.save(patch)
     asr._sherpa.cache_clear()
     asr._faster.cache_clear()
+    for p in ("openai", "compatible"):  # key or server entered, no model yet → pick one (no "Laden → auswählen")
+        changed = patch.get("llm", {}).get(p, {})
+        if (changed.get("api_key") or changed.get("base_url")) and not s["llm"][p].get("model"):
+            m = await asyncio.to_thread(providers.fill_model, s, p)
+            if m:
+                config.save({"llm": {p: {"model": m}}})
     return config.public()
 
 
@@ -340,6 +432,25 @@ async def ollama_pull(request: Request):
     return {"ok": True}
 
 
+def _use_ollama(model: str) -> None:
+    config.save({"llm": {"provider": "ollama", "ollama": {"model": model}}})
+
+
+@app.post("/api/ollama/setup")
+async def ollama_setup(request: Request):
+    """One click: install Ollama if needed, start it, download a model that fits this computer, use it."""
+    from .llm import ollama
+    body = await request.json() if int(request.headers.get("content-length") or 0) else {}
+    model = (body.get("model") or "").strip() or None
+    if model and not re.match(r"^[\w.\-/:]+$", model):
+        raise HTTPException(400, "Ungültiger Modellname")
+    if not _is_local(request.client.host if request.client else None) and not ollama.binary():
+        raise HTTPException(403, "Ollama kann nur am Computer selbst installiert werden")
+    config.save({"llm": {"provider": "ollama"}})
+    ollama.setup(config.load()["llm"]["ollama"].get("base_url"), model, on_ready=_use_ollama)
+    return ollama.setup_state()
+
+
 @app.post("/api/llm/test")
 def llm_test():
     t0 = time.time()
@@ -348,6 +459,67 @@ def llm_test():
         return {"ok": True, "reply": out, "ms": int((time.time() - t0) * 1000)}
     except providers.LLMError as e:
         return {"ok": False, "error": str(e)}
+
+
+# ------------------------------------------------------------------ one-click integrations (only on this computer)
+
+def _local_only(request: Request) -> None:
+    if not _is_local(request.client.host if request.client else None):
+        raise HTTPException(403, "Nur am Computer selbst möglich")
+
+
+@app.get("/api/integrations")
+async def integrations_status():
+    from . import integrations, system
+    desktop, code, fw = await asyncio.gather(asyncio.to_thread(integrations.claude_desktop),
+                                             asyncio.to_thread(integrations.claude_code),
+                                             asyncio.to_thread(system.firewall))
+    ok, why = system.autostart_supported()
+    return {"claude_desktop": desktop, "claude_code": code, "firewall": fw, "platform": sys.platform,
+            "autostart": {"supported": ok, "reason": why, "enabled": system.autostart_enabled()}}
+
+
+def _run_integration(fn, *args):
+    try:
+        return fn(*args)
+    except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/integrations/claude-desktop")
+async def connect_desktop(request: Request):
+    from . import integrations
+    _local_only(request)
+    return await asyncio.to_thread(_run_integration, integrations.connect_claude_desktop)
+
+
+@app.post("/api/integrations/claude-desktop/restart")
+async def restart_desktop(request: Request):
+    from . import integrations
+    _local_only(request)
+    return {"ok": await asyncio.to_thread(_run_integration, integrations.restart_claude_desktop)}
+
+
+@app.post("/api/integrations/claude-code")
+async def connect_code(request: Request):
+    from . import integrations
+    _local_only(request)
+    return await asyncio.to_thread(_run_integration, integrations.connect_claude_code)
+
+
+@app.post("/api/integrations/firewall")
+async def open_firewall(request: Request):
+    from . import system
+    _local_only(request)
+    return await asyncio.to_thread(_run_integration, system.open_firewall)
+
+
+@app.post("/api/integrations/autostart")
+async def autostart(request: Request):
+    from . import system
+    _local_only(request)
+    on = bool((await request.json()).get("enabled"))
+    return {"enabled": await asyncio.to_thread(_run_integration, system.set_autostart, on)}
 
 
 @app.get("/api/pair")
@@ -362,12 +534,20 @@ def pair(request: Request):
     img = qrcode.make(payload, image_factory=qrcode.image.svg.SvgPathImage, box_size=8)
     buf = io.BytesIO()
     img.save(buf)
-    web_url = f"{urls[0]}/?token={s['pair_token']}" if urls else ""
+    _refresh_tls()
+    ips, hub_port, https_port = lan_ips(), getattr(app.state, "port", port), getattr(app.state, "https_port", None)
+    if not ips:
+        web_url = ""
+    elif https_port and https_port == hub_port:  # `rekord serve --https`: one HTTPS server, no setup page
+        web_url = f"https://{ips[0]}:{https_port}/?token={s['pair_token']}"
+    else:  # phone setup page over plain HTTP (no warning), it installs the certificate and continues on HTTPS
+        web_url = f"http://{ips[0]}:{hub_port}/setup?token={s['pair_token']}"
     img2 = qrcode.make(web_url or "about:blank", image_factory=qrcode.image.svg.SvgPathImage, box_size=8)
     buf2 = io.BytesIO()
     img2.save(buf2)
     return {"urls": urls, "token": s["pair_token"], "qr_app": buf.getvalue().decode(), "qr_web": buf2.getvalue().decode(),
-            "web_url": web_url, "lan": bool(getattr(app.state, "lan", False))}
+            "web_url": web_url, "lan": bool(getattr(app.state, "lan", False)),
+            "https": bool(getattr(app.state, "https_port", None))}
 
 
 # ------------------------------------------------------------------ recordings

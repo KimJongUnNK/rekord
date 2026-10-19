@@ -46,3 +46,52 @@ jobs:
         with:
           name: REKORD-${{ runner.os }}
           path: desktop/dist/
+  ollama-real:
+    # the one-click local AI against the real thing: official Ollama download + install, start, model pull, answer
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.12" }
+      - run: pip install -e .
+      - name: install Ollama from inside REKORD, pull a model, summarize
+        shell: bash
+        run: python scripts/ollama_smoke.py qwen3:0.6b 2>&1 | tee ollama.log; test "${PIPESTATUS[0]}" = 0 || { echo "::error title=ollama ${{ runner.os }}::$(tail -c 2500 ollama.log | tr '\n' ' ')"; exit 1; }
+  installers:
+    # the one-line installers (against the latest published release)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Linux distros (install.sh as root → native package)
+        if: runner.os == 'Linux'
+        run: |
+          t() { docker run --rm -v "$PWD/packaging/install.sh:/i.sh:ro" "$1" sh -c "$2 >/dev/null 2>&1; sh /i.sh && rekord models list | head -2" \
+                  || { echo "::error title=install.sh $1::failed"; exit 1; }; }
+          t debian:bookworm      "apt-get update -q && apt-get install -y -q curl ca-certificates"
+          t fedora:latest        "dnf install -y -q curl"
+          t opensuse/tumbleweed  "zypper -n in curl"
+          t archlinux:latest     "pacman -Sy --noconfirm curl"
+      - name: macOS (install.sh → /Applications, no quarantine)
+        if: runner.os == 'macOS'
+        run: |
+          sh packaging/install.sh
+          test -x /Applications/REKORD.app/Contents/MacOS/REKORD
+          ! xattr -p com.apple.quarantine /Applications/REKORD.app 2>/dev/null
+          sleep 5; osascript -e 'tell application "REKORD" to quit' || true
+      - name: Windows (install.ps1 → user install + shortcuts)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File packaging/install.ps1
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\REKORD\REKORD.exe")) { throw "exe missing" }
+          if (-not (Test-Path ([Environment]::GetFolderPath("Programs") + "\REKORD.lnk"))) { throw "start menu shortcut missing" }
+          Start-Sleep 5; Get-Process REKORD -ErrorAction SilentlyContinue | Stop-Process -Force

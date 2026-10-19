@@ -3,7 +3,12 @@
 **So funktioniert's:** REKORD läuft auf deinem **Computer** (Mac oder Windows). Dort wird aufgenommen, transkribiert und erkannt, wer spricht.
 Das **iPhone ist optional**: Es verbindet sich übers WLAN mit dem Computer.
 
-⏱ ca. 10 Minuten · einmalig ~700 MB Download · danach läuft alles offline
+⏱ ca. 5 Minuten · einmalig ~700 MB Download · danach läuft alles offline
+
+> **Was REKORD selbst erledigt:** Sprachmodelle laden · lokale KI (Ollama) installieren und das passende Modell wählen ·
+> vorhandene KI erkennen (Ollama, LM Studio) · Modell für ChatGPT wählen · Claude Desktop/Claude Code verbinden ·
+> Startmenü-Eintrag (Windows) · Firewall freigeben (Linux) · Zertifikat fürs Aufnehmen im Handy-Browser.
+> **Was nur du machen kannst:** einen API-Key kopieren (nur für Claude/ChatGPT) und Apple/Windows einmal sagen, dass du REKORD öffnen willst.
 
 | | |
 |---|---|
@@ -22,24 +27,29 @@ Das **iPhone ist optional**: Es verbindet sich übers WLAN mit dem Computer.
 > **Brauchst du:** einen Mac mit Apple-Chip (M1 oder neuer).
 > Prüfen: Apfel-Menü  → *Über diesen Mac* → bei „Chip“ steht *Apple M…*
 
-**① Laden**
-[**REKORD-macOS-AppleSilicon.zip**](https://github.com/KimJongUnNK/rekord/releases/latest/download/REKORD-macOS-AppleSilicon.zip)
+**① Installieren – am schnellsten mit einer Zeile**
+**Terminal** öffnen (⌘ + Leertaste → „Terminal“), diese Zeile einfügen, **Enter**:
 
-**② Installieren**
-Zip öffnen (Safari entpackt meist schon selbst) → **REKORD** in den Ordner **Programme** ziehen.
+```
+curl -fsSL https://github.com/KimJongUnNK/rekord/releases/latest/download/install.sh | sh
+```
 
-**③ Beim ersten Mal öffnen**
-1. REKORD doppelklicken. macOS meldet *„Apple konnte nicht überprüfen …“* → **Fertig** klicken.
-2. **Systemeinstellungen** → **Datenschutz & Sicherheit** → ganz nach unten scrollen.
-3. Bei *„REKORD wurde blockiert“* auf **Dennoch öffnen** → Passwort oder Touch ID.
+REKORD landet in **Programme** und startet sofort. Keine Sicherheitswarnung, kein Freischalten. Dieselbe Zeile macht später Updates.
 
-Das ist nur einmal nötig, danach startet REKORD ganz normal.
+<details><summary><b>Lieber ohne Terminal?</b> (Download + einmal freischalten)</summary>
 
-**④ Erlauben**
+1. [**REKORD-macOS-AppleSilicon.zip**](https://github.com/KimJongUnNK/rekord/releases/latest/download/REKORD-macOS-AppleSilicon.zip) laden, öffnen → **REKORD** in **Programme** ziehen.
+2. REKORD doppelklicken. macOS meldet *„Apple konnte nicht überprüfen …“* → **Fertig**.
+3. **Systemeinstellungen** → **Datenschutz & Sicherheit** → ganz unten bei *„REKORD wurde blockiert“* → **Dennoch öffnen** → Passwort oder Touch ID.
+
+Nur einmal nötig, danach startet REKORD ganz normal.
+</details>
+
+**② Erlauben**
 - *Mikrofon* → **Erlauben**
 - *Geräte im lokalen Netzwerk finden* → **Erlauben** (damit das iPhone den Mac findet)
 
-**⑤ Kurz warten**
+**③ Kurz warten**
 Beim ersten Start lädt REKORD die Sprachmodelle. Den Fortschritt siehst du unten links. Steht dort **„Bereit · lokal“**, kann's losgehen.
 
 ---
@@ -48,24 +58,29 @@ Beim ersten Start lädt REKORD die Sprachmodelle. Den Fortschritt siehst du unte
 
 > **Brauchst du:** Windows 10 oder 11 (64-Bit).
 
-**① Laden**
-[**REKORD-Windows-x64.zip**](https://github.com/KimJongUnNK/rekord/releases/latest/download/REKORD-Windows-x64.zip)
+**① Installieren – am schnellsten mit einer Zeile**
+Start → **PowerShell** öffnen, diese Zeile einfügen, **Enter**:
 
-**② Entpacken**
-Rechtsklick auf die Zip → **Alle extrahieren…** → z. B. nach `Dokumente\REKORD`.
+```
+irm https://github.com/KimJongUnNK/rekord/releases/latest/download/install.ps1 | iex
+```
 
-**③ Beim ersten Mal öffnen**
-Im entpackten Ordner **REKORD.exe** doppelklicken.
-Blaues Fenster *„Der Computer wurde durch Windows geschützt“* → **Weitere Informationen** → **Trotzdem ausführen**.
+REKORD wird installiert (ohne Admin), bekommt einen Eintrag im **Startmenü** und auf dem **Desktop** und startet. Kein blaues Warnfenster. Dieselbe Zeile macht später Updates.
 
-**④ Erlauben**
+<details><summary><b>Lieber ohne PowerShell?</b> (Zip + einmal freischalten)</summary>
+
+1. [**REKORD-Windows-x64.zip**](https://github.com/KimJongUnNK/rekord/releases/latest/download/REKORD-Windows-x64.zip) laden → Rechtsklick → **Alle extrahieren…**
+2. Im Ordner **REKORD.exe** doppelklicken. Blaues Fenster *„Der Computer wurde durch Windows geschützt“* → **Weitere Informationen** → **Trotzdem ausführen**.
+
+Den Startmenü-Eintrag legt REKORD beim ersten Start selbst an.
+</details>
+
+**② Erlauben**
 - Firewall-Fenster: Haken bei **Private Netzwerke** → **Zugriff zulassen** (damit das iPhone den PC findet)
 - Mikrofon-Abfrage → **Zulassen**
 
-**⑤ Kurz warten**
+**③ Kurz warten**
 Die Sprachmodelle werden geladen. Steht unten links **„Bereit · lokal“**, ist alles fertig.
-
-**Tipp:** Rechtsklick auf REKORD.exe → **An „Start“ anheften**. Dann findest du REKORD im Startmenü.
 
 ---
 
@@ -77,9 +92,10 @@ Die Sprachmodelle werden geladen. Steht unten links **„Bereit · lokal“**, i
 
 | | **A · Web-App** | **B · iPhone-App** |
 |---|:---:|:---:|
-| Einrichten | 1 Minute | ca. 15 Minuten |
+| Einrichten | 2 Minuten | ca. 15 Minuten |
 | Aufnahmen ansehen, anhören, Fragen stellen | ✓ | ✓ |
-| **Mit dem iPhone aufnehmen** + live sehen, wer spricht | – | ✓ |
+| **Mit dem iPhone aufnehmen** + live sehen, wer spricht | ✓ | ✓ |
+| Aufnahme läuft bei gesperrtem Bildschirm weiter | – | ✓ |
 | Sperrbildschirm-Widget, Dynamic Island | – | ✓ |
 | Du brauchst | nichts | Kabel + Computer + Apple-ID |
 
@@ -87,7 +103,14 @@ Die Sprachmodelle werden geladen. Steht unten links **„Bereit · lokal“**, i
 
 1. Am Computer in REKORD: **Einstellungen** → **iPhone & Geräte**.
 2. iPhone-Kamera auf den **rechten** QR-Code („Im Browser“) halten → Link öffnen.
-3. In Safari: **Teilen** → **Zum Home-Bildschirm** → **Hinzufügen**.
+3. Die Seite **„REKORD aufs Handy“** führt dich durch drei kurze Schritte – fürs Aufnehmen braucht Safari eine sichere Verbindung:
+   - **Zertifikat laden** → **Erlauben**
+   - App **Einstellungen** → ganz oben **Profil geladen** → **Installieren**
+   - **Einstellungen** → **Allgemein** → **Info** → ganz unten **Zertifikatsvertrauenseinstellungen** → **REKORD Heimnetz** einschalten
+4. Zurück in Safari wird Schritt 4 grün → **REKORD öffnen** → **Teilen** → **Zum Home-Bildschirm** → **Hinzufügen**.
+
+**Warum ein Zertifikat?** Browser geben das Mikrofon nur über verschlüsselte Verbindungen frei. Das Zertifikat erzeugt REKORD auf deinem Computer; es gilt nur für Adressen im eigenen Netz und kann keine echten Websites betreffen. Nur ansehen ohne Aufnahme geht auch ohne: auf der Seite **„Ohne Zertifikat“** antippen.
+Bildschirm beim Aufnehmen anlassen (REKORD hält ihn wach) – für Aufnahmen mit gesperrtem iPhone ist Weg B da.
 
 ### Weg B · iPhone-App *(Beta)*
 
@@ -122,18 +145,18 @@ Die Sprachmodelle werden geladen. Steht unten links **„Bereit · lokal“**, i
 ## 4. KI verbinden
 
 Transkript und Sprecher-Erkennung gehen **ohne KI**. Für Protokoll, To-dos, Mind Map und Fragen brauchst du eine.
-Alles läuft unter **Einstellungen → KI**.
+Beim ersten Start zeigt REKORD unter *Aufnahmen* die Karte **„Noch ein Schritt“** – dort einfach antippen. Später: **Einstellungen → KI**.
+Ist auf dem Computer schon Ollama oder LM Studio mit einem Modell, nimmt REKORD das automatisch.
 
 | | So geht's | Kosten |
 |---|---|---|
-| **Claude** | [console.anthropic.com](https://console.anthropic.com) → *API Keys* → *Create Key* → Key bei **Claude** einfügen → **Testen** | pro Nutzung, meist Cent-Beträge pro Meeting |
-| **ChatGPT** | [platform.openai.com](https://platform.openai.com/api-keys) → *Create new secret key* → Key bei **ChatGPT** einfügen → Modell **Laden** → auswählen → **Testen** | pro Nutzung. Das ChatGPT-Plus-Abo zählt **nicht**. |
-| **Lokal** | Bei **Lokal** steht, was fehlt: ist Ollama noch nicht da, auf **Ollama herunterladen** klicken und installieren. Danach bei einem Modell auf **Laden** klicken. Ist der Download fertig, wird es automatisch verwendet. | **gratis**, nichts verlässt den Computer. *qwen3:8b* braucht ~16 GB RAM, *qwen3:4b* läuft schon ab 8 GB. |
+| **Lokal · gratis** | **Lokal einrichten** antippen. REKORD installiert Ollama selbst, lädt das Modell, das zu deinem Arbeitsspeicher passt, und verwendet es. Fortschritt wird angezeigt, du kannst nebenbei weiterarbeiten. | **gratis**, nichts verlässt den Computer. *qwen3:8b* ab 16 GB RAM, *qwen3:4b* ab 8 GB. |
+| **Claude** | **Key erstellen ↗** → bei Anthropic anmelden → *Create Key* → Key kopieren → ins Feld einfügen. REKORD testet sofort. | pro Nutzung, meist Cent-Beträge pro Meeting |
+| **ChatGPT** | **Key erstellen ↗** → *Create new secret key* → kopieren → einfügen. Das Modell wählt REKORD selbst, getestet wird sofort. | pro Nutzung. Das ChatGPT-Plus-Abo zählt **nicht**. |
 
 **Mit deinem Claude-Abo statt API-Key (Claude Desktop):**
-REKORD → *Einstellungen → Claude Desktop (MCP)* → **Kopieren** →
-Claude Desktop → *Einstellungen → Entwickler → Konfiguration bearbeiten* → einfügen, speichern → Claude neu starten.
-Danach kannst du Claude direkt fragen: *„Was haben wir im letzten Meeting entschieden?“*
+REKORD → *Einstellungen → Claude Desktop (MCP)* → **Mit Claude Desktop verbinden** → **Claude neu starten**.
+Danach kannst du Claude direkt fragen: *„Was haben wir im letzten Meeting entschieden?“* Für Claude im Terminal: **Mit Claude Code verbinden**.
 
 ---
 
@@ -162,6 +185,7 @@ So sieht die Leiste aus: am Computer links, am Handy unten. Dort heißt *Einstel
 Der **rote Knopf** unten rechts (in Aufnahmen, Fragen, Personen und Vorlagen) springt direkt zur Aufnahme.
 
 ### Aufnahmen
+- **Noch ein Schritt:** Solange keine KI gewählt ist, steht hier die Auswahl **Lokal · gratis**, **Claude**, **ChatGPT** oder **Ohne KI weiter**.
 - **Suchen:** findet Titel *und* alles, was gesagt wurde.
 - **Importieren:** Audio- oder Videodateien wählen oder einfach ins Fenster ziehen (Sprachmemos, Zoom, Diktiergerät).
 - **Ordner:** erscheinen oben als Filter, sobald eine Aufnahme einen Ordner hat (vergibst du unter *Notizen*).
@@ -183,6 +207,7 @@ Der **rote Knopf** unten rechts (in Aufnahmen, Fragen, Personen und Vorlagen) sp
   - **„…“ oben rechts:** *Neu verarbeiten* (z. B. nach Modellwechsel) · *Personen neu erkennen* (nach dem Anlernen neuer Leute) · *Umbenennen* · *Löschen*
 
 ### Live
+- Am Handy im Browser steht beim ersten Mal **„Für Aufnahmen im Handy-Browser fehlt noch ein Schritt“** → **Jetzt einrichten** (siehe [Weg A](#weg-a--web-app)).
 - Oben: **Mikrofon** oder **Mikro + Call-Ton**. Mit Call-Ton nimmst du am Computer auch Zoom, Teams oder Meet mit auf (Chrome/Edge).
 - **Titel** eingeben (optional).
 - **Wer ist dabei?** Leute antippen. **+ Gäste** für Unbekannte. **Vorstellungsrunde** lässt neue Leute 10–15 s einsprechen.
@@ -211,13 +236,13 @@ Oben gibt's Sprung-Knöpfe zu den Bereichen. *Darstellung* und *Audio & Mikrofon
 |---|---|
 | **Darstellung** | **Erscheinungsbild** System / Hell / Dunkel · **Akzentfarbe** (9 fertige oder eigene) · **Dichte** Luftig / Kompakt |
 | **Audio & Mikrofon** | **Mikrofon** wählen + *Pegel testen* · **Standard-Quelle** Mikrofon oder Mikro + Call-Ton · **Audio-Verarbeitung**: Rauschunterdrückung, Echo-Unterdrückung, automatische Lautstärke · **Live-Erkennung** an/aus (aus spart Akku) · **Bildschirm wach halten** |
-| **KI** | Anbieter wählen: Claude, ChatGPT, Lokal, Kompatibel, Aus · Lokal: **Lokales Modell** mit *Laden*-Knopf und Fortschritt, deine Modelle antippen zum Verwenden · **API-Key** · **Modell** (*Laden* holt die Liste) · Claude: **Denkaufwand**, **Ausweichmodell** · Lokal/Kompatibel: **Ollama-Adresse** bzw. **Server-Adresse**, **Kontextlänge** · **Verbindung** → *Testen* · **Sprache der Zusammenfassungen** · **Automatisch zusammenfassen** + Standard-Vorlage |
+| **KI** | Anbieter wählen: Claude, ChatGPT, Lokal, Kompatibel, Aus · Lokal: **Lokales Modell** – **Lokal einrichten** (installiert alles), danach Modelle per *Laden* holen, deine Modelle antippen zum Verwenden · Claude/ChatGPT: **Key erstellen ↗** · **API-Key** · **Modell** (*Laden* holt die Liste) · Claude: **Denkaufwand**, **Ausweichmodell** · Lokal/Kompatibel: **Ollama-Adresse** bzw. **Server-Adresse**, **Kontextlänge** · **Verbindung** → *Testen* · **Sprache der Zusammenfassungen** · **Automatisch zusammenfassen** + Standard-Vorlage |
 | **Transkription** | **Sprache** (fest eingestellt = genauer, *Automatisch* für gemischte Meetings) · **Engine** · **Modell** (*small* = Standard, *turbo* = beste Qualität) · **CPU-Threads** · **Vokabular** für Namen, die falsch erkannt werden |
 | **Sprecher-Erkennung** | **Personen-Erkennung (Aufnahmen)** und **Personen-Erkennung (live)**: wie streng (höher = weniger Verwechslungen) · **Sprecher trennen**: erscheint eine Person doppelt, runterdrehen · **Anzahl Sprecher**: wenn bekannt, fest einstellen · **Stimmabdruck-Modell** |
 | **Modelle** | Sprachmodelle *Laden* oder *Entfernen* |
-| **iPhone & Geräte** | **QR-Codes** (links iPhone-App, rechts Browser) · **Adresse** · **Kopplungs-Code** *Neu erzeugen* (trennt alle gekoppelten Geräte) |
-| **Claude Desktop (MCP)** | fertige Konfiguration zum **Kopieren** für Claude Desktop und den Befehl für Claude Code |
-| **Speicher & Datenschutz** | **Datenordner** (dort liegt alles) · **Eingangsordner**: Dateien, die hier landen, werden automatisch verarbeitet · **Was verlässt das Gerät?** · **Version** · **Beenden** → *REKORD beenden* |
+| **iPhone & Geräte** | **QR-Codes** (links iPhone-App, rechts Browser) · **Adresse** · **Kopplungs-Code** *Neu erzeugen* (trennt alle gekoppelten Geräte) · Linux: **Firewall** → *Für iPhone freigeben*, falls sie das iPhone blockiert |
+| **Claude Desktop (MCP)** | **Claude Desktop**: *Mit Claude Desktop verbinden*, danach *Claude neu starten* · **Claude Code**: *Mit Claude Code verbinden* · *Von Hand eintragen*: Konfiguration zum **Kopieren** |
+| **Speicher & Datenschutz** | **Datenordner** (dort liegt alles) · **Eingangsordner**: Dateien, die hier landen, werden automatisch verarbeitet · **Was verlässt das Gerät?** · **Mit dem Computer starten**: REKORD läuft ab dem Einschalten im Hintergrund, das iPhone kann sich jederzeit verbinden · **Version** · **Beenden** → *REKORD beenden* |
 
 **In der iPhone-App** gibt's die Reiter *Live*, *Aufnahmen*, *Personen* und *Einstellungen* (Theme, Akzentfarbe, Mikrofon, KI, Hub). *Fragen über alle* und *Vorlagen* laufen über die Web-App oder den Computer.
 
@@ -229,9 +254,12 @@ Oben gibt's Sprung-Knöpfe zu den Bereichen. *Darstellung* und *Audio & Mikrofon
 |---|---|
 | **Mac:** *„REKORD ist beschädigt“* | Terminal öffnen, `xattr -dr com.apple.quarantine /Applications/REKORD.app` eingeben, REKORD nochmal öffnen |
 | **Kein Mikrofon im App-Fenster** | Im Browser **http://localhost:8765** öffnen, dort geht's immer. Mac: *Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon* → REKORD an |
-| **iPhone findet den Computer nicht** | Gleiches WLAN? (Gäste-WLANs trennen Geräte.) Ist REKORD am Computer offen? Windows: Firewall „Private Netzwerke“ erlaubt? |
+| **iPhone findet den Computer nicht** | Gleiches WLAN? (Gäste-WLANs trennen Geräte.) Ist REKORD am Computer offen? (Tipp: *Speicher & Datenschutz* → **Mit dem Computer starten**.) Windows: Firewall „Private Netzwerke“ erlaubt? Linux: *iPhone & Geräte* → **Für iPhone freigeben** |
+| **Im Handy-Browser geht Aufnehmen nicht** | Schritt 3 vergessen? *Einstellungen → Allgemein → Info → Zertifikatsvertrauenseinstellungen* → **REKORD Heimnetz** an. Neues WLAN am Computer? Einfach den rechten QR-Code nochmal scannen. |
+| **Lokal einrichten hängt oder bricht ab** | Internet prüfen, nochmal **Lokal einrichten** – fertige Teile werden nicht neu geladen. |
 | **„Modelle werden geladen“ geht nicht weiter** | Internet prüfen → *Einstellungen → Modelle* → **Laden** |
 | **Zusammenfassung zeigt Fehler** | *Einstellungen → KI* → **Testen**. Key richtig kopiert? Guthaben auf dem API-Konto? |
+| **Claude Desktop sieht REKORD nicht** | Claude ganz beenden und neu öffnen (*Claude neu starten*). Steht unter *Claude Desktop (MCP)* **Verbunden**? |
 | **Falsche Person erkannt** | Im Transkript auf den Namen tippen → richtigen Namen eingeben, *Stimme merken* bleibt an |
 | **REKORD beenden** | Fenster schließen. Läuft es im Browser: *Einstellungen* → ganz unten **REKORD beenden** |
 | **Backup** | Den Ordner **Rekord** in deinem Benutzerordner kopieren. Da liegt alles drin. |
@@ -240,7 +268,13 @@ Oben gibt's Sprung-Knöpfe zu den Bereichen. *Darstellung* und *Audio & Mikrofon
 
 ## Linux
 
-Für jede Distro gibt's ein passendes Paket. Alle Dateien liegen auf der [Release-Seite](https://github.com/KimJongUnNK/rekord/releases/latest):
+**Eine Zeile für jede Distro** (Debian, Ubuntu, Mint, Fedora, openSUSE, Arch …) – wählt das passende Paket, öffnet die Firewall fürs iPhone und startet REKORD:
+
+```
+curl -fsSL https://github.com/KimJongUnNK/rekord/releases/latest/download/install.sh | sh
+```
+
+Oder von Hand – alle Dateien liegen auf der [Release-Seite](https://github.com/KimJongUnNK/rekord/releases/latest):
 
 | Distro | Befehl |
 |---|---|
@@ -251,6 +285,7 @@ Für jede Distro gibt's ein passendes Paket. Alle Dateien liegen auf der [Releas
 | Arch, Manjaro, EndeavourOS | `sudo pacman -U rekord-*.pkg.tar.zst` |
 | Ohne root | `tar xzf REKORD-*-Linux-x86_64.tar.gz && ./rekord-*/install.sh` |
 
-REKORD öffnet sich unter Linux im Browser. Fürs iPhone den Port freigeben:
-- Fedora, openSUSE, RHEL: `sudo firewall-cmd --add-port=8765/tcp --permanent && sudo firewall-cmd --reload`
-- Ubuntu, Mint: `sudo ufw allow 8765/tcp`
+REKORD öffnet sich unter Linux im Browser. Die Pakete (deb, rpm, pacman) geben die Firewall-Ports fürs iPhone selbst frei.
+Mit AppImage oder tar.gz: *Einstellungen → iPhone & Geräte* → **Für iPhone freigeben** (fragt nach deinem Passwort). Von Hand:
+- Fedora, openSUSE, RHEL: `sudo firewall-cmd --permanent --add-port=8765/tcp --add-port=8766/tcp && sudo firewall-cmd --reload`
+- Ubuntu, Mint: `sudo ufw allow 8765/tcp && sudo ufw allow 8766/tcp`

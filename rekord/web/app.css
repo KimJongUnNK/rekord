@@ -310,3 +310,8 @@ dialog::backdrop { background: rgba(0,0,0,.55); backdrop-filter: blur(3px); }
   body, main { overflow: visible; height: auto; }
   #app { display: block; }
 }
+
+/* first start: pick an AI */
+.onboard { border-color: var(--accent); margin-top: 18px; }
+.onboard .prov:hover { border-color: var(--accent); }
+details > summary { list-style-position: inside; margin: 6px 0; }

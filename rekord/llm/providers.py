@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Iterator
 
 import httpx
@@ -232,7 +233,8 @@ def list_models(settings: dict, provider: str) -> list[str]:
             return [m["name"] for m in httpx.get(f"{base}/api/tags", timeout=5).json().get("models", [])]
         if provider in ("openai", "compatible"):
             import openai
-            client = openai.OpenAI(api_key=cfg.get("api_key") or "not-needed", base_url=cfg.get("base_url") or None)
+            client = openai.OpenAI(api_key=cfg.get("api_key") or "not-needed", base_url=cfg.get("base_url") or None,
+                                   timeout=15, max_retries=1)
             ids = sorted(m.id for m in client.models.list())
             if provider == "openai":
                 ids = [i for i in ids if i.startswith(("gpt", "o", "chatgpt"))
@@ -243,6 +245,33 @@ def list_models(settings: dict, provider: str) -> list[str]:
             return ANTHROPIC_MODELS
         raise LLMError(str(e)) from e
     return []
+
+
+_NOT_CHAT = ("audio", "realtime", "tts", "transcribe", "image", "search", "embed", "instruct", "mini", "nano", "codex",
+             "dall", "whisper", "moderation", "babbage", "davinci", "oss", "preview", "chat-latest", "computer-use",
+             "research", "-pro")
+
+
+def default_model(provider: str, names: list[str]) -> str | None:
+    """A sensible model when the user hasn't picked one: newest full GPT, or the first chat model of a server."""
+    if provider == "openai":
+        cands = [n for n in names if n.startswith("gpt-") and not any(x in n for x in _NOT_CHAT)
+                 and not re.search(r"\d{4}-\d{2}-\d{2}|-\d{4}$", n)]
+
+        def version(n: str):
+            m = re.match(r"gpt-(\d+)(?:\.(\d+))?", n)
+            return (int(m[1]), int(m[2] or 0), -len(n)) if m else (0, 0, 0)
+        return max(cands, key=version) if cands else next((n for n in names if n.startswith("gpt-")), None)
+    chat = [n for n in names if "embed" not in n.lower()]
+    return chat[0] if chat else None
+
+
+def fill_model(settings: dict, provider: str) -> str | None:
+    """Key or server set but no model yet → pick one, so "Laden → auswählen" is not needed."""
+    try:
+        return default_model(provider, list_models(settings, provider))
+    except LLMError:
+        return None
 
 
 def test(settings: dict) -> str:

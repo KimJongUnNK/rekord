@@ -11,8 +11,8 @@ settings:
   base:
     SWIFT_VERSION: "5.10"
     DEVELOPMENT_TEAM: ""
-    MARKETING_VERSION: "1.0.4"
-    CURRENT_PROJECT_VERSION: "3"
+    MARKETING_VERSION: "1.0.5"
+    CURRENT_PROJECT_VERSION: "4"
     BUNDLE_PREFIX: app.rekord
     APP_GROUP: group.app.rekord.shared
 targets:
