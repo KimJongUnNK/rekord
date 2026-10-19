@@ -35,6 +35,16 @@ async def pull(r: Request):
     return StreamingResponse(g())
 
 
+@app.delete("/api/delete")
+async def delete(r: Request):
+    m = (await r.json())["model"]
+    if m not in have:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "not found"}, status_code=404)
+    have.remove(m)
+    return {}
+
+
 @app.post("/api/chat")
 async def chat(r: Request):
     b = await r.json()

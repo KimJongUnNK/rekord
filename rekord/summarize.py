@@ -51,7 +51,7 @@ gewichte sie stärker.
 
 Regeln:
 - Schreibe auf {lang}, als sauberes Markdown. Kurze, klare Sätze. Kein Gelaber, keine Einleitung wie "Hier ist".
-- Nutze die echten Namen der Sprecher. "Sprecher 1" etc. sind unbekannte Personen – lass die Bezeichnung so.
+- Nutze die echten Namen der Sprecher. „Nicht erkannte Stimme“ (oder ältere „Sprecher 1“ etc.) sind eine oder mehrere Personen, die REKORD nicht kennt – lass die Bezeichnung so und erfinde keine Namen.
 - Belege wichtige Aussagen mit Zeitstempeln im Format [mm:ss] (klickbar in der App).
 - Erfinde nichts. Wenn etwas unklar ist oder fehlt, sag das. Transkriptionsfehler stillschweigend korrigieren, wenn eindeutig.
 

@@ -58,7 +58,7 @@ final class LiveRecorder: ObservableObject {
     static let shared = LiveRecorder()
 
     struct Now: Equatable { var key: Int?; var name: String; var color: String; var known: Bool; var score: Double; var silence: Bool }
-    struct RosterItem: Identifiable, Equatable { var id: String { key.map(String.init) ?? "p-\(name)" }; var key: Int?; var name: String; var color: String; var known: Bool; var talk: Double; var waiting: Bool }
+    struct RosterItem: Identifiable, Equatable { var id: String { key.map(String.init) ?? "p-\(name)" }; var key: Int?; var name: String; var color: String; var known: Bool; var talk: Double; var waiting: Bool; var voices: Int? = nil }
     struct Line: Identifiable, Equatable { let id = UUID(); var key: Int?; var name: String; var color: String; let start: Double; let text: String }
 
     @Published private(set) var isRecording = false
@@ -231,7 +231,8 @@ final class LiveRecorder: ObservableObject {
                 let key = $0["key"] as? Int
                 return RosterItem(key: key, name: $0["name"] as? String ?? "?", color: $0["color"] as? String ?? "#888888",
                                   known: $0["known"] as? Bool ?? false,
-                                  talk: max($0["talk"] as? Double ?? 0, key.flatMap { old[$0] } ?? 0), waiting: $0["waiting"] as? Bool ?? false)
+                                  talk: max($0["talk"] as? Double ?? 0, key.flatMap { old[$0] } ?? 0), waiting: $0["waiting"] as? Bool ?? false,
+                                  voices: $0["voices"] as? Int)
             }
             for i in lines.indices { if let r = roster.first(where: { $0.key == lines[i].key && $0.key != nil }) { lines[i].name = r.name; lines[i].color = r.color } }
         case "stopped":

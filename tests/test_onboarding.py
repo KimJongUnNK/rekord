@@ -97,6 +97,10 @@ def test_local_ai_one_click_installs_starts_downloads_and_selects(fake_ollama_re
             break
         time.sleep(0.1)
     assert ready == ["qwen3:8b"]
+    ollama.delete("qwen3:8b", base)  # the "Löschen" button
+    assert ollama.status(base)["models"] == [] and "qwen3:8b" not in ollama.pulls()
+    with pytest.raises(RuntimeError, match="nicht"):
+        ollama.delete("qwen3:8b", base)
 
 
 def test_recommended_model_fits_ram():

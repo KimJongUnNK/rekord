@@ -95,8 +95,10 @@ class OnlineClusterer:
     CLOSED_SET_FLOOR = 0.2
 
     def __init__(self, profiles: list[dict], profile_threshold: float, cluster_threshold: float,
-                 closed_set: bool = False):
-        """closed_set: everyone in the room is a known participant (no guests) -> always pick the closest of them."""
+                 closed_set: bool = False, max_speakers: int = 0):
+        """closed_set: everyone in the room is a known participant (no guests) -> always pick the closest of them.
+        max_speakers: headcount from "Wer ist dabei?" – never more voices than people in the room."""
+        self.max_speakers = max(0, int(max_speakers or 0))
         self.profiles = [p for p in profiles if p.get("embedding") is not None]
         self.pthr = profile_threshold
         self.cthr = cluster_threshold
@@ -146,6 +148,8 @@ class OnlineClusterer:
             c = {"key": len(self.clusters), "emb": emb, "n": 1, "profile": prof, "pscore": ps}
         else:
             c = {"key": len(self.clusters), "emb": emb, "n": 1, "profile": None, "pscore": 0.0}
+        if self.max_speakers and len(self.clusters) >= self.max_speakers and c["profile"] is None and best_c is not None:
+            return self._out(best_c, best_cs, False)  # room is full: an "extra" voice is one of the people already heard
         if not update:  # probe only: report the matching person without opening a cluster
             known = prof is not None and ps >= self.pthr
             return {"key": None, "profile_id": prof["id"] if known else None, "name": prof["name"] if known else None,

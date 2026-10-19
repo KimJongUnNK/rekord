@@ -13,6 +13,7 @@ if hasattr(sys.stdout, "reconfigure"):  # Windows consoles (cp1252) can't print 
 
 ROOT = Path(__file__).resolve().parent.parent
 app = (ROOT / "rekord/web/app.js").read_text("utf-8")
+app = re.sub(r'\$\{tip\("?[\w.]+"?\)\}', "", app)  # the ⓘ next to a label is not part of its name
 index = (ROOT / "rekord/web/index.html").read_text("utf-8")
 guide = (ROOT / "docs/ANLEITUNG.md").read_text("utf-8")
 
@@ -25,12 +26,12 @@ def norm(s: str) -> str:
 G = norm(guide)
 groups: dict[str, set[str]] = {}
 
-groups["Menü (links)"] = set(re.findall(r'data-nav="\w+"><svg.*?</svg><span[^>]*>([^<]+)</span>', index))
+groups["Menü (links)"] = set(re.findall(r'data-nav="\w+"[^>]*><svg.*?</svg><span[^>]*>([^<]+)</span>', index))
 groups["Einstellungen: Bereiche"] = set(re.findall(r'\["\w+", "([^"]+)"\]', app.split("const sections = [")[1].split("];")[0]))
-groups["Aufnahme: Reiter"] = set(re.findall(r'<button data-tab="\w+">([^<]+)</button>', app))
+groups["Aufnahme: Reiter"] = set(re.findall(r'<button data-tab="\w+"[^>]*>([^<]+)</button>', app))
 groups["Aufnahme: … Menü"] = {m.split(" (")[0] for m in re.findall(r'<button class="btn(?: danger)?" value="(?:reprocess|reid|title|delete)">([^<]+)</button>', app)}
 groups["Einstellungen: Felder"] = {re.split(r"<span class=\"hint\">", m)[0] for m in re.findall(r'class="field"><(?:div class="lbl"|label[^>]*)>(.*?)</(?:div|label)>', app)}
-groups["Einstellungen: Auswahl"] = set(re.findall(r'\["(?:system|light|dark|comfortable|compact|mic|mic\+system)", "([^"]+)"\]', app))
+groups["Einstellungen: Auswahl"] = set(re.findall(r'\["(?:system|light|dark|comfortable|compact|mic|mic\+system)", "([^"]+)"[,\]]', app))
 groups["KI-Anbieter"] = set(re.findall(r'\["(?:anthropic|openai|ollama|compatible|none)", "([^"]+)", "', app))
 groups["Live"] = {"Wer ist dabei?", "Gäste", "Vorstellungsrunde", "Im Raum", "Mitschrift", "Pause"}
 groups["Export"] = set(re.findall(r'\["(?:md|docx|txt|srt|vtt|json)", "([^"]+)"', app)) | {"Zwischenablage", "PDF", "Audio"}
@@ -47,6 +48,12 @@ setup = (ROOT / "rekord/web/setup.html").read_text("utf-8")
 ios = re.sub(r'<p class="android.*?</p>', "", setup, flags=re.S)  # the guide describes the iPhone way
 groups["Handy-Einrichtung"] = set(re.findall(r'<h2>([^<]+)</h2>', ios)) | set(re.findall(r'class="path">([^<]+)<', ios)) \
     | set(re.findall(r'<summary>([^<]+)</summary>', ios))
+
+welcome_js = (ROOT / "rekord/web/welcome.js").read_text("utf-8")
+groups["Einführung (erster Start)"] = set(re.findall(r'Schritt \$\{i \+ 1\} · ([^<]+)</div>', welcome_js)) | {"Erste Aufnahme", "Zur App", "Überspringen"}
+groups["Wer ist dabei? / Wer ist das?"] = {"Wie viele sprechen?", "Wer davon ist bekannt?", "Aufnahme starten", "Wer ist das?", "Merken",
+                                          "Wer sagt das?", "Zuordnen", "Nicht erkannte Stimme", "Anderer Text", "Stimme speichern"}
+groups["Speicherort"] = {"Speicherort", "KI-Modelle", "Laufwerk fehlt", "Nochmal prüfen", "Neu auf diesem Computer anfangen", "Umziehen"}
 
 missing = 0
 for name, labels in groups.items():

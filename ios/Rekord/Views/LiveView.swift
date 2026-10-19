@@ -10,6 +10,7 @@ struct LiveView: View {
     @State private var newName = ""
     @State private var showIntro = false
     @State private var openRecording: String?
+    @State private var askWho = false
 
     var body: some View {
         NavigationStack {
@@ -32,6 +33,13 @@ struct LiveView: View {
                 Button("Abbrechen", role: .cancel) {}
                 Button("Merken") { if let k = naming?.key, !newName.isEmpty { rec.nameSpeaker(key: k, name: newName) }; newName = "" }
             } message: { Text("Die Stimme wird gespeichert und ab jetzt automatisch erkannt.") }
+            .sheet(isPresented: $askWho) {
+                WhoSheet(people: $people) { go in
+                    askWho = false
+                    if go { Task { await rec.start(title: title) } }
+                }
+                .environmentObject(settings).environmentObject(hub)
+            }
             .sheet(isPresented: $showIntro) {
                 EnrollSheet(intro: true) { prof in
                     if let prof { settings.participants = Array(Set(settings.participants + [prof.id])) }
@@ -87,7 +95,8 @@ struct LiveView: View {
             HStack(spacing: 22) {
                 ctl("star.fill", disabled: !rec.isRecording) { rec.highlight() }
                 Button {
-                    Task { rec.isRecording ? await rec.stop() : await rec.start(title: title) }
+                    // before every recording: how many people talk, who of them REKORD knows
+                    if rec.isRecording { Task { await rec.stop() } } else { askWho = true }
                 } label: {
                     ZStack {
                         Circle().stroke(.primary, lineWidth: 4).frame(width: 80, height: 80)
@@ -110,7 +119,7 @@ struct LiveView: View {
         guard let n else { return rec.isRecording ? "Hört zu …" : "Start drücken – REKORD zeigt live, wer redet." }
         if n.silence { return "" }
         if n.known { return "erkannt · \(Int(n.score * 100)) %" }
-        return n.key == nil ? "Neue Stimme" : "Unbekannt · unten antippen zum Benennen"
+        return n.key == nil ? "Noch nicht zugeordnet" : "Unten bei „Im Raum“ antippen, um sie zu benennen"
     }
 
     private func ctl(_ icon: String, disabled: Bool, action: @escaping () -> Void) -> some View {
@@ -120,35 +129,24 @@ struct LiveView: View {
         .disabled(disabled).opacity(disabled ? 0.35 : 1)
     }
 
-    // MARK: who is in the meeting
+    // MARK: who is in the meeting (asked again before every recording)
     private var setup: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let known = people.filter { settings.participants.contains($0.id) }
+        let total = max(settings.whoTotal, known.count)
+        return VStack(alignment: .leading, spacing: 12) {
             Text("WER IST DABEI?").font(.caption.weight(.bold)).tracking(1.6).foregroundStyle(.secondary)
-            if people.isEmpty {
-                Text("Noch keine bekannten Stimmen. Vorstellungsrunde starten oder während des Meetings Stimmen antippen.")
-                    .font(.footnote).foregroundStyle(.secondary)
+            if total > 0 {
+                Text("\(total) \(total == 1 ? "Person" : "Personen")" + (known.isEmpty ? "" : ": " + known.map(\.name).joined(separator: ", "))
+                     + (total - known.count > 0 ? " + \(total - known.count) neu" : "")).fontWeight(.semibold)
+                Text("Wird beim Start nochmal bestätigt.").font(.footnote).foregroundStyle(.secondary)
             } else {
-                FlowLayout(spacing: 8) {
-                    ForEach(people) { p in
-                        let on = settings.participants.contains(p.id)
-                        Button {
-                            settings.participants = on ? settings.participants.filter { $0 != p.id } : settings.participants + [p.id]
-                        } label: {
-                            HStack(spacing: 6) { Circle().fill(Color(hex: p.color)).frame(width: 8, height: 8); Text(p.name).fontWeight(.semibold) }
-                                .padding(.horizontal, 12).padding(.vertical, 7)
-                                .background(Capsule().fill(on ? Color.primary : Color(.tertiarySystemBackground)))
-                                .foregroundStyle(on ? Color(.systemBackground) : .primary)
-                        }
-                    }
-                }
+                Text("Fragt REKORD beim Start: wie viele ihr seid und wer schon bekannt ist – so erkennt es jede Stimme richtig.")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
-            Stepper("Gäste (unbekannt): \(settings.guests)", value: $settings.guests, in: 0...20)
-            Button { showIntro = true } label: { Label("Vorstellungsrunde – Person einsprechen", systemImage: "waveform.badge.plus") }
-                .buttonStyle(.bordered)
-            Text(settings.participants.isEmpty ? "Nichts gewählt = alle bekannten Personen + Unbekannte."
-                 : settings.guests == 0 ? "Geschlossene Runde: jede Stimme wird einer der \(settings.participants.count) Personen zugeordnet."
-                 : "Vergleicht nur mit \(settings.participants.count) Personen, \(settings.guests) Gäste als „Sprecher N“.")
-                .font(.footnote).foregroundStyle(.secondary)
+            HStack {
+                Button("Festlegen") { askWho = true }.buttonStyle(.bordered)
+                Button { showIntro = true } label: { Label("Vorstellungsrunde", systemImage: "waveform.badge.plus") }.buttonStyle(.bordered)
+            }
         }
         .padding(18)
         .background(RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemBackground)))
@@ -165,7 +163,8 @@ struct LiveView: View {
                             .frame(width: 34, height: 34).background(Circle().fill(Color(hex: p.color)))
                         VStack(alignment: .leading, spacing: 2) {
                             Text(p.name).fontWeight(.bold)
-                            Text(p.waiting ? "dabei · noch still" : p.known ? "erkannt · \(fmt(p.talk))" : "antippen zum Benennen · \(fmt(p.talk))")
+                            Text(p.waiting ? "dabei · noch still" : p.known ? "erkannt · \(fmt(p.talk))"
+                                 : (p.voices ?? 1) > 1 ? "\(p.voices ?? 1) Stimmen · antippen benennt die zuletzt gehörte" : "antippen zum Benennen · \(fmt(p.talk))")
                                 .font(.caption).foregroundStyle(.secondary)
                             ProgressView(value: p.talk / total).tint(Color(hex: p.color))
                         }
@@ -222,6 +221,93 @@ struct FlowLayout: Layout {
             if x + s.width > bounds.maxX, x > bounds.minX { x = bounds.minX; y += rowH + spacing; rowH = 0 }
             v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
             x += s.width + spacing; rowH = max(rowH, s.height)
+        }
+    }
+}
+
+/// "Wer ist dabei?" – required before every recording: the headcount (you included) and who of them REKORD knows.
+/// With it REKORD separates exactly that many voices; unknown ones are collected as "Nicht erkannte Stimme".
+struct WhoSheet: View {
+    @Binding var people: [Profile]
+    let done: (Bool) -> Void
+    @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var hub: HubClient
+    @State private var total = 0
+    @State private var chosen: Set<Int> = []
+    @State private var enrolling = false
+    @State private var toEnroll = 0
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Stepper(value: $total, in: max(1, chosen.count)...30) {
+                        HStack { Text("Wie viele sprechen?"); Spacer(); Text(total > 0 ? "\(total)" : "–").font(.title2.weight(.black)).monospacedDigit() }
+                    }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack { ForEach([1, 2, 3, 4, 5, 6, 8], id: \.self) { n in
+                            Button("\(n)") { total = max(n, chosen.count) }
+                                .buttonStyle(.bordered).tint(total == n ? .accentColor : .secondary)
+                        } }
+                    }
+                } footer: { Text("Dich mitgezählt. Damit weiß REKORD, wie viele Stimmen es trennen muss.") }
+                if !people.isEmpty {
+                    Section("Wer davon ist bekannt?") {
+                        ForEach(people) { p in
+                            Button {
+                                if chosen.contains(p.id) { chosen.remove(p.id) } else { chosen.insert(p.id); total = max(total, chosen.count) }
+                            } label: {
+                                HStack {
+                                    Circle().fill(Color(hex: p.color)).frame(width: 10, height: 10)
+                                    Text(p.name).foregroundStyle(.primary)
+                                    Spacer()
+                                    if chosen.contains(p.id) { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+                                }
+                            }
+                        }
+                    }
+                }
+                if total > 0 {
+                    let fresh = total - chosen.count
+                    Section {
+                        Text(fresh == 0 ? "Geschlossene Runde: jede Stimme wird einer dieser Personen zugeordnet."
+                             : "\(fresh) neu – landen unter „Nicht erkannte Stimme“. Besser: jetzt kurz einsprechen lassen, dann erkennt REKORD sie mit Namen.")
+                            .font(.footnote)
+                        if fresh > 0 {
+                            Button { toEnroll = fresh; enrolling = true } label: {
+                                Label(fresh == 1 ? "Neue Person jetzt einsprechen" : "\(fresh) neue Personen jetzt einsprechen", systemImage: "waveform.badge.plus")
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Wer ist dabei?")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Abbrechen") { done(false) } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Aufnahme starten") {
+                        settings.participants = Array(chosen)
+                        settings.guests = max(0, total - chosen.count)
+                        settings.whoTotal = total
+                        done(true)
+                    }.disabled(total == 0).fontWeight(.bold)
+                }
+            }
+            .sheet(isPresented: $enrolling) {
+                EnrollSheet(intro: true) { prof in
+                    if let prof {
+                        chosen.insert(prof.id)
+                        if !people.contains(where: { $0.id == prof.id }) { people.append(prof) }
+                        toEnroll -= 1
+                    } else { toEnroll = 0 }
+                    if toEnroll > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { enrolling = true } }
+                }
+            }
+            .onAppear {
+                chosen = Set(settings.participants.filter { id in people.contains { $0.id == id } })
+                total = settings.whoTotal > 0 ? max(settings.whoTotal, chosen.count) : 0
+            }
         }
     }
 }

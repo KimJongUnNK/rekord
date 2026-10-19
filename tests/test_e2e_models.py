@@ -27,11 +27,17 @@ def people():
         return
     r = db.create_recording("Enroll", str(FIX / "meeting1.wav"))
     pipeline.process(r["id"])
+    _name_voices(r["id"], ["Emil", "Lisa", "Jake"])
+
+
+def _name_voices(rid, names):
+    """Like a user in "Wer ist das?": one name per unknown voice (all its lines move, the voice is learned)."""
     first = {}
-    for s in db.list_segments(r["id"]):
-        first.setdefault(s["speaker_id"], s["start"])
-    for sid, name in zip(sorted(first, key=first.get), ["Emil", "Lisa", "Jake"]):
-        pipeline.remember_speaker(r["id"], sid, name)
+    for s in db.list_segments(rid):
+        if s["voice"] is not None:
+            first.setdefault(s["voice"], s["id"])
+    for (voice, seg_id), name in zip(sorted(first.items(), key=lambda kv: kv[1]), names):
+        pipeline.assign_segment(seg_id, name, remember=True, whole_voice=True)
 
 
 def _names(rid):
@@ -42,33 +48,46 @@ def _names(rid):
 def test_meeting_diarization_transcription_and_people():
     r1 = db.create_recording("M1", str(FIX / "meeting1.wav"))
     res = pipeline.process(r1["id"])
-    assert res["speakers"] == 3
-    segs = _names(r1["id"])
-    order = [n for _, n, _ in segs]
-    # A B A B C A B  → three distinct people in the right turn order
-    assert order[0] != order[1] and order[0] == order[2] and order[1] == order[3]
-    assert len({order[0], order[1], order[4]}) == 3
-    text = " ".join(t for _, _, t in segs).lower()
+    # nobody known yet: ONE entry "Nicht erkannte Stimme" – never "Sprecher 1, 2, 3" – but every line knows its voice
+    assert res["speakers"] == 1
+    (bucket,) = db.list_speakers(r1["id"])
+    assert bucket["name"] == pipeline.UNKNOWN and bucket["voices"] == 3
+    voices = [s["voice"] for s in db.list_segments(r1["id"])]
+    # A B A B C A B  → three distinct voices in the right turn order
+    assert voices[0] != voices[1] and voices[0] == voices[2] and voices[1] == voices[3]
+    assert len({voices[0], voices[1], voices[4]}) == 3
+    text = " ".join(t for _, _, t in _names(r1["id"])).lower()
     assert "budget" in text and "freitag" in text and "headliner" in text
+    with pytest.raises(ValueError, match="mehrere Personen"):  # can't learn a voiceprint from three people at once
+        pipeline.remember_speaker(r1["id"], bucket["id"], "Emil")
 
-    # name them → voice profiles
-    by_first = {}
-    for s in db.list_segments(r1["id"]):
-        by_first.setdefault(s["speaker_id"], s["start"])
-    ids = sorted(by_first, key=by_first.get)
-    for sid, name in zip(ids, ["Emil", "Lisa", "Jake"]):
-        pipeline.remember_speaker(r1["id"], sid, name)
+    # "Wer ist das?": name each voice once → all its lines move, voice profiles are created
+    _name_voices(r1["id"], ["Emil", "Lisa", "Jake"])
+    order = [n for _, n, _ in _names(r1["id"])]
+    assert order[:5] == ["Emil", "Lisa", "Emil", "Lisa", "Jake"]
+    assert {s["name"] for s in db.list_speakers(r1["id"])} == {"Emil", "Lisa", "Jake"}  # bucket is gone
 
-    # second meeting: Emil + Lisa known, one new person
+    # second meeting: Emil + Lisa known, one new person → collected as "Nicht erkannte Stimme"
     r2 = db.create_recording("M2", str(FIX / "meeting2.wav"))
     pipeline.process(r2["id"])
     sp = db.list_speakers(r2["id"])
     named = {s["name"] for s in sp}
-    assert {"Emil", "Lisa"} <= named, named
-    assert any(n.startswith("Sprecher") for n in named)
-    assert "Jake" not in named
-    first = _names(r2["id"])[0]
-    assert first[1] == "Lisa"
+    assert {"Emil", "Lisa", pipeline.UNKNOWN} == named, named
+    assert _names(r2["id"])[0][1] == "Lisa"
+    unknown = next(s for s in sp if s["name"] == pipeline.UNKNOWN)
+    assert unknown["voices"] == 1
+    pipeline.remember_speaker(r2["id"], unknown["id"], "Dora")  # one voice in the bucket: naming it works directly
+    assert "Dora" in {p["name"] for p in db.list_profiles()}
+
+
+def test_headcount_without_known_people_fixes_the_number_of_voices():
+    r = db.create_recording("Headcount", str(FIX / "meeting1.wav"))
+    db.update_recording(r["id"], participants={"ids": [], "guests": 2})  # "Wer ist dabei?": 2 (on purpose too few)
+    pipeline.process(r["id"])
+    sp = db.list_speakers(r["id"])
+    voices = {s["voice"] for s in db.list_segments(r["id"]) if s["voice"] is not None}
+    known = [s for s in sp if s["name"] != pipeline.UNKNOWN]
+    assert len(voices) + len(known) <= 2  # never more voices than people announced
 
 
 def test_live_session_recognizes_people_in_realtime(people):
@@ -88,7 +107,7 @@ def test_live_session_recognizes_people_in_realtime(people):
     assert [e["name"] for e in segs[:2]] == ["Emil", "Lisa"]
     assert "Jake" in [e["name"] for e in segs]
     assert speaking.count("Emil") >= 3 and speaking.count("Lisa") >= 3 and "Jake" in speaking
-    assert set(speaking) <= {"Emil", "Lisa", "Jake", "Neue Stimme"}
+    assert set(speaking) <= {"Emil", "Lisa", "Jake", pipeline.UNKNOWN}
     rec = db.get_recording(rid)
     assert rec["audio_path"].endswith(".m4a") and abs(rec["duration"] - len(x) / 16000) < 0.5 and rec["peaks"]
 
@@ -104,4 +123,37 @@ def test_participants_restrict_matching(people):
         s.feed_pcm16(pcm[i:i + 3200])
     s.stop()
     names = [e["name"] for e in ev if e["type"] == "segment"]
-    assert names[0] == "Lisa" and "Emil" in names and any(n.startswith("Sprecher") for n in names) and "Jake" not in names
+    assert names[0] == "Lisa" and "Emil" in names and pipeline.UNKNOWN in names and "Jake" not in names
+    assert not any(n.startswith("Sprecher") for n in names)
+
+
+def test_enrollment_checks_that_only_one_person_speaks(tmp_path):
+    import wave
+
+    import numpy as np
+
+    from rekord import audio
+    from rekord.engines.diarize import diarize
+    x = audio.load(FIX / "meeting1.wav")
+    turns = diarize(x, "eres2net-base", 3, 0.6, 4)
+    first = turns[0][2]
+    clip = np.concatenate([x[int(a * 16000):int(b * 16000)] for a, b, s in turns if s == first])
+    path = tmp_path / "one.wav"
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+        w.writeframes((np.clip(clip, -1, 1) * 32767).astype("<i2").tobytes())
+    prof = pipeline.enroll_from_audio("Solo", str(path))
+    assert prof["quality"]["consistency"] >= 0.8 and prof["quality"]["seconds"] >= 8
+    with pytest.raises(ValueError, match="mehreren Stimmen"):  # three people in one "sample" → refused
+        pipeline.enroll_from_audio("Mix", str(FIX / "meeting1.wav"))
+    with pytest.raises(ValueError, match="Zu kurz"):
+        pipeline.enroll_from_audio("Kurz", str(path.parent / "short.wav") if _short(path) else "")
+
+
+def _short(path):
+    import wave
+    out = path.parent / "short.wav"
+    with wave.open(str(path)) as r, wave.open(str(out), "wb") as w:
+        w.setparams(r.getparams())
+        w.writeframes(r.readframes(16000 * 3))
+    return True

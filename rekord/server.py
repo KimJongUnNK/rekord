@@ -18,6 +18,7 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -121,11 +122,43 @@ def _auto_ai() -> None:
         log.info("ai auto: %s", e)
 
 
+def start_downloads() -> None:
+    """Speech models: after the user chose where REKORD stores things (first start), otherwise right away."""
+    missing = [m for m in models.ESSENTIAL + [config.load()["asr_model"]] if not models.installed(m)]
+    if config.models_missing():
+        return
+
+    def prepare():
+        for m in missing:
+            try:
+                models.download(m)
+            except Exception as e:  # noqa: BLE001
+                log.warning("download %s failed: %s", m, e)
+        _warmup()
+    threading.Thread(target=prepare, daemon=True, name="models").start()
+
+
+def _cleanup_moved_home() -> None:
+    """After a move at first start (nothing recorded yet) the old, empty default folder goes away."""
+    marker = config.HOME / ".remove-old"
+    if not marker.exists():
+        return
+    old = Path(marker.read_text("utf-8").strip())
+    if (old / "MOVED-TO.txt").exists() and old != config.HOME:
+        shutil.rmtree(old, ignore_errors=True)
+    marker.unlink(missing_ok=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if config.home_missing():  # external drive not connected: only the UI runs and asks for it
+        log.warning("Datenordner nicht gefunden: %s", config.HOME)
+        yield
+        return
     config.ensure_dirs()
     config.load()
     db.connect()
+    _cleanup_moved_home()
     _recover()
     jobs.start()
     stop = threading.Event()
@@ -135,17 +168,8 @@ async def lifespan(app: FastAPI):
         threading.Thread(target=_advertise, args=(port,), daemon=True).start()
     if getattr(app.state, "auto_download", True):
         threading.Thread(target=_auto_ai, daemon=True, name="ai-auto").start()
-    missing = [m for m in models.ESSENTIAL + [config.load()["asr_model"]] if not models.installed(m)]
-    auto = getattr(app.state, "auto_download", True)
-
-    def prepare():
-        for m in missing if auto else []:
-            try:
-                models.download(m)
-            except Exception as e:  # noqa: BLE001
-                log.warning("download %s failed: %s", m, e)
-        _warmup()
-    threading.Thread(target=prepare, daemon=True, name="models").start()
+        if config.load()["storage_chosen"]:
+            start_downloads()
     yield
     stop.set()
     if _zc:
@@ -325,6 +349,9 @@ def status():
         "inbox": str(config.INBOX_DIR),
         "python": sys.executable,
         "https_port": getattr(app.state, "https_port", None),
+        "storage_missing": str(config.HOME) if config.home_missing() else "",
+        "models_missing": str(config.MODELS_DIR) if config.models_missing() else "",
+        "storage_chosen": s["storage_chosen"], "welcome_done": s["welcome_done"],
         # packaged app (PyInstaller): the binary itself takes "mcp"; source install: python -m rekord mcp
         "mcp_command": [sys.executable, "mcp"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "rekord", "mcp"],
     }
@@ -436,6 +463,25 @@ def _use_ollama(model: str) -> None:
     config.save({"llm": {"provider": "ollama", "ollama": {"model": model}}})
 
 
+@app.delete("/api/ollama/models/{name:path}")
+async def ollama_delete(name: str, request: Request):
+    """Remove a downloaded local model; if it was the one in use, switch to another one that is there."""
+    from .llm import ollama
+    _local_only(request)
+    if not re.match(r"^[\w.\-/:]+$", name):
+        raise HTTPException(400, "Ungültiger Modellname")
+    base = config.load()["llm"]["ollama"].get("base_url")
+    try:
+        await asyncio.to_thread(ollama.delete, name, base)
+    except (RuntimeError, httpx.HTTPError) as e:
+        raise HTTPException(400, str(e))
+    s = config.load()
+    if s["llm"]["ollama"].get("model") == name:
+        left = (await asyncio.to_thread(ollama.status, base))["models"]
+        config.save({"llm": {"ollama": {"model": ollama.pick_installed(left) or ""}}})
+    return {"ok": True, "model": config.load()["llm"]["ollama"].get("model", "")}
+
+
 @app.post("/api/ollama/setup")
 async def ollama_setup(request: Request):
     """One click: install Ollama if needed, start it, download a model that fits this computer, use it."""
@@ -520,6 +566,85 @@ async def autostart(request: Request):
     _local_only(request)
     on = bool((await request.json()).get("enabled"))
     return {"enabled": await asyncio.to_thread(_run_integration, system.set_autostart, on)}
+
+
+# ------------------------------------------------------------------ storage: where data and models live
+
+@app.get("/api/storage")
+async def storage_info(request: Request):
+    from . import storage
+    out = storage.info()
+    if _is_local(request.client.host if request.client else None):
+        out["drives"] = await asyncio.to_thread(storage.drives)
+        out["usage"] = await asyncio.to_thread(storage.usage)
+        out["suggest"] = {d["path"]: storage.suggest(d["path"]) for d in out["drives"]}
+    return out
+
+
+@app.post("/api/storage/choose")
+async def storage_choose(request: Request):
+    """First start (before any big download): where should REKORD keep everything? Same folder → just go."""
+    from . import storage
+    _local_only(request)
+    b = await request.json()
+    home = Path(b.get("home") or config.HOME).expanduser()
+    models_dir = (b.get("models") or "").strip()
+    try:
+        if home.resolve() != config.HOME.resolve():
+            if not home.is_absolute():
+                raise RuntimeError("Bitte einen vollständigen Pfad angeben.")
+            fresh = not db.list_recordings()
+            if models_dir:
+                config.save({"models_dir": models_dir if Path(models_dir) != home / "models" else ""})
+            out = await asyncio.to_thread(storage.move_home, str(home))
+            if fresh:
+                (home / ".remove-old").parent.mkdir(parents=True, exist_ok=True)
+                (home / ".remove-old").write_text(str(config.HOME), "utf-8")
+            return out
+        patch = {"storage_chosen": True}
+        if models_dir and Path(models_dir).expanduser() != config.MODELS_DIR:
+            if not Path(models_dir).is_absolute():
+                raise RuntimeError("Bitte einen vollständigen Pfad angeben.")
+            Path(models_dir).expanduser().mkdir(parents=True, exist_ok=True)
+            patch["models_dir"] = "" if Path(models_dir).expanduser() == config.HOME / "models" else models_dir
+        config.save(patch)
+        if getattr(app.state, "auto_download", True):
+            start_downloads()
+        return storage.job()
+    except (RuntimeError, OSError) as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/storage/move")
+async def storage_move(request: Request):
+    """Later: move the data folder (ends with a restart) or the models folder (incl. local AI models)."""
+    from . import storage
+    _local_only(request)
+    b = await request.json()
+    target = (b.get("target") or "").strip()
+    if not target or not Path(target).expanduser().is_absolute():
+        raise HTTPException(400, "Bitte einen vollständigen Ordnerpfad angeben.")
+    try:
+        if b.get("what") == "models":
+            return await asyncio.to_thread(storage.move_models, target, bool(b.get("ollama", True)))
+        return await asyncio.to_thread(storage.move_home, target)
+    except (RuntimeError, OSError) as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/storage/missing")
+async def storage_missing(request: Request):
+    """Drive is back → restart into it; or give up on it and start fresh on this computer."""
+    from . import storage
+    _local_only(request)
+    action = (await request.json()).get("action")
+    if action == "forget":
+        storage.forget_missing_home()
+        return {"ok": True}
+    if config.HOME.exists() or config.HOME.parent.exists():
+        storage.schedule_restart(0.5)
+        return {"ok": True, "found": True}
+    return {"ok": True, "found": False}
 
 
 @app.get("/api/pair")
@@ -665,6 +790,19 @@ async def patch_segment(sid: int, request: Request):
     b = await request.json()
     db.update_segment(sid, text=b.get("text"), speaker_id=b.get("speaker_id"))
     return {"ok": True}
+
+
+@app.post("/api/segments/{sid}/assign")
+async def assign_segment(sid: int, request: Request):
+    """"Wer sagt das?" – move one line to a person; with remember its audio trains that voice."""
+    b = await request.json()
+    name = (b.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Name fehlt")
+    try:
+        return await asyncio.to_thread(pipeline.assign_segment, sid, name, bool(b.get("remember", True)), bool(b.get("whole_voice")))
+    except KeyError:
+        raise HTTPException(404)
 
 
 @app.patch("/api/speakers/{sid}")

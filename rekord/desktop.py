@@ -47,7 +47,14 @@ def open_url(url: str) -> None:
     webbrowser.open(url)
 
 
-def _window(url: str, own_hub: bool) -> None:
+def _wait_free(port: int, timeout: float = 15) -> None:
+    """After a restart (new data folder) the old process still holds the port for a moment."""
+    t0 = time.time()
+    while time.time() - t0 < timeout and _port_open(port):
+        time.sleep(0.2)
+
+
+def _window(url: str, own_hub: bool, restarted: bool = False) -> None:
     """Native window (pywebview) or, where there is none, the browser. Without our own hub there is nothing
     to keep alive after the browser opened."""
     try:
@@ -57,11 +64,14 @@ def _window(url: str, own_hub: bool) -> None:
     if webview is not None:
         try:
             webview.create_window("REKORD", url, width=1320, height=860, min_size=(380, 600))
-            webview.start()
+            from . import config
+            # not private: otherwise the window forgets this device's settings (theme, accent, mic …) on every start
+            webview.start(private_mode=False, storage_path=str(config.pointer_path().parent / "webview"))
             return
         except Exception as e:  # noqa: BLE001 - no GUI backend (e.g. Linux without WebKitGTK/Qt)
             print(f"Kein natives Fenster ({e}) – öffne im Browser.")
-    open_url(url)
+    if not restarted:  # the open browser tab reconnects by itself
+        open_url(url)
     if own_hub:
         print(f"REKORD läuft: {url}  – beenden über Einstellungen → „REKORD beenden“ oder Strg+C.")
         while True:
@@ -74,6 +84,9 @@ def run(port: int = 8765, lan: bool = False, background: bool = False) -> None:
     url = f"http://localhost:{port}"
     background = background or os.environ.get("REKORD_HEADLESS") == "1"
     system.ensure_start_menu()
+    restarted = os.environ.get("REKORD_RESTARTING") == "1"
+    if restarted:
+        _wait_free(port)
     if _port_open(port) and _is_rekord(port):  # REKORD already runs (window or in the background) → just show it
         if not background:
             _window(url, own_hub=False)
@@ -86,4 +99,4 @@ def run(port: int = 8765, lan: bool = False, background: bool = False) -> None:
     if background:  # CI smoke test / started with the computer
         while True:
             time.sleep(3600)
-    _window(url, own_hub=True)
+    _window(url, own_hub=True, restarted=restarted)

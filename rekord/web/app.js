@@ -11,7 +11,8 @@ const debounce = (fn, ms = 400) => { let t; return (...a) => { clearTimeout(t); 
 const IS_LOCAL = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname); // this computer (not a phone in the Wi-Fi)
 const IS_MOBILE = /iPhone|iPad|Android/i.test(navigator.userAgent);
 const gbFmt = (n) => (n || 0).toLocaleString("de-AT", { maximumFractionDigits: 1 }) + " GB";
-const initials = (n) => (n || "?").replace(/^Sprecher\s*/, "S").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+const UNKNOWN = "Nicht erkannte Stimme", UNKNOWN_COLOR_JS = "#8A877F";  // all voices REKORD doesn't know – one entry, never "Sprecher 1, 2, 3"
+const initials = (n) => n === UNKNOWN ? "?" : (n || "?").replace(/^Sprecher\s*/, "S").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
 function fmtTime(t) {
   t = Math.max(0, Math.floor(t || 0));
@@ -148,7 +149,8 @@ async function refreshStatus() {
     const busy = s.jobs_pending > 0 || s.live.length > 0;
     const dl = s.models.find((m) => m.progress && m.progress.state === "downloading");
     $("#engine-status").innerHTML = `
-      <div><span class="dot ${!s.ready ? "busy" : busy ? "busy" : "ok"}"></span><b>${!s.ready ? "Modelle werden geladen" : busy ? "Arbeitet …" : "Bereit · lokal"}</b></div>
+      <div title="${!s.ready ? "Die Sprachmodelle werden einmalig geladen" : "Alles läuft auf diesem Computer"}"><span class="dot ${s.models_missing ? "err" : !s.ready ? "busy" : busy ? "busy" : "ok"}"></span><b>${s.models_missing ? "Laufwerk mit Modellen fehlt"
+        : !s.ready ? (s.storage_chosen === false ? "Speicherort wählen" : "Modelle werden geladen") : busy ? "Arbeitet …" : "Bereit · lokal"}</b></div>
       ${dl ? `<div>${esc(dl.name)} ${Math.round((dl.progress.done / dl.progress.total) * 100)} %</div>` : ""}
       ${s.ai_ready ? `<div>KI: ${esc(s.provider_name)}${s.model ? ` · ${esc(s.model)}` : ""}</div>`
         : `<div><a href="#/settings?s=ai" style="color:var(--accent)">KI verbinden →</a></div>`}`;
@@ -193,6 +195,7 @@ async function route() {
     : h.startsWith("#/templates") ? "templates" : h.startsWith("#/settings") ? "settings" : "library";
   $$(".nav a").forEach((a) => a.classList.toggle("on", a.dataset.nav === nav));
   $("#fab").classList.toggle("hide", nav === "live" || nav === "settings" || h.startsWith("#/r/") || !!liveSession);
+  if (state.status && state.status.storage_missing) { viewMissing(state.status.storage_missing); return; }
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) { view.scrollTop = 0; await fn(m); return; }
@@ -475,7 +478,7 @@ function viewLive() {
       </section>
       <aside>
         <div id="setup"></div>
-        <div class="eyebrow" style="margin-bottom:10px">Im Raum</div>
+        <div class="eyebrow" style="margin-bottom:10px">Im Raum${tip("room")}</div>
         <div class="roster" id="roster"><div class="muted">Stimmen erscheinen hier. Tipp auf eine unbekannte Stimme, um ihr einen Namen zu geben – REKORD erkennt sie ab dann immer.</div></div>
         <div class="eyebrow" style="margin:22px 0 10px">Mitschrift</div>
         <div class="feed" id="feed"></div>
@@ -509,7 +512,7 @@ function viewLive() {
       nm.textContent = n.silence ? "Stille" : n.name;
       nm.classList.toggle("unknown", !n.known || n.silence);
       $("#now-sub").textContent = n.silence ? "" : n.known ? `erkannt · ${Math.round((n.score || 0) * 100)} % Übereinstimmung`
-        : n.key == null ? "Neue Stimme – noch nicht zugeordnet" : "Unbekannt · antippen rechts, um zu benennen";
+        : n.key == null ? "Noch nicht zugeordnet" : "Antippen rechts („Im Raum“), um sie zu benennen";
     },
     roster() {
       const s = liveSession; if (!s || !$("#roster")) return;
@@ -519,7 +522,7 @@ function viewLive() {
         <span class="avatar">${esc(initials(p.name))}</span><span><div class="who-name">${esc(p.name)}</div><div class="who-sub">dabei · noch nicht gesprochen</div></span><span></span></div>`
         : `<button class="who ${s.now && !s.now.silence && s.now.key === p.key ? "talking" : ""}" data-key="${p.key}" data-known="${p.known ? 1 : 0}" style="--c:${p.color}">
         <span class="avatar">${esc(initials(p.name))}</span><span><div class="who-name">${esc(p.name)}</div>
-        <div class="who-sub">${p.known ? "erkannt" : "tippen zum Benennen"} · ${fmtTime(p.talk || 0)}</div><div class="bar"><i style="width:${Math.round(((p.talk || 0) / total) * 100)}%"></i></div></span>
+        <div class="who-sub">${p.known ? "erkannt" : p.voices > 1 ? `${p.voices} Stimmen · tippen benennt die zuletzt gehörte` : "tippen zum Benennen"} · ${fmtTime(p.talk || 0)}</div><div class="bar"><i style="width:${Math.round(((p.talk || 0) / total) * 100)}%"></i></div></span>
         <span class="muted">${Math.round(((p.talk || 0) / total) * 100)}%</span></button>`).join("");
       $$("#roster button.who").forEach((b) => b.onclick = async () => {
         const key = Number(b.dataset.key);
@@ -540,7 +543,7 @@ function viewLive() {
   ui.render();
   renderSetup();
 
-  $("#rec").onclick = () => (liveSession ? stopLive() : startLive($("#title").value.trim()));
+  $("#rec").onclick = () => (liveSession ? stopLive() : beginRecording($("#title").value.trim()));
   $("#hl").onclick = () => { highlightLive(); const b = $("#hl"); b.classList.add("flash"); setTimeout(() => b.classList.remove("flash"), 400); };
   $("#pause").onclick = () => togglePauseLive();
   const keys = (e) => {
@@ -551,36 +554,101 @@ function viewLive() {
   document.addEventListener("keydown", keys);
   const tick = setInterval(() => { if (liveSession && $("#timer")) $("#timer").textContent = fmtTime(liveSession.elapsed()); }, 250);
   cleanup = () => { document.removeEventListener("keydown", keys); clearInterval(tick); liveUI = null; };
-  if (qs().get("autostart") === "1" && !liveSession) startLive("");
+  if (qs().get("autostart") === "1" && !liveSession) beginRecording("");
 }
 let liveUI = null;
 
-// "Wer ist dabei?" — pick participants before the meeting. Fewer candidates = far fewer mix-ups.
+// "Wer ist dabei?" — asked before EVERY recording: how many people talk, who of them REKORD knows.
+// With the headcount REKORD separates exactly that many voices; known people are matched only against each other.
+async function beginRecording(title) {
+  if (liveSession) return;
+  if (await askParticipants()) startLive(title);
+}
+
+async function askParticipants() {
+  let people = [];
+  try { people = (await api("/api/profiles")).items; } catch (e) {}
+  const ids = new Set(prefs.participants.filter((id) => people.some((p) => p.id === id)));
+  let total = prefs.whoTotal ? Math.max(prefs.whoTotal, ids.size) : 0;  // 0 = not answered yet
+  for (;;) {
+    const r = await dialog(`<h2>Wer ist dabei?${tip("who")}</h2>
+      <p class="muted" style="margin:0">Damit REKORD weiß, wie viele Stimmen es trennen muss – und wen es schon kennt.</p>
+      <div class="who-q"><div><b>Wie viele sprechen?</b>${tip("total")}<div class="muted" style="font-size:13px">dich mitgezählt</div></div>
+        <div class="stepper"><button type="button" class="btn icon" id="w-minus" aria-label="weniger">−</button><b id="w-total">–</b>
+        <button type="button" class="btn icon" id="w-plus" aria-label="mehr">+</button></div></div>
+      <div class="row" id="w-quick" style="gap:6px">${[1, 2, 3, 4, 5, 6, 8].map((n) => `<button type="button" class="btn sm" data-n="${n}">${n}</button>`).join("")}</div>
+      ${people.length ? `<div><b>Wer davon ist bekannt?</b>${tip("known")}<div class="row" id="w-ppl" style="gap:8px;margin-top:8px">${people.map((p) =>
+        `<button type="button" class="chip" data-id="${p.id}" style="--c:${p.color};cursor:pointer"><i></i>${esc(p.name)}</button>`).join("")}</div></div>`
+        : `<p class="muted" style="margin:0">Noch niemand angelernt – alle zählen als neu.</p>`}
+      <div id="w-sum" class="who-sum"></div>
+      <div class="row"><span class="spacer"></span><button class="btn" value="cancel">Abbrechen</button><button class="btn primary" value="ok" id="w-ok">● Aufnahme starten</button></div>`,
+    (b) => {
+      const draw = () => {
+        $("#w-total", b).textContent = total || "–";
+        $$("#w-quick [data-n]", b).forEach((x) => x.classList.toggle("primary", Number(x.dataset.n) === total));
+        $$("#w-ppl [data-id]", b).forEach((x) => {
+          const on = ids.has(Number(x.dataset.id));
+          x.style.cssText = `--c:${x.style.getPropertyValue("--c")};cursor:pointer;` + (on ? "background:var(--fg);color:var(--bg);border-color:var(--fg)" : "");
+        });
+        const fresh = total - ids.size;
+        const names = people.filter((p) => ids.has(p.id)).map((p) => esc(p.name));
+        $("#w-sum", b).innerHTML = !total ? `<span style="color:var(--accent)">Wähle oben, wie viele ihr seid.</span>`
+          : `<b>${total} ${total === 1 ? "Person" : "Personen"}</b>: ${[names.join(", "), fresh ? `${fresh} neu${tip("newpeople")}` : ""].filter(Boolean).join(" + ")}
+             ${fresh ? `<div class="muted" style="font-size:13px;margin-top:4px">Neue Stimmen landen unter „${UNKNOWN}“. Besser: jetzt kurz einsprechen lassen – dann erkennt REKORD sie mit Namen.</div>
+             <button type="button" class="btn sm" id="w-intro" style="margin-top:8px">🎙 ${fresh === 1 ? "Neue Person" : `${fresh} neue Personen`} jetzt einsprechen</button>${tip("intro")}`
+             : `<div class="muted" style="font-size:13px;margin-top:4px">Geschlossene Runde: jede Stimme wird einer dieser Personen zugeordnet.</div>`}`;
+        $("#w-ok", b).disabled = !total;
+        const intro = $("#w-intro", b);
+        if (intro) intro.onclick = () => { b.closest("dialog").close("intro"); };
+      };
+      $("#w-minus", b).onclick = () => { total = Math.max(ids.size || 1, (total || 1) - 1); draw(); };
+      $("#w-plus", b).onclick = () => { total = Math.min(30, (total || 0) + 1); draw(); };
+      $$("#w-quick [data-n]", b).forEach((x) => x.onclick = () => { total = Math.max(Number(x.dataset.n), ids.size); draw(); });
+      $$("#w-ppl [data-id]", b).forEach((x) => x.onclick = () => {
+        const pid = Number(x.dataset.id);
+        if (ids.has(pid)) ids.delete(pid); else { ids.add(pid); total = Math.max(total, ids.size); }
+        draw();
+      });
+      b.addEventListener("keydown", (e) => { if (e.key === "Enter" && total) { e.preventDefault(); b.closest("dialog").close("ok"); } });
+      draw();
+    });
+    if (r === "intro") {  // each new person reads their own text, then counts as known
+      const fresh = total - ids.size;
+      for (let i = 0; i < fresh; i++) {
+        const prof = await enrollDialog({ intro: true, step: fresh > 1 ? `${i + 1} von ${fresh}` : "" });
+        if (!prof) break;
+        ids.add(prof.id);
+        if (!people.some((p) => p.id === prof.id)) people.push(prof);
+      }
+      continue;
+    }
+    if (r !== "ok" || !total) return false;
+    setPref("participants", [...ids]);
+    setPref("guests", Math.max(0, total - ids.size));
+    setPref("whoTotal", total);
+    return true;
+  }
+}
+
+// the live page shows who was announced; changing it = the same question
 async function renderSetup() {
   const box = $("#setup"); if (!box) return;
   let people = [];
   try { people = (await api("/api/profiles")).items; } catch (e) {}
-  prefs.participants = prefs.participants.filter((id) => people.some((p) => p.id === id));
-  const sel = new Set(prefs.participants);
+  const known = people.filter((p) => prefs.participants.includes(p.id));
+  const total = prefs.whoTotal ? Math.max(prefs.whoTotal, known.length) : 0;
   box.innerHTML = `<div class="card" style="margin-bottom:22px">
-    <div class="eyebrow" style="margin-bottom:10px">Wer ist dabei?</div>
-    <div class="row" id="ppl" style="gap:8px">${people.map((p) => `<button class="chip" data-id="${p.id}" style="--c:${p.color};cursor:pointer;${sel.has(p.id)
-      ? "background:var(--fg);color:var(--bg);border-color:var(--fg)" : ""}"><i></i>${esc(p.name)}</button>`).join("") || `<span class="muted">Noch keine bekannten Stimmen.</span>`}</div>
-    <div class="row" style="margin-top:12px"><span class="muted">+ Gäste (unbekannt)</span><span class="spacer"></span>
-      <button class="btn sm icon" id="gm">−</button><b id="gn" style="min-width:20px;text-align:center">${prefs.guests}</b><button class="btn sm icon" id="gp">+</button></div>
-    <button class="btn sm" id="intro" style="margin-top:12px;width:100%">🎙 Vorstellungsrunde – Person einsprechen</button>
-    <div class="muted" style="font-size:12.5px;margin-top:10px">${sel.size ? (prefs.guests ? `Vergleicht nur mit ${sel.size} gewählten Personen, ${prefs.guests} Gäste werden als „Sprecher N“ geführt.`
-      : `Geschlossene Runde: jede Stimme wird einer der ${sel.size} Personen zugeordnet.`) : "Nichts gewählt = alle bekannten Personen + Unbekannte."}</div></div>`;
-  $$("#ppl [data-id]").forEach((b) => b.onclick = () => {
-    const id = Number(b.dataset.id);
-    setPref("participants", sel.has(id) ? prefs.participants.filter((x) => x !== id) : [...prefs.participants, id]);
-    renderSetup();
-  });
-  $("#gm").onclick = () => { setPref("guests", Math.max(0, prefs.guests - 1)); renderSetup(); };
-  $("#gp").onclick = () => { setPref("guests", prefs.guests + 1); renderSetup(); };
+    <div class="eyebrow" style="margin-bottom:10px">Wer ist dabei?${tip("who")}</div>
+    ${total ? `<div><b>${total} ${total === 1 ? "Person" : "Personen"}</b>${known.length ? ": " + known.map((p) => `<span class="chip" style="--c:${p.color}"><i></i>${esc(p.name)}</span>`).join(" ") : ""}
+      ${total - known.length ? ` + ${total - known.length} neu` : ""}</div>
+      <div class="muted" style="font-size:12.5px;margin-top:6px">Wird beim Start nochmal bestätigt.</div>`
+    : `<div class="muted">Fragt REKORD beim Start: wie viele ihr seid und wer schon bekannt ist.</div>`}
+    <div class="row" style="margin-top:12px;gap:8px"><button class="btn sm" id="who-edit">Festlegen</button>
+      <button class="btn sm" id="intro">🎙 Vorstellungsrunde</button>${tip("intro")}</div></div>`;
+  $("#who-edit").onclick = async () => { await askParticipants(); renderSetup(); };
   $("#intro").onclick = async () => {
     const prof = await enrollDialog({ intro: true });
-    if (prof) { setPref("participants", [...new Set([...prefs.participants, prof.id])]); renderSetup(); }
+    if (prof) { setPref("participants", [...new Set([...prefs.participants, prof.id])]); setPref("whoTotal", Math.max(prefs.whoTotal || 0, prefs.participants.length)); renderSetup(); }
   };
 }
 
@@ -713,9 +781,10 @@ async function viewDetail(id) {
       <audio id="audio" preload="metadata" src="/api/recordings/${id}/audio"></audio>
     </div>
     <div class="spk-bar" id="spk"></div>
+    <div id="naming"></div>
     <div class="tabs" id="tabs">
-      <button data-tab="summary">Zusammenfassung</button><button data-tab="transcript">Transkript</button>
-      <button data-tab="mindmap">Mind Map</button><button data-tab="ask">Fragen</button><button data-tab="notes">Notizen</button><button data-tab="export">Export</button>
+      <button data-tab="summary" title="Protokoll, To-dos, Entscheidungen – mit Vorlagen">Zusammenfassung</button><button data-tab="transcript" title="Alles, was gesagt wurde – wer, wann, was">Transkript</button>
+      <button data-tab="mindmap" title="Die Themen als Landkarte">Mind Map</button><button data-tab="ask" title="Fragen nur zu dieser Aufnahme">Fragen</button><button data-tab="notes" title="Eigene Notizen und Ordner">Notizen</button><button data-tab="export" title="Als Datei speichern oder kopieren">Export</button>
     </div>
     <div id="tab"></div></div>`;
 
@@ -762,20 +831,112 @@ async function viewDetail(id) {
     const t = talk(), total = Object.values(t).reduce((a, b) => a + b, 0) || 1;
     $("#spk").innerHTML = rec.speakers.map((s) => `<button class="spk-card" data-sid="${s.id}" style="--c:${s.color}">
       <span class="avatar">${esc(initials(s.name))}</span><span><b>${esc(s.name)}</b><br><small>${Math.round(((t[s.id] || 0) / total) * 100)} % · ${
-      s.profile_id ? `erkannt${s.match_score && s.match_score < 1 ? " " + Math.round(s.match_score * 100) + " %" : ""}` : "unbekannt"}</small></span></button>`).join("");
+      s.profile_id ? `erkannt${s.match_score && s.match_score < 1 ? " " + Math.round(s.match_score * 100) + " %" : ""}` : (s.voices > 1 ? `${s.voices} Stimmen` : "nicht erkannt")}</small></span></button>`).join("");
     $$("#spk .spk-card").forEach((b) => b.onclick = () => editSpeaker(Number(b.dataset.sid)));
     drawTimeline();
+    renderNaming();
   };
+
+  // ---------- "Wer ist das?" right after a recording: name the unknown voice once → recognized from then on
+  const INTRO_RE = /(?:^|[\s,.;:!?])(?:[Hh]ier (?:ist|spricht)|[Mm]ein Name ist|[Ii]ch heiße|[Tt]his is|[Mm]y name is|[Ii]ch bin(?: der| die)?)\s+([A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?)/g;
+  const NOT_NAMES = new Set(["Ich", "Heute", "Hier", "Jetzt", "Gerade", "Auch", "Noch", "Mal", "Eigentlich", "Okay", "Der", "Die", "Das", "Ein", "Eine", "Team"]);
+  let knownNames = [];
+  const suggestName = (lines) => {
+    for (const sg of lines) {
+      for (const m of (sg.text || "").matchAll(INTRO_RE)) {
+        const name = m[1], weak = /ich bin/i.test(m[0]);
+        if (NOT_NAMES.has(name)) continue;
+        if (!weak || knownNames.some((k) => k.toLowerCase() === name.toLowerCase())) return name;  // "ich bin X" only for known names
+      }
+    }
+    return "";
+  };
+  let playUntil = null;
+  audio.addEventListener("timeupdate", () => { if (playUntil != null && audio.currentTime >= playUntil) { audio.pause(); playUntil = null; } });
+  const playSample = (lines) => {
+    const mine = [...lines].sort((a, b) => (b.end - b.start) - (a.end - a.start));
+    if (!mine.length) return;
+    audio.currentTime = mine[0].start; playUntil = Math.min(mine[0].end, mine[0].start + 8); audio.play().catch(() => {});
+  };
+  async function renderNaming() {
+    const box = $("#naming"); if (!box) return;
+    const unknown = rec.status === "done" ? rec.speakers.filter((x) => !x.profile_id && (x.name === UNKNOWN || /^Sprecher \d+$/.test(x.name))) : [];
+    let later = false; try { later = sessionStorage.getItem("rekord.namelater." + id) === "1"; } catch (e) {}
+    if (!unknown.length || later) { box.innerHTML = ""; return; }
+    if (!knownNames.length) { try { knownNames = (await api("/api/profiles")).items.map((x) => x.name); } catch (e) {} }
+    // one row per unknown voice: a bucket with several people is listed voice by voice (by when they first spoke)
+    const rows = [];
+    for (const x of unknown) {
+      const lines = segs().filter((g) => g.speaker_id === x.id);
+      const byVoice = {};
+      lines.forEach((g) => { const v = g.voice ?? "one"; (byVoice[v] = byVoice[v] || []).push(g); });
+      const groups = Object.values(byVoice).sort((a, b) => a[0].start - b[0].start);
+      groups.forEach((g) => rows.push({ sid: x.id, lines: g, single: groups.length === 1 }));
+    }
+    box.innerHTML = `<div class="card naming"><div class="row"><b>Wer ist das?</b>${tip("naming")}<span class="spacer"></span><button class="btn ghost sm" id="nm-later">Später</button></div>
+      <p class="muted" style="margin:4px 0 10px">${rows.length > 1 ? `${rows.length} Stimmen hat REKORD nicht erkannt.` : "Eine Stimme hat REKORD nicht erkannt."} Anhören, Namen eingeben, <b>Merken</b> – ab der nächsten Aufnahme wird sie automatisch erkannt.</p>
+      ${rows.map((r, k) => `<div class="nm-row" style="--c:${UNKNOWN_COLOR_JS}"><span class="avatar">?</span>
+          <button type="button" class="btn sm icon" data-play="${k}" title="Anhören">▶</button>
+          <span class="nm-who"><b>Ab ${fmtTime(r.lines[0].start)} · ${r.lines.length} ${r.lines.length === 1 ? "Satz" : "Sätze"}</b><small>„${esc((r.lines[0].text || "").slice(0, 80))}“</small></span>
+          <input type="text" data-name="${k}" placeholder="Name" value="${esc(suggestName(r.lines))}" list="nm-list" autocomplete="off">
+          <button type="button" class="btn primary sm" data-save="${k}">Merken</button></div>`).join("")}
+      <datalist id="nm-list">${knownNames.map((n) => `<option value="${esc(n)}">`).join("")}</datalist></div>`;
+    $("#nm-later").onclick = () => { try { sessionStorage.setItem("rekord.namelater." + id, "1"); } catch (e) {} box.innerHTML = ""; };
+    $$("#naming [data-play]").forEach((b) => b.onclick = () => playSample(rows[Number(b.dataset.play)].lines));
+    $$("#naming [data-save]").forEach((b) => b.onclick = async () => {
+      const r = rows[Number(b.dataset.save)], name = $(`#naming [data-name="${b.dataset.save}"]`).value.trim();
+      if (!name) { toast("Namen eingeben"); return; }
+      b.disabled = true;
+      try {
+        if (r.single) await api(`/api/speakers/${r.sid}`, { method: "PATCH", json: { name, remember: true } });
+        else await api(`/api/segments/${r.lines[0].id}/assign`, { method: "POST", json: { name, remember: true, whole_voice: true } });
+        toast(`${name}: Stimme gemerkt ✓`); await reload();
+      } catch (e) { toast(e.message, 6000); b.disabled = false; }
+    });
+    $$("#naming [data-name]").forEach((inp) => inp.addEventListener("keydown", (e) => { if (e.key === "Enter") $(`#naming [data-save="${inp.dataset.name}"]`).click(); }));
+  }
+
+  // ---------- "Wer sagt das?" for a single line – sorts out the unknown voices one sentence at a time
+  async function assignLine(segId) {
+    const sg = segs().find((x) => x.id === segId); if (!sg) return;
+    const cur = spk(sg.speaker_id);
+    if (!knownNames.length) { try { knownNames = (await api("/api/profiles")).items.map((x) => x.name); } catch (e) {} }
+    const sameVoice = sg.voice != null ? segs().filter((x) => x.speaker_id === sg.speaker_id && x.voice === sg.voice).length : 1;
+    const names = [...new Set([...rec.speakers.filter((x) => x.name !== UNKNOWN && !/^Sprecher \d+$/.test(x.name)).map((x) => x.name), ...knownNames])].filter((n) => n !== cur.name);
+    const r = await dialog(`<h2>Wer sagt das?</h2>
+      <blockquote class="read-text" style="font-size:15px">„${esc(sg.text)}“</blockquote>
+      <div class="row"><button type="button" class="btn sm" id="al-play">▶ Anhören</button><span class="muted">${fmtTime(sg.start)} · jetzt: ${esc(cur.name)}</span></div>
+      ${names.length ? `<div class="row" style="gap:8px">${names.map((n) => `<button type="button" class="btn sm" data-pick="${esc(n)}">${esc(n)}</button>`).join("")}</div>` : ""}
+      <input type="text" id="al-name" placeholder="…oder neuer Name" autocomplete="off">
+      ${sameVoice > 1 ? `<label class="row"><input type="checkbox" id="al-all-voice" checked> Alle ${sameVoice} Sätze dieser Stimme</label>` : ""}
+      <label class="row"><input type="checkbox" id="al-rem" checked> Stimme dabei lernen${tip("remember")}</label>
+      <div><button type="button" class="btn ghost sm" id="al-all">Alle Sätze von „${esc(cur.name)}“ umbenennen …</button></div>
+      <div class="row"><span class="spacer"></span><button class="btn" value="cancel">Abbrechen</button><button class="btn primary" value="ok">Zuordnen</button></div>`,
+    (b) => {
+      $("#al-play", b).onclick = () => { audio.currentTime = sg.start; playUntil = sg.end; audio.play().catch(() => {}); };
+      $$("[data-pick]", b).forEach((x) => x.onclick = () => { $("#al-name", b).value = x.dataset.pick; b.closest("dialog").close("ok"); });
+      $("#al-all", b).onclick = () => b.closest("dialog").close("all");
+    });
+    if (r === "all") { editSpeaker(sg.speaker_id); return; }
+    const name = r === "ok" && $("#al-name").value.trim();
+    if (!name) return;
+    try {
+      await api(`/api/segments/${segId}/assign`, { method: "POST", json: { name, remember: $("#al-rem").checked, whole_voice: !!($("#al-all-voice") && $("#al-all-voice").checked) } });
+      toast($("#al-rem").checked ? `${name} ✓ – Stimme gelernt` : `${name} ✓`);
+      await reload(true);
+    } catch (e) { toast(e.message, 6000); }
+  }
   async function editSpeaker(sid) {
     const s = rec.speakers.find((x) => x.id === sid);
     const others = rec.speakers.filter((x) => x.id !== sid);
     const r = await dialog(`<h2>Sprecher</h2>
       <label class="muted">Name</label><input type="text" id="sp-name" value="${esc(s.name)}">
-      <label class="row"><input type="checkbox" id="sp-rem" ${s.profile_id || /^Sprecher \d+$/.test(s.name) ? "checked" : ""}> Stimme merken – in Zukunft automatisch erkennen</label>
+      ${s.voices > 1 ? `<p class="muted" style="margin:0">Hier stecken ${s.voices} verschiedene Stimmen. Zum Lernen im Transkript einzelne Sätze antippen und zuordnen.</p>`
+        : `<label class="row"><input type="checkbox" id="sp-rem" ${s.profile_id || s.name === UNKNOWN || /^Sprecher \d+$/.test(s.name) ? "checked" : ""}> Stimme merken – in Zukunft automatisch erkennen${tip("remember")}</label>`}
       ${others.length ? `<label class="muted">Oder zusammenführen mit (falls doppelt erkannt)</label>
         <select id="sp-merge"><option value="">—</option>${others.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>` : ""}
       <div class="row"><span class="spacer"></span><button class="btn" value="cancel">Abbrechen</button><button class="btn primary" value="ok">Speichern</button></div>`,
-    (b) => $("#sp-name", b).select());
+    (b) => { $("#sp-name", b).select(); if (s.name === UNKNOWN) $("#sp-name", b).value = ""; });
     if (r !== "ok") return;
     const merge = $("#sp-merge") && $("#sp-merge").value;
     if (merge) {
@@ -783,7 +944,7 @@ async function viewDetail(id) {
       toast("Zusammengeführt");
     } else {
       const name = $("#sp-name").value.trim();
-      const remember = $("#sp-rem").checked;
+      const remember = !!($("#sp-rem") && $("#sp-rem").checked);
       try {
         await api(`/api/speakers/${sid}`, { method: "PATCH", json: { name, remember } });
         toast(remember ? `${name}: Stimme gespeichert ✓` : "Umbenannt");
@@ -865,10 +1026,10 @@ async function viewDetail(id) {
         const p = spk(s.speaker_id);
         const isHl = hl.some((h) => h >= s.start - 2 && h <= s.end + 2);
         return `<div class="tseg${isHl ? " hl" : ""}" data-id="${s.id}" style="--c:${p.color}">
-          <div class="spk"><button data-sid="${s.speaker_id}">${esc(p.name)}</button><span class="ts" data-seek="${s.start}">${fmtTime(s.start)}${isHl ? " ★" : ""}</span></div>
+          <div class="spk"><button data-sid="${s.speaker_id}" title="Wer sagt das? – antippen zum Zuordnen">${esc(p.name)}</button><span class="ts" data-seek="${s.start}">${fmtTime(s.start)}${isHl ? " ★" : ""}</span></div>
           <div class="tx" contenteditable="plaintext-only" spellcheck="false" data-id="${s.id}">${esc(s.text)}</div></div>`;
       }).join("")}</div>`;
-    $$("#segs .spk button").forEach((b) => b.onclick = () => editSpeaker(Number(b.dataset.sid)));
+    $$("#segs .spk button").forEach((b) => b.onclick = () => assignLine(Number(b.closest(".tseg").dataset.id)));
     $$("#segs .tx").forEach((el) => {
       el.addEventListener("blur", async () => {
         const s = segs().find((x) => x.id === Number(el.dataset.id));
@@ -1114,7 +1275,7 @@ async function viewAsk() {
 async function viewPeople() {
   const data = await api("/api/profiles");
   view.innerHTML = `<div class="page">
-    <div class="row"><span class="eyebrow">Stimmabdrücke · bleiben auf diesem Gerät</span></div>
+    <div class="row"><span class="eyebrow">Stimmabdrücke · bleiben auf diesem Gerät${tip("people")}</span></div>
     <h1 class="big">Personen<span class="acc">.</span></h1>
     <p class="muted" style="max-width:640px">REKORD erkennt Menschen an ihrer Stimme – live im Meeting und in jeder Aufnahme. Neue Person: im Live-Modus auf die unbekannte Stimme tippen,
       im Transkript auf den Sprecher klicken – oder hier eine Sprachprobe aufnehmen.</p>
@@ -1136,38 +1297,146 @@ async function viewPeople() {
   $("#enroll").onclick = async () => { await enrollDialog(); viewPeople(); };
 }
 
+// Every person reads their OWN text (~50 s): long enough for a solid voiceprint, varied sounds, numbers, questions.
+const READ_POOL = [
+  "Heute früh habe ich zuerst einen starken Kaffee getrunken und dann in Ruhe meine Nachrichten gelesen.",
+  "Auf dem Weg zur Arbeit fahre ich meistens mit dem Fahrrad, außer es regnet in Strömen.",
+  "Wusstest du, dass manche Schnecken bis zu drei Jahre am Stück schlafen können?",
+  "Für das Sommerfest brauchen wir noch Getränke, Tische, Stühle und eine ordentliche Lautsprecheranlage.",
+  "Wenn ich ehrlich bin, finde ich lange Besprechungen ohne Tagesordnung ziemlich anstrengend.",
+  "Der Zug nach Zürich fährt um siebzehn Uhr zweiunddreißig von Gleis vier ab.",
+  "Könnten wir das Budget bis Freitag noch einmal gemeinsam durchgehen?",
+  "Im Herbst färben sich die Blätter gelb, orange und tiefrot, und die Luft riecht nach Regen.",
+  "Mein Lieblingsessen ist eine Pizza mit Pilzen, Paprika und extra viel Käse.",
+  "Ich glaube, wir sollten zuerst die wichtigsten Aufgaben verteilen und danach über Details sprechen.",
+  "Gestern Abend war das Konzert so laut, dass mir heute noch die Ohren klingeln.",
+  "Bitte schick mir die Unterlagen per E-Mail, dann schaue ich sie mir am Wochenende an.",
+  "Zwölf Zwerge zogen zwanzig Zentner Zucker quer durch den Zoo.",
+  "Fischers Fritz fischt frische Fische, frische Fische fischt Fischers Fritz.",
+  "Das Wetter in den Bergen kann sich innerhalb einer Stunde komplett ändern.",
+  "Wie viele Leute erwarten wir eigentlich beim nächsten Workshop?",
+  "Ehrlich gesagt hätte ich nie gedacht, dass das Projekt so schnell fertig wird!",
+  "Unsere Nachbarin hat einen kleinen Hund, der jeden Morgen pünktlich um sechs Uhr bellt.",
+  "Für die Präsentation brauche ich noch drei Folien mit Zahlen und eine kurze Zusammenfassung.",
+  "Am liebsten verbringe ich meine Freizeit draußen, am See oder irgendwo in den Bergen.",
+  "Kannst du mir kurz erklären, wie das neue Programm eigentlich funktioniert?",
+  "Die Rechnung über vierhundertneunundachtzig Euro ist schon letzte Woche bezahlt worden.",
+  "Manchmal ist es besser, eine Pause zu machen und später mit frischem Kopf weiterzuarbeiten.",
+  "Quer über den Platz lief ein junger Mann mit einem riesigen Strauß Sonnenblumen.",
+  "Wir treffen uns am Dienstag um halb zehn im großen Besprechungsraum im dritten Stock.",
+  "Hast du schon gehört, dass die Bibliothek ab nächster Woche auch sonntags geöffnet hat?",
+  "Die Technik für den Abend besteht aus zwei Mikrofonen, einem Mischpult und vier Boxen.",
+  "Jeder im Team sollte genau wissen, wer für welche Aufgabe verantwortlich ist.",
+  "Bei schönem Wetter grillen wir im Garten, bei schlechtem kochen wir eine große Suppe.",
+  "Vielleicht sollten wir den Termin um eine Woche verschieben, damit wirklich alle dabei sein können.",
+  "Xaver übt jeden Abend Saxophon, sehr zur Freude seiner Nachbarn im Erdgeschoss.",
+  "Ich bin gespannt, was die Kundinnen und Kunden zu unserem Vorschlag sagen werden.",
+  "Achtung, die Brücke über den Fluss ist wegen Bauarbeiten bis Ende Juli gesperrt.",
+  "Ob wir das schaffen? Ich denke schon, wenn wir uns die Arbeit gut aufteilen.",
+];
+const READ_POOL_EN = [
+  "This morning I had a strong coffee first and then read my messages in peace.",
+  "Most days I ride my bike to work, unless it is pouring with rain.",
+  "Did you know that some snails can sleep for up to three years?",
+  "For the summer party we still need drinks, tables, chairs and a decent sound system.",
+  "To be honest, I find long meetings without an agenda pretty exhausting.",
+  "The train to Zurich leaves at five thirty-two from platform four.",
+  "Could we go through the budget together once more before Friday?",
+  "In autumn the leaves turn yellow, orange and deep red, and the air smells of rain.",
+  "My favourite food is a pizza with mushrooms, peppers and lots of extra cheese.",
+  "I think we should split up the most important tasks first and talk about details later.",
+  "The concert last night was so loud that my ears are still ringing today.",
+  "Please send me the documents by email and I will look at them over the weekend.",
+  "She sells seashells by the seashore, and the shells she sells are surely seashells.",
+  "The weather in the mountains can change completely within a single hour.",
+  "How many people are we actually expecting at the next workshop?",
+  "Honestly, I never thought the project would be finished this quickly!",
+  "Our neighbour has a little dog that barks every morning at exactly six o'clock.",
+  "For the presentation I still need three slides with numbers and a short summary.",
+  "Can you quickly explain how the new software actually works?",
+  "The invoice for four hundred and eighty-nine euros was paid last week.",
+  "Sometimes it is better to take a break and come back later with a fresh mind.",
+  "We meet on Tuesday at half past nine in the big meeting room on the third floor.",
+  "The technical setup for the evening is two microphones, a mixing desk and four speakers.",
+  "Everyone on the team should know exactly who is responsible for which task.",
+  "Maybe we should move the date by a week so that really everyone can be there.",
+  "I am curious what our customers will say about our proposal.",
+];
+function readingText(name, variant = 0, lang = state.language || "de") {
+  if (lang === "en") return readingTextFrom(READ_POOL_EN, name, variant,
+    (who) => `Hi, my name is ${who}. I am reading this text in my normal voice so that REKORD can recognise me in meetings.`,
+    "Finally I count slowly to ten: one, two, three, four, five, six, seven, eight, nine, ten.");
+  return readingTextFrom(READ_POOL, name, variant,
+    (who) => `Hallo, ich heiße ${who}. Ich lese diesen Text jetzt in meiner normalen Stimme vor, damit REKORD mich in Meetings erkennt.`,
+    "Zum Schluss zähle ich langsam bis zehn: eins, zwei, drei, vier, fünf, sechs, sieben, acht, neun, zehn.");
+}
+function readingTextFrom(POOL, name, variant, open, close) {
+  const key = (name || "").trim().toLowerCase() + "#" + variant;
+  let h = 2166136261;
+  for (const ch of key) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  const pool = POOL.map((t, i) => [((h ^ Math.imul(i + 1, 2654435761)) >>> 0) % 100003, t]).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+  return [open((name || "").trim() || "…"), ...pool.slice(0, 7), close].join(" ");
+}
+
+const ENROLL_TARGET = 45, ENROLL_MIN = 25;  // seconds of reading
 async function enrollDialog(opts = {}) {
-  const TEXT = opts.intro
-    ? "Stell dich kurz vor: Name, was du machst, und worum es dir in diesem Meeting geht. Ganz normal reden, ca. 10–15 Sekunden."
-    : "Hallo, ich nehme jetzt eine kurze Sprachprobe auf. REKORD lernt meine Stimme, damit es mich in Meetings automatisch erkennt. Ich lese diesen Text ganz normal vor, so wie ich auch im Alltag spreche. Eins, zwei, drei, vier, fünf.";
-  let rec, chunks = [], timer, secs = 0, stream;
-  const r = await dialog(`<h2>${opts.intro ? "Vorstellungsrunde" : "Person einsprechen"}</h2><input type="text" id="en-name" placeholder="Name" value="${esc(opts.name || "")}">
-    <p class="muted" style="margin:0">${opts.intro ? "Handy/Mikro zur Person, dann:" : "Lies diesen Text in normaler Lautstärke vor (ca. 15 Sekunden):"}</p>
-    <blockquote style="margin:0;padding:12px 16px;border-left:3px solid var(--accent);background:var(--card2);border-radius:8px">${TEXT}</blockquote>
+  let rec, chunks = [], timer, secs = 0, stream, variant = 0;
+  try { state.language = (await api("/api/settings")).language; } catch (e) {}
+  const title = opts.intro ? `Vorstellungsrunde${opts.step ? " · " + opts.step : ""}` : "Person einsprechen";
+  const r = await dialog(`<h2>${title}${tip("intro")}</h2>
+    <input type="text" id="en-name" placeholder="Name der Person" value="${esc(opts.name || "")}" autocomplete="off">
+    <p class="muted" style="margin:0">${opts.intro ? "Mikro zur Person. Sie liest ihren eigenen Text vor" : "Lies diesen Text vor"} – ganz normal, wie im Meeting (ca. ${ENROLL_TARGET} Sekunden):</p>
+    <blockquote id="en-text" class="read-text"></blockquote>
+    <div class="row"><button type="button" class="btn ghost sm" id="en-other">↻ Anderer Text</button></div>
     <div class="row"><button type="button" class="btn primary" id="en-rec">● Aufnahme starten</button><span class="timer" id="en-t">0 s</span></div>
-    <label class="muted">…oder Datei mit nur dieser Person wählen</label><input type="file" id="en-file" accept="audio/*">
-    <div class="row"><span class="spacer"></span><button class="btn" value="cancel">Abbrechen</button><button class="btn primary" value="ok" id="en-ok">Speichern</button></div>`,
+    <div class="progress" style="width:100%"><i id="en-bar" style="width:0%"></i></div>
+    <div class="muted" id="en-hint" style="font-size:13px">Mindestens ${ENROLL_MIN} Sekunden – je länger, desto sicherer die Erkennung.</div>
+    <details><summary class="muted" style="cursor:pointer">…oder eine Datei mit nur dieser Person</summary><input type="file" id="en-file" accept="audio/*,video/*"></details>
+    <div class="row"><span class="spacer"></span><button class="btn" value="cancel">Abbrechen</button><button class="btn primary" value="ok" id="en-ok" disabled>Stimme speichern</button></div>`,
   (b) => {
+    const text = () => { $("#en-text", b).textContent = readingText($("#en-name", b).value, variant); };
+    const ready = () => { $("#en-ok", b).disabled = !$("#en-name", b).value.trim() || !(secs >= ENROLL_MIN || $("#en-file", b).files.length); };
+    text(); ready();
+    $("#en-name", b).addEventListener("input", () => { text(); ready(); });
+    $("#en-other", b).onclick = () => { variant++; text(); };
+    $("#en-file", b).onchange = ready;
     $("#en-rec", b).onclick = async () => {
       if (rec && rec.state === "recording") { rec.stop(); return; }
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: prefs.micId ? { ideal: prefs.micId } : undefined } });
-      rec = new MediaRecorder(stream); chunks = []; secs = 0;
+      if (!$("#en-name", b).value.trim()) { toast("Zuerst den Namen eingeben – der Text wird für die Person erstellt."); $("#en-name", b).focus(); return; }
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: prefs.micId ? { ideal: prefs.micId } : undefined,
+        echoCancellation: prefs.echoCancellation, noiseSuppression: prefs.noiseSuppression, autoGainControl: prefs.autoGainControl } }); }
+      catch (e) { toast("Mikrofon nicht verfügbar: " + e.message, 5000); return; }
+      rec = new MediaRecorder(stream); chunks = []; secs = 0; ready();
       rec.ondataavailable = (e) => chunks.push(e.data);
-      rec.onstop = () => { clearInterval(timer); stream.getTracks().forEach((t) => t.stop()); $("#en-rec").textContent = "↺ Neu aufnehmen"; };
-      rec.start();
-      $("#en-rec").textContent = "■ Stopp";
-      timer = setInterval(() => { secs++; $("#en-t").textContent = secs + " s"; if (secs >= 30) rec.stop(); }, 1000);
+      rec.onstop = () => { clearInterval(timer); stream.getTracks().forEach((t) => t.stop()); $("#en-rec").textContent = "↺ Neu aufnehmen"; ready(); };
+      rec.start(1000);
+      $("#en-rec").textContent = "■ Fertig";
+      timer = setInterval(() => {
+        secs++;
+        $("#en-t").textContent = secs + " s";
+        $("#en-bar").style.width = Math.min(100, (secs / ENROLL_TARGET) * 100) + "%";
+        $("#en-hint").innerHTML = secs < ENROLL_MIN ? `Weiterlesen … noch ${ENROLL_MIN - secs} s bis zum Minimum.`
+          : secs < ENROLL_TARGET ? `<span style="color:#22C55E">✓ Reicht.</span> Bis zum Ende lesen macht die Erkennung noch sicherer.`
+          : `<span style="color:#22C55E">✓ Perfekt.</span> Du kannst auf „Fertig“ drücken.`;
+        if (secs >= 120) rec.stop();
+      }, 1000);
     };
   });
   if (rec && rec.state === "recording") rec.stop();
-  await sleep(150);
+  await sleep(250);
   if (r !== "ok") return null;
   const name = $("#en-name").value.trim();
   const file = $("#en-file").files[0] || (chunks.length ? new File(chunks, "probe.webm", { type: chunks[0].type || "audio/webm" }) : null);
   if (!name || !file) { toast("Name und Sprachprobe nötig"); return null; }
   const fd = new FormData(); fd.append("name", name); fd.append("file", file);
-  try { const prof = await api("/api/profiles/enroll", { method: "POST", body: fd }); toast(`${name}: Stimme gespeichert ✓`); return prof; }
-  catch (e) { toast(e.message, 5000); return null; }
+  toast("Stimmabdruck wird berechnet …", 8000);
+  try {
+    const prof = await api("/api/profiles/enroll", { method: "POST", body: fd });
+    const q = prof.quality || {};
+    const grade = q.consistency >= 0.85 ? "sehr gut" : q.consistency >= 0.75 ? "gut" : "ok – nochmal einsprechen macht sie sicherer";
+    toast(`${name}: Stimme gespeichert ✓ · ${Math.round(q.seconds || 0)} s Sprache · Qualität ${grade}`, 5000);
+    return prof;
+  } catch (e) { toast(e.message, 7000); return null; }
 }
 
 // ================================================================ TEMPLATES
@@ -1238,7 +1507,9 @@ async function ollamaPanel(cfg) {
   } else {
     html = `<div class="muted" style="font-size:13px;margin-bottom:10px"><span class="dot ok"></span>Ollama läuft${st.version ? " · v" + esc(st.version) : ""} · ${gbFmt(st.ram_gb)} RAM</div>`;
     if (st.models.length) html += `<div class="eyebrow" style="margin-bottom:6px">Deine Modelle – antippen zum Verwenden</div>
-      <div class="row" style="margin-bottom:14px">${st.models.map((m) => `<button class="btn sm ${m.name === cfg.model ? "primary" : ""}" data-use="${esc(m.name)}">${m.name === cfg.model ? "✓ " : ""}${esc(m.name)} <span class="muted">${gbFmt(m.size_gb)}</span></button>`).join("")}</div>`;
+      <div class="oll-models" style="margin-bottom:14px">${st.models.map((m) => `<div class="row oll-model"><button class="btn sm ${m.name === cfg.model ? "primary" : ""}" data-use="${esc(m.name)}">${m.name === cfg.model ? "✓ " : ""}${esc(m.name)} <span class="muted">${gbFmt(m.size_gb)}</span></button>
+        ${IS_LOCAL ? `<button class="btn ghost sm" data-odel="${esc(m.name)}" title="Vom Computer löschen">Löschen</button>` : ""}</div>`).join("")}${IS_LOCAL ? tip("ollamadelete") : ""}</div>
+      ${st.service ? `<p class="muted" style="font-size:13px">Ollama läuft hier als Systemdienst – der Speicherort für dessen Modelle wird im Dienst festgelegt (<span class="kbd">sudo systemctl edit ollama</span> → <span class="kbd">Environment="OLLAMA_MODELS=…"</span>).</p>` : ""}`;
     html += `<div class="eyebrow" style="margin-bottom:6px">${st.models.length ? "Weitere laden" : "Modell laden"}</div>` + st.recommended.map((r) => {
       const pr = st.pulls[r.name] || {};
       const pct = pr.total ? Math.round((pr.done / pr.total) * 100) : 0;
@@ -1266,6 +1537,16 @@ async function ollamaPanel(cfg) {
     await api("/api/settings", { method: "PUT", json: { llm: { ollama: { model: b.dataset.use } } } });
     cfg.model = b.dataset.use; toast(`${b.dataset.use} wird verwendet`); refreshStatus(); ollamaPanel(cfg);
   });
+  $$("#oll [data-odel]").forEach((b) => b.onclick = async () => {
+    const name = b.dataset.odel;
+    if (!(await confirmBox(`${name} löschen?`, "Das Modell wird vom Computer entfernt und der Speicher frei. Neu laden geht jederzeit.", "Löschen"))) return;
+    b.disabled = true;
+    try {
+      const r = await api(`/api/ollama/models/${encodeURIComponent(name)}`, { method: "DELETE" });
+      cfg.model = r.model; toast(`${name} gelöscht${r.model ? ` · jetzt: ${r.model}` : ""}`); refreshStatus();
+    } catch (e) { toast(e.message, 6000); }
+    ollamaPanel(cfg);
+  });
   $$("#oll [data-pull]").forEach((b) => b.onclick = async () => {
     b.disabled = true; b.textContent = "startet …";
     await api("/api/ollama/pull", { method: "POST", json: { model: b.dataset.pull } }); ollamaPanel(cfg);
@@ -1276,6 +1557,99 @@ async function ollamaPanel(cfg) {
     const s = await api("/api/settings"); cfg.model = s.llm.ollama.model;  // a finished first download is auto-selected
     ollamaPanel(cfg); refreshStatus();
   }, wasPulling ? 1000 : 4000);
+}
+
+// ---------------------------------------------------------------- storage: where data and models live
+async function pickLocation(title, current, what) {
+  const s = await api("/api/storage");
+  const drives = s.drives || [];
+  const kindIcon = { internal: "💻", external: "🔌", nvme: "⚡", network: "🌐", removable: "💾" };
+  let target = current;
+  const r = await dialog(`<h2>${esc(title)}${tip(what === "models" ? "modelsdir" : "storage")}</h2>
+    <div class="drive-list">${drives.map((d, k) => `<button type="button" class="drive" data-k="${k}"><span class="drive-ico">${kindIcon[d.kind] || "💽"}</span>
+      <span><b>${esc(d.name)}</b><small>${esc(d.kind_label)} · ${gbFmt(d.free_gb)} frei${d.writable ? "" : " · schreibgeschützt"}</small></span></button>`).join("")}</div>
+    <label class="muted" for="pl-path">Ordner</label><input type="text" id="pl-path" value="${esc(current)}" spellcheck="false" autocomplete="off">
+    ${what === "models" ? `<label class="row"><input type="checkbox" id="pl-oll" checked> Lokale KI-Modelle (Ollama) mitnehmen</label>` : ""}
+    <p class="muted" style="margin:0;font-size:13px">${what === "models" ? `Belegt gerade ${gbFmt(s.usage.models_gb + (s.models_custom ? 0 : s.usage.ollama_gb))}.`
+      : `Belegt gerade ${gbFmt(s.usage.data_gb)}. Danach startet REKORD kurz neu; der alte Ordner bleibt als Sicherheitskopie.`}</p>
+    <div class="row"><span class="spacer"></span><button class="btn" value="cancel">Abbrechen</button><button class="btn primary" value="ok">Umziehen</button></div>`,
+  (b) => {
+    $$(".drive", b).forEach((x) => x.onclick = () => {
+      const d = drives[Number(x.dataset.k)], sug = s.suggest[d.path];
+      $$(".drive", b).forEach((y) => y.classList.toggle("on", y === x));
+      $("#pl-path", b).value = what === "models" ? sug.models : sug.home;
+    });
+  });
+  if (r !== "ok") return null;
+  target = $("#pl-path").value.trim();
+  return target && target !== current ? { target, ollama: $("#pl-oll") ? $("#pl-oll").checked : true } : null;
+}
+
+function watchStorageJob(el, onDone) {
+  let t = null;
+  const poll = async () => {
+    if (!el.isConnected) return;
+    let s;
+    try { s = await api("/api/storage"); }
+    catch (e) {  // the hub restarts in the new place
+      el.innerHTML = `<span class="muted">REKORD startet am neuen Ort neu …</span>`;
+      t = setTimeout(async () => { try { await api("/api/status"); location.reload(); } catch (e2) { poll(); } }, 1500);
+      return;
+    }
+    const j = s.job, pct = j.total ? Math.round((j.done / j.total) * 100) : 0;
+    if (j.state === "error") { el.innerHTML = `<span style="color:#EF4444">✗ ${esc(j.error)}</span>`; return; }
+    if (j.state === "done" && !j.restart) { toast("Umgezogen ✓"); onDone && onDone(); return; }
+    el.innerHTML = `<div class="muted" style="font-size:13px">${j.restart ? "Fertig – REKORD startet neu …" : `${esc(j.what)} werden verschoben … ${pct} %`}</div>
+      <div class="progress" style="width:100%"><i style="width:${j.restart ? 100 : pct}%"></i></div>`;
+    t = setTimeout(poll, 800);
+  };
+  poll();
+  return () => clearTimeout(t);
+}
+
+async function renderStorage() {
+  const h = $("#st-home"), m = $("#st-models"); if (!h || !m) return;
+  let s;
+  try { s = await api("/api/storage"); } catch (e) { m.textContent = e.message; return; }
+  const btn = (id) => IS_LOCAL && !s.env_locked ? `<button class="btn sm" id="${id}">Ändern …</button>` : "";
+  h.innerHTML = `<div class="row"><span class="kbd">${esc(s.home)}</span>${btn("st-home-btn")}</div>
+    <span class="hint">${s.home_free_gb != null ? gbFmt(s.home_free_gb) + " frei" : ""}${s.usage ? ` · belegt ${gbFmt(s.usage.data_gb)}` : ""}</span><div id="st-home-job"></div>`;
+  m.innerHTML = `<div class="row"><span class="kbd">${esc(s.models)}</span>${btn("st-models-btn")}</div>
+    <span class="hint">${s.models_free_gb != null ? gbFmt(s.models_free_gb) + " frei" : ""}${s.usage ? ` · Sprachmodelle ${gbFmt(s.usage.models_gb)}` : ""}
+      · Lokale KI: ${esc(s.ollama_models)}${s.usage && s.usage.ollama_gb ? ` (${gbFmt(s.usage.ollama_gb)})` : ""}</span><div id="st-models-job"></div>`;
+  if (s.job.state === "running") watchStorageJob($(s.job.what === "Daten" ? "#st-home-job" : "#st-models-job"), renderStorage);
+  const move = async (what) => {
+    const pick = await pickLocation(what === "models" ? "KI-Modelle speichern auf …" : "Speicherort ändern", what === "models" ? s.models : s.home, what);
+    if (!pick) return;
+    try {
+      await api("/api/storage/move", { method: "POST", json: { what, target: pick.target, ollama: pick.ollama } });
+      watchStorageJob($(what === "models" ? "#st-models-job" : "#st-home-job"), renderStorage);
+    } catch (e) { toast(e.message, 7000); }
+  };
+  $("#st-home-btn") && ($("#st-home-btn").onclick = () => move("home"));
+  $("#st-models-btn") && ($("#st-models-btn").onclick = () => move("models"));
+}
+
+// the external drive with the data is not connected: say so instead of showing an empty library
+function viewMissing(path) {
+  $("#fab").classList.add("hide");
+  view.innerHTML = `<div class="page narrow"><h1 class="big">Laufwerk fehlt<span class="acc">.</span></h1>
+    <div class="card"><p style="margin-top:0">REKORD speichert auf <span class="kbd">${esc(path)}</span> – dieses Laufwerk ist gerade nicht angeschlossen.</p>
+    <p class="muted">Schließ die Festplatte an (oder verbinde das Netzlaufwerk) und tippe auf <b>Nochmal prüfen</b>. Deine Aufnahmen sind dort sicher.</p>
+    <div class="row"><button class="btn primary" id="mi-retry">Nochmal prüfen</button><button class="btn" id="mi-forget">Neu auf diesem Computer anfangen</button></div>
+    <div id="mi-msg" class="muted" style="margin-top:10px"></div></div></div>`;
+  $("#mi-retry").onclick = async () => {
+    const r = IS_LOCAL ? await api("/api/storage/missing", { method: "POST", json: { action: "retry" } }) : { found: false };
+    if (!r.found) { $("#mi-msg").textContent = "Noch nicht gefunden."; return; }
+    $("#mi-msg").textContent = "Gefunden – REKORD startet neu …";
+    setTimeout(function wait() { api("/api/status").then((s) => s.storage_missing ? setTimeout(wait, 1000) : location.reload()).catch(() => setTimeout(wait, 1000)); }, 1500);
+  };
+  $("#mi-forget").onclick = async () => {
+    if (!(await confirmBox("Neu anfangen?", "REKORD legt einen neuen, leeren Ordner auf diesem Computer an. Die Daten auf dem Laufwerk bleiben unberührt – du kannst später wieder dorthin wechseln.", "Neu anfangen"))) return;
+    await api("/api/storage/missing", { method: "POST", json: { action: "forget" } });
+    $("#mi-msg").textContent = "REKORD startet neu …";
+    setTimeout(function wait() { api("/api/status").then(() => location.reload()).catch(() => setTimeout(wait, 1000)); }, 2000);
+  };
 }
 
 let intCache = null;
@@ -1298,88 +1672,91 @@ async function viewSettings() {
     <div class="set-nav">${sections.map(([k, n]) => `<button class="btn sm" data-go="${k}">${n}</button>`).join("")}</div>
 
     <section class="set-sec" id="s-look"><h2>Darstellung <span class="badge">dieses Gerät</span></h2><div class="card">
-      <div class="field"><div class="lbl">Erscheinungsbild</div><div class="seg" id="theme">${[["system", "System"], ["light", "Hell"], ["dark", "Dunkel"]].map(([k, n]) =>
-        `<button data-v="${k}" class="${prefs.theme === k ? "on" : ""}">${n}</button>`).join("")}</div></div>
-      <div class="field"><div class="lbl">Akzentfarbe<span class="hint">Knöpfe, Markierungen, Fortschritt.</span></div><div class="swatches" id="acc">
+      <div class="field"><div class="lbl">Erscheinungsbild${tip("theme")}</div><div class="seg" id="theme">${[["system", "System", "Wie dein Gerät"], ["light", "Hell", "Immer hell"], ["dark", "Dunkel", "Immer dunkel"]].map(([k, n, t]) =>
+        `<button data-v="${k}" title="${t}" class="${prefs.theme === k ? "on" : ""}">${n}</button>`).join("")}</div></div>
+      <div class="field"><div class="lbl">Akzentfarbe${tip("accent")}<span class="hint">Knöpfe, Markierungen, Fortschritt.</span></div><div class="swatches" id="acc">
         ${ACCENTS.map(([c, n]) => `<button class="sw ${prefs.accent.toLowerCase() === c.toLowerCase() ? "on" : ""}" style="--c:${c}" title="${n}" data-c="${c}"></button>`).join("")}
         <input type="color" class="sw-custom" id="acc-custom" value="${prefs.accent}" title="Eigene Farbe"></div></div>
-      <div class="field"><div class="lbl">Dichte</div><div class="seg" id="dens">${[["comfortable", "Luftig"], ["compact", "Kompakt"]].map(([k, n]) =>
-        `<button data-v="${k}" class="${prefs.density === k ? "on" : ""}">${n}</button>`).join("")}</div></div>
+      <div class="field"><div class="lbl">Dichte${tip("density")}<span class="hint">Abstände in der App.</span></div><div class="seg" id="dens">${[["comfortable", "Luftig", "Mehr Abstand, gut zum Tippen"], ["compact", "Kompakt", "Weniger Abstand, mehr auf einen Blick"]].map(([k, n, t]) =>
+        `<button data-v="${k}" title="${t}" class="${prefs.density === k ? "on" : ""}">${n}</button>`).join("")}</div></div>
     </div></section>
 
     <section class="set-sec" id="s-audio"><h2>Audio & Mikrofon <span class="badge">dieses Gerät</span></h2><div class="card">
-      <div class="field"><label for="mic">Mikrofon<span class="hint">USB-Mikro, Headset, Konferenz-Speaker, AirPods …</span></label>
-        <div><select id="mic"><option value="">Systemstandard</option></select><div class="row" style="margin-top:8px"><button class="btn sm" id="mic-test">Pegel testen</button>
+      <div class="field"><label for="mic">Mikrofon${tip("mic")}<span class="hint">USB-Mikro, Headset, Konferenz-Speaker, AirPods …</span></label>
+        <div><select id="mic"><option value="">Systemstandard</option></select><div class="row" style="margin-top:8px"><button class="btn sm" id="mic-test">Pegel testen</button>${tip("mictest")}
         <div class="level" style="flex:1"><i id="mic-lvl"></i></div></div></div></div>
-      <div class="field"><div class="lbl">Standard-Quelle<span class="hint">"Call-Ton" nimmt in Chrome/Edge am Computer zusätzlich Zoom/Teams/Meet auf.</span></div>
-        <div class="seg" id="imode">${[["mic", "Mikrofon"], ["mic+system", "Mikro + Call-Ton"]].map(([k, n]) => `<button data-v="${k}" class="${prefs.inputMode === k ? "on" : ""}">${n}</button>`).join("")}</div></div>
-      <div class="field"><div class="lbl">Audio-Verarbeitung<span class="hint">Für Raum-Meetings meist alles an. Für Musik/Interviews mit gutem Mikro: aus.</span></div><div>
+      <div class="field"><div class="lbl">Standard-Quelle${tip("source")}<span class="hint">"Call-Ton" nimmt in Chrome/Edge am Computer zusätzlich Zoom/Teams/Meet auf.</span></div>
+        <div class="seg" id="imode">${[["mic", "Mikrofon", "Nur dein Mikrofon"], ["mic+system", "Mikro + Call-Ton", "Mikrofon plus Ton eines Browser-Tabs (Zoom, Teams, Meet)"]].map(([k, n, t]) => `<button data-v="${k}" title="${t}" class="${prefs.inputMode === k ? "on" : ""}">${n}</button>`).join("")}</div></div>
+      <div class="field"><div class="lbl">Audio-Verarbeitung${tip("processing")}<span class="hint">Für Raum-Meetings meist alles an. Für Musik/Interviews mit gutem Mikro: aus.</span></div><div>
         ${[["noiseSuppression", "Rauschunterdrückung"], ["echoCancellation", "Echo-Unterdrückung"], ["autoGainControl", "Automatische Lautstärke"]].map(([k, n]) =>
-          `<label class="row" style="margin-bottom:6px"><input type="checkbox" data-pref="${k}" ${prefs[k] ? "checked" : ""}> ${n}</label>`).join("")}</div></div>
-      <div class="field"><div class="lbl">Live-Erkennung<span class="hint">Aus = nur aufnehmen, Auswertung danach (spart Akku am Handy).</span></div>
+          `<label class="row" style="margin-bottom:6px"><input type="checkbox" data-pref="${k}" ${prefs[k] ? "checked" : ""}> ${n}${tip(k)}</label>`).join("")}</div></div>
+      <div class="field"><div class="lbl">Live-Erkennung${tip("liveDetect")}<span class="hint">Aus = nur aufnehmen, Auswertung danach (spart Akku am Handy).</span></div>
         <label class="row"><input type="checkbox" data-pref="liveDetect" ${prefs.liveDetect ? "checked" : ""}> Während der Aufnahme zeigen, wer spricht</label></div>
-      <div class="field"><div class="lbl">Bildschirm wach halten</div><label class="row"><input type="checkbox" data-pref="wakeLock" ${prefs.wakeLock ? "checked" : ""}> Während Aufnahme nicht sperren</label></div>
+      <div class="field"><div class="lbl">Bildschirm wach halten${tip("wakeLock")}<span class="hint">Wichtig beim Aufnehmen am Handy.</span></div><label class="row"><input type="checkbox" data-pref="wakeLock" ${prefs.wakeLock ? "checked" : ""}> Während Aufnahme nicht sperren</label></div>
     </div></section>
 
-    <section class="set-sec" id="s-ai"><h2>KI</h2><div class="card">
+    <section class="set-sec" id="s-ai"><h2>KI${tip("provider")}</h2><div class="card">
       <div class="provider-grid" id="prov">${[["anthropic", "Claude", "Anthropic API"], ["openai", "ChatGPT", "OpenAI API"], ["ollama", "Lokal", "Ollama – nichts verlässt den PC"],
         ["compatible", "Kompatibel", "LM Studio, llama.cpp, OpenRouter …"], ["none", "Aus", "Nur Transkription"]].map(([k, n, d]) =>
-        `<button class="prov ${s.llm.provider === k ? "on" : ""}" data-p="${k}"><b>${n}</b><small>${d}</small></button>`).join("")}</div>
+        `<button class="prov ${s.llm.provider === k ? "on" : ""}" data-p="${k}" title="${n}: ${d}"><b>${n}</b><small>${d}</small></button>`).join("")}</div>
       <div id="prov-cfg"></div>
-      <div class="field"><label for="sumlang">Sprache der Zusammenfassungen</label><select id="sumlang">${[["de", "Deutsch"], ["en", "Englisch"], ["auto", "Wie im Gespräch"]].map(([k, n]) => opt(k, s.summary_language, n)).join("")}</select></div>
-      <div class="field"><div class="lbl">Automatisch zusammenfassen<span class="hint">Nach jeder Aufnahme, mit dieser Vorlage.</span></div><div>
+      <div class="field"><label for="sumlang">Sprache der Zusammenfassungen${tip("sumlang")}</label><select id="sumlang">${[["de", "Deutsch"], ["en", "Englisch"], ["auto", "Wie im Gespräch"]].map(([k, n]) => opt(k, s.summary_language, n)).join("")}</select></div>
+      <div class="field"><div class="lbl">Automatisch zusammenfassen${tip("autosum")}<span class="hint">Nach jeder Aufnahme, mit dieser Vorlage.</span></div><div>
         <label class="row" style="margin-bottom:8px"><input type="checkbox" id="autosum" ${s.auto_summary ? "checked" : ""}> Aktiv</label>
         <select id="deftpl"></select></div></div>
     </div></section>
 
     <section class="set-sec" id="s-asr"><h2>Transkription</h2><div class="card">
-      <div class="field"><label for="lang">Sprache<span class="hint">Fest einstellen = genauer. Auto erkennt pro Satz (gemischte Meetings).</span></label>
+      <div class="field"><label for="lang">Sprache${tip("lang")}<span class="hint">Fest einstellen = genauer. Auto erkennt pro Satz (gemischte Meetings).</span></label>
         <select id="lang">${LANGS.map(([k, n]) => opt(k, s.language, n)).join("")}</select></div>
-      <div class="field"><label for="engine">Engine</label><select id="engine">${opt("sherpa", s.asr_engine, "Whisper ONNX (überall, CPU)")}${
+      <div class="field"><label for="engine">Engine${tip("engine")}<span class="hint">Was Sprache in Text verwandelt.</span></label><select id="engine">${opt("sherpa", s.asr_engine, "Whisper ONNX (überall, CPU)")}${
         opt("faster-whisper", s.asr_engine, "faster-whisper (GPU/CUDA, Wortzeiten)" + (st.faster_whisper ? "" : " – nicht installiert"))}</select></div>
-      <div class="field"><label for="asrm">Modell<span class="hint">turbo = beste Qualität pro Sekunde. small = Laptop-Standard.</span></label><select id="asrm"></select></div>
-      <div class="field"><label for="thr">CPU-Threads</label><input type="number" id="thr" min="1" max="32" value="${s.threads}" style="max-width:120px"></div>
-      <div class="field"><div class="lbl">Vokabular<span class="hint">Namen & Fachbegriffe, die falsch erkannt werden. "Beni" → "Beeni".</span></div><div>
+      <div class="field"><label for="asrm">Modell${tip("asrmodel")}<span class="hint">turbo = beste Qualität pro Sekunde. small = Laptop-Standard.</span></label><select id="asrm"></select></div>
+      <div class="field"><label for="thr">CPU-Threads${tip("threads")}<span class="hint">Mehr = schneller, Computer stärker ausgelastet.</span></label><input type="number" id="thr" min="1" max="32" value="${s.threads}" style="max-width:120px"></div>
+      <div class="field"><div class="lbl">Vokabular${tip("vocab")}<span class="hint">Namen & Fachbegriffe, die falsch erkannt werden. "Beni" → "Beeni".</span></div><div>
         <div id="vocab"></div><button class="btn sm" id="vadd" style="margin-top:8px">+ Begriff</button></div></div>
     </div></section>
 
     <section class="set-sec" id="s-spk"><h2>Sprecher-Erkennung</h2><div class="card">
-      <div class="field"><label>Personen-Erkennung (Aufnahmen)<span class="hint">Höher = strenger, weniger Verwechslungen. Standard 0.55.</span></label>
+      <div class="field"><label>Personen-Erkennung (Aufnahmen)${tip("pthr")}<span class="hint">Höher = strenger, weniger Verwechslungen. Standard 0.55.</span></label>
         <div class="row"><input type="range" min="0.3" max="0.9" step="0.01" id="pthr" value="${s.profile_threshold}"><b id="pthr-v">${s.profile_threshold}</b></div></div>
-      <div class="field"><label>Personen-Erkennung (live)<span class="hint">Live-Ausschnitte sind kurz – etwas lockerer. Standard 0.50.</span></label>
+      <div class="field"><label>Personen-Erkennung (live)${tip("lthr")}<span class="hint">Live-Ausschnitte sind kurz – etwas lockerer. Standard 0.50.</span></label>
         <div class="row"><input type="range" min="0.3" max="0.9" step="0.01" id="lthr" value="${s.live_profile_threshold}"><b id="lthr-v">${s.live_profile_threshold}</b></div></div>
-      <div class="field"><label>Sprecher trennen<span class="hint">Höher = mehr unterschiedliche Sprecher. Wenn eine Person doppelt erscheint: runter.</span></label>
+      <div class="field"><label>Sprecher trennen${tip("cthr")}<span class="hint">Höher = mehr unterschiedliche Sprecher. Wenn eine Person doppelt erscheint: runter.</span></label>
         <div class="row"><input type="range" min="0.3" max="0.95" step="0.01" id="cthr" value="${s.cluster_threshold}"><b id="cthr-v">${s.cluster_threshold}</b></div></div>
-      <div class="field"><label for="nspk">Anzahl Sprecher<span class="hint">Wenn bekannt, fix einstellen = präziser.</span></label>
+      <div class="field"><label for="nspk">Anzahl Sprecher${tip("nspk")}<span class="hint">Für Importe. Live fragt REKORD jedes Mal.</span></label>
         <select id="nspk">${[0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12].map((n) => opt(n, s.num_speakers, n ? n + " Personen" : "Automatisch")).join("")}</select></div>
-      <div class="field"><label for="embm">Stimmabdruck-Modell<span class="hint">Wechsel macht bestehende Stimmprofile unbrauchbar.</span></label>
+      <div class="field"><label for="embm">Stimmabdruck-Modell${tip("embm")}<span class="hint">Wechsel macht bestehende Stimmprofile unbrauchbar.</span></label>
         <select id="embm">${["eres2net-base", "campplus", "wespeaker-resnet34"].map((m) => opt(m, s.embedding_model, m)).join("")}</select></div>
     </div></section>
 
-    <section class="set-sec" id="s-models"><h2>Modelle</h2><div class="card" id="models"></div></section>
+    <section class="set-sec" id="s-models"><h2>Modelle${tip("models")}</h2><div class="card" id="models"></div></section>
 
-    <section class="set-sec" id="s-pair"><h2>iPhone & Geräte</h2><div class="card" id="pair"></div></section>
+    <section class="set-sec" id="s-pair"><h2>iPhone & Geräte${tip("qr")}</h2><div class="card" id="pair"></div></section>
 
     <section class="set-sec" id="s-int"><h2>Claude Desktop (MCP)</h2><div class="card">
       <p style="margin-top:0">Verbinde deine REKORD-Bibliothek direkt mit <b>Claude Desktop</b> oder <b>Claude Code</b>. Claude kann dann alle Transkripte durchsuchen,
         lesen und Zusammenfassungen zurückspeichern – mit deinem normalen Claude-Abo, ohne API-Key.</p>
-      <div class="field"><div class="lbl">Claude Desktop<span class="hint">Die App von claude.ai/download.</span></div><div id="int-cd" class="muted">prüfe …</div></div>
-      <div class="field"><div class="lbl">Claude Code<span class="hint">Claude im Terminal.</span></div><div id="int-cc" class="muted">prüfe …</div></div>
+      <div class="field"><div class="lbl">Claude Desktop${tip("claudedesktop")}<span class="hint">Die App von claude.ai/download.</span></div><div id="int-cd" class="muted">prüfe …</div></div>
+      <div class="field"><div class="lbl">Claude Code${tip("claudecode")}<span class="hint">Claude im Terminal.</span></div><div id="int-cc" class="muted">prüfe …</div></div>
       <details><summary class="muted" style="cursor:pointer">Von Hand eintragen</summary>
         <p class="muted">Claude Desktop → Einstellungen → Entwickler → Konfiguration bearbeiten, und eintragen:</p>
         <pre class="code" id="mcp"></pre><button class="btn sm" id="mcp-copy">Kopieren</button>
         <p class="muted" style="margin-bottom:0">Claude Code: <span class="kbd" id="mcp-cc"></span></p></details></div></section>
 
     <section class="set-sec" id="s-data"><h2>Speicher & Datenschutz</h2><div class="card">
-      <div class="field"><div class="lbl">Datenordner</div><div><span class="kbd">${esc(st.home)}</span><span class="hint">Audio, Datenbank, Modelle. Backup = diesen Ordner kopieren.</span></div></div>
-      <div class="field"><div class="lbl">Eingangsordner<span class="hint">Dateien, die hier landen, werden automatisch verarbeitet – z. B. per iCloud/Dropbox-Sync vom Handy oder Diktiergerät.</span></div>
+      <div class="field"><div class="lbl">Speicherort${tip("storage")}<span class="hint">Aufnahmen, Datenbank, Stimmabdrücke. Backup = diesen Ordner kopieren.</span></div><div id="st-home"><span class="kbd">${esc(st.home)}</span></div></div>
+      <div class="field"><div class="lbl">KI-Modelle${tip("modelsdir")}<span class="hint">Sprachmodelle und lokale KI – gern auf einem anderen Laufwerk.</span></div><div id="st-models" class="muted">prüfe …</div></div>
+      <div class="field"><div class="lbl">Eingangsordner${tip("inbox")}<span class="hint">Dateien, die hier landen, werden automatisch verarbeitet – z. B. per iCloud/Dropbox-Sync vom Handy oder Diktiergerät.</span></div>
         <div><span class="kbd">${esc(st.inbox)}</span><label class="row" style="margin-top:8px"><input type="checkbox" id="inbox" ${s.inbox_enabled ? "checked" : ""}> Überwachen</label></div></div>
-      <div class="field"><div class="lbl">Was verlässt das Gerät?</div><div class="muted">Audio, Transkription, Sprecher-Erkennung: <b>nie</b>. Für Zusammenfassungen geht nur der
+      <div class="field"><div class="lbl">Was verlässt das Gerät?${tip("privacy")}</div><div class="muted">Audio, Transkription, Sprecher-Erkennung: <b>nie</b>. Für Zusammenfassungen geht nur der
         <b>Text</b> an die gewählte KI – bei Ollama/LM Studio auch das nicht. Keine Telemetrie, kein Konto.</div></div>
-      ${IS_LOCAL ? `<div class="field"><div class="lbl">Mit dem Computer starten<span class="hint">REKORD läuft dann ab dem Einschalten im Hintergrund – das iPhone kann sich jederzeit verbinden.</span></div>
+      ${IS_LOCAL ? `<div class="field"><div class="lbl">Mit dem Computer starten${tip("autostart")}<span class="hint">REKORD läuft dann ab dem Einschalten im Hintergrund – das iPhone kann sich jederzeit verbinden.</span></div>
         <div id="autost" class="muted">prüfe …</div></div>` : ""}
-      <div class="field"><div class="lbl">Version</div><div class="muted">REKORD ${esc(st.version)}</div></div>
-      ${["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) ? `<div class="field"><div class="lbl">Beenden<span class="hint">Stoppt REKORD auf diesem Computer (läuft sonst im Hintergrund weiter, damit das iPhone verbunden bleibt).</span></div>
+      <div class="field"><div class="lbl">Hilfe${tip("help")}<span class="hint">Jeder Punkt hat ein ⓘ – drüberfahren oder antippen.</span></div>
+        <div class="row"><button class="btn sm" id="tour">Einführung starten</button><a class="btn sm" href="https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md" target="_blank" rel="noopener">Anleitung ↗</a></div></div>
+      <div class="field"><div class="lbl">Version${tip("version")}</div><div class="muted">REKORD ${esc(st.version)}</div></div>
+      ${["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) ? `<div class="field"><div class="lbl">Beenden${tip("quit")}<span class="hint">Stoppt REKORD auf diesem Computer (läuft sonst im Hintergrund weiter, damit das iPhone verbunden bleibt).</span></div>
         <div><button class="btn danger" id="quit">REKORD beenden</button></div></div>` : ""}
     </div></section></div>`;
 
@@ -1411,25 +1788,25 @@ async function viewSettings() {
   // AI
   const provCfg = () => {
     const p = s.llm.provider, c = s.llm[p] || {};
-    const keyField = (label, hint, url) => `<div class="field"><label for="k">${label}<span class="hint">${hint}</span></label>
+    const keyField = (label, hint, url) => `<div class="field"><label for="k">${label}${tip("apikey")}<span class="hint">${hint}</span></label>
       <div><div class="row"><input type="password" id="k" placeholder="${c.has_key ? c.api_key : "Key hier einfügen"}" autocomplete="off" style="flex:1">
       ${url ? `<a class="btn sm" id="key-get" href="${url}" target="_blank" rel="noopener">Key erstellen ↗</a>` : ""}</div></div></div>`;
-    const modelField = (hint) => `<div class="field"><label for="m">Modell<span class="hint">${hint}</span></label><div class="row">
+    const modelField = (hint) => `<div class="field"><label for="m">Modell${tip("model")}<span class="hint">${hint}</span></label><div class="row">
       <input type="text" id="m" list="mlist" value="${esc(c.model || "")}" style="flex:1"><datalist id="mlist"></datalist><button class="btn sm" id="mload">Laden</button></div></div>`;
     let html = "";
     if (p === "anthropic") html = keyField("API-Key", "Auf „Key erstellen“ klicken, Key kopieren, hier einfügen – REKORD testet sofort.", "https://console.anthropic.com/settings/keys") + modelField("claude-opus-5-5 = beste Qualität, claude-haiku-5-5 = günstig & schnell.")
-      + `<div class="field"><label for="eff">Denkaufwand<span class="hint">Höher = gründlicher, langsamer, teurer.</span></label><select id="eff">${["low", "medium", "high", "xhigh", "max"].map((e) => opt(e, c.effort, e)).join("")}</select></div>
-         <div class="field"><div class="lbl">Ausweichmodell<span class="hint">Lehnt das Modell ab, springt automatisch ein anderes Claude-Modell ein.</span></div><label class="row"><input type="checkbox" id="fb" ${c.fallbacks ? "checked" : ""}> Aktiv</label></div>`;
+      + `<div class="field"><label for="eff">Denkaufwand${tip("effort")}<span class="hint">Höher = gründlicher, langsamer, teurer.</span></label><select id="eff">${["low", "medium", "high", "xhigh", "max"].map((e) => opt(e, c.effort, e)).join("")}</select></div>
+         <div class="field"><div class="lbl">Ausweichmodell${tip("fallback")}<span class="hint">Lehnt das Modell ab, springt automatisch ein anderes Claude-Modell ein.</span></div><label class="row"><input type="checkbox" id="fb" ${c.fallbacks ? "checked" : ""}> Aktiv</label></div>`;
     if (p === "openai") html = keyField("API-Key", "Auf „Key erstellen“ klicken, Key kopieren, hier einfügen. Achtung: ChatGPT-Plus-Abo ≠ API-Guthaben.", "https://platform.openai.com/api-keys") + modelField("Wird nach dem Key automatisch gewählt. „Laden“ zeigt alle deine Modelle.");
-    if (p === "ollama") html = `<div class="field"><div class="lbl">Lokales Modell<span class="hint">Läuft komplett auf diesem Computer, gratis. Ein Klick auf <b>Laden</b> lädt es herunter.</span></div>
+    if (p === "ollama") html = `<div class="field"><div class="lbl">Lokales Modell${tip("localmodel")}<span class="hint">Läuft komplett auf diesem Computer, gratis. Ein Klick auf <b>Laden</b> lädt es herunter.</span></div>
         <div id="oll">Prüfe Ollama …</div></div>
-      <div class="field"><label for="bu">Ollama-Adresse<span class="hint">Nur ändern, wenn Ollama auf einem anderen Rechner läuft.</span></label>
+      <div class="field"><label for="bu">Ollama-Adresse${tip("ollamaurl")}<span class="hint">Nur ändern, wenn Ollama auf einem anderen Rechner läuft.</span></label>
       <input type="url" id="bu" value="${esc(c.base_url || "http://localhost:11434")}"></div>`
-      + `<div class="field"><label for="ctx">Kontextlänge<span class="hint">Mehr = längere Meetings am Stück, braucht mehr RAM.</span></label><select id="ctx">${[8192, 16384, 32768, 65536, 131072].map((n) => opt(n, c.num_ctx || 32768, n.toLocaleString("de-AT") + " Tokens")).join("")}</select></div>`;
-    if (p === "compatible") html = `<div class="field"><label for="bu">Server-Adresse<span class="hint">LM Studio: http://localhost:1234/v1 · llama.cpp: http://localhost:8080/v1 · OpenRouter: https://openrouter.ai/api/v1</span></label>
+      + `<div class="field"><label for="ctx">Kontextlänge${tip("context")}<span class="hint">Mehr = längere Meetings am Stück, braucht mehr RAM.</span></label><select id="ctx">${[8192, 16384, 32768, 65536, 131072].map((n) => opt(n, c.num_ctx || 32768, n.toLocaleString("de-AT") + " Tokens")).join("")}</select></div>`;
+    if (p === "compatible") html = `<div class="field"><label for="bu">Server-Adresse${tip("serverurl")}<span class="hint">LM Studio: http://localhost:1234/v1 · llama.cpp: http://localhost:8080/v1 · OpenRouter: https://openrouter.ai/api/v1</span></label>
       <input type="url" id="bu" value="${esc(c.base_url || "")}"></div>` + keyField("API-Key", "Nur falls der Server einen verlangt.") + modelField("Modelle vom Server laden.")
-      + `<div class="field"><label for="ctx">Kontextlänge</label><select id="ctx">${[8192, 16384, 32768, 65536, 131072].map((n) => opt(n, c.context_tokens || 32768, n.toLocaleString("de-AT") + " Tokens")).join("")}</select></div>`;
-    if (p !== "none") html += `<div class="field"><div class="lbl">Verbindung</div><div class="row"><button class="btn" id="ltest">Testen</button><span id="lres" class="muted"></span></div></div>`;
+      + `<div class="field"><label for="ctx">Kontextlänge${tip("context")}<span class="hint">Was dein Server maximal verarbeitet.</span></label><select id="ctx">${[8192, 16384, 32768, 65536, 131072].map((n) => opt(n, c.context_tokens || 32768, n.toLocaleString("de-AT") + " Tokens")).join("")}</select></div>`;
+    if (p !== "none") html += `<div class="field"><div class="lbl">Verbindung${tip("connection")}<span class="hint">Prüft, ob die KI antwortet.</span></div><div class="row"><button class="btn" id="ltest">Testen</button><span id="lres" class="muted"></span></div></div>`;
     $("#prov-cfg").innerHTML = html;
     if (p === "ollama") ollamaPanel(c);
     const patch = (obj) => saveNow({ llm: { [p]: obj } });
@@ -1538,14 +1915,14 @@ async function viewSettings() {
           Die Seite führt dich in 1 Minute durch alles. Danach nimmst du auch im Browser auf, mit Live-Erkennung.</span></p></div>
       </div>
       <div id="fw"></div>
-      <div class="field"><div class="lbl">Adresse</div><div>${p.urls.map((u) => `<span class="kbd">${esc(u)}</span>`).join(" ") || "–"}</div></div>
-      <div class="field"><div class="lbl">Kopplungs-Code<span class="hint">Neu erzeugen trennt alle gekoppelten Geräte.</span></div>
+      <div class="field"><div class="lbl">Adresse${tip("address")}<span class="hint">Handy und Computer im selben WLAN.</span></div><div>${p.urls.map((u) => `<span class="kbd">${esc(u)}</span>`).join(" ") || "–"}</div></div>
+      <div class="field"><div class="lbl">Kopplungs-Code${tip("paircode")}<span class="hint">Neu erzeugen trennt alle gekoppelten Geräte.</span></div>
         <div class="row"><span class="kbd" id="tok" style="filter:blur(4px);cursor:pointer" title="anzeigen">${esc(p.token)}</span><button class="btn sm" id="rot">Neu erzeugen</button></div></div>`;
     $("#tok").onclick = (e) => (e.target.style.filter = "none");
     if (IS_LOCAL) integrations().then((it) => {
       const fw = it.firewall, box = $("#fw");
       if (!box || !fw.tool || fw.open === true) return;
-      box.innerHTML = `<div class="field"><div class="lbl">Firewall<span class="hint">Die ${esc(fw.tool)}-Firewall dieses Computers blockiert das iPhone.</span></div>
+      box.innerHTML = `<div class="field"><div class="lbl">Firewall${tip("firewall")}<span class="hint">Die ${esc(fw.tool)}-Firewall dieses Computers blockiert das iPhone.</span></div>
         <div class="row"><button class="btn primary" id="fw-open">Für iPhone freigeben</button><span class="muted" id="fw-res"></span></div></div>`;
       $("#fw-open").onclick = async (e) => {
         e.target.disabled = true; $("#fw-res").textContent = "Passwort-Fenster beachten …";
@@ -1592,6 +1969,8 @@ async function viewSettings() {
   integrations().then((it) => { renderInt(it); renderAutostart(it); }).catch((e) => { $("#int-cd").textContent = e.message; });
 
   $("#inbox").onchange = (e) => save({ inbox_enabled: e.target.checked });
+  $("#tour").onclick = () => welcome(true);
+  renderStorage();
   $("#quit") && ($("#quit").onclick = async () => {
     if (!(await confirmBox("REKORD beenden?", "Laufende Verarbeitungen werden beim nächsten Start fortgesetzt.", "Beenden"))) return;
     try { await api("/api/shutdown", { method: "POST" }); view.innerHTML = `<div class="page empty"><h2>REKORD ist beendet.</h2><p>Du kannst dieses Fenster schließen.</p></div>`; }
@@ -1644,4 +2023,4 @@ function mindmapSvg(tree) {
 
 // ================================================================ boot
 if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("/sw.js").catch(() => {});
-refreshStatus().then(route);
+refreshStatus().then(route).then(() => welcome());

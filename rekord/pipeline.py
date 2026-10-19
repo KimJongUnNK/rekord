@@ -14,7 +14,12 @@ from .engines.diarize import clean_turns, diarize, refine_turns
 log = logging.getLogger("rekord.pipeline")
 
 
-def speaker_name(i: int) -> str:
+UNKNOWN = "Nicht erkannte Stimme"  # all voices REKORD doesn't know are collected here – never "Sprecher 1, 2, 3"
+UNKNOWN_LABEL = 999
+UNKNOWN_COLOR = "#8A877F"
+
+
+def speaker_name(i: int) -> str:  # older recordings / live keys
     return f"Sprecher {i + 1}"
 
 
@@ -40,7 +45,8 @@ def process(rid: str, on_event=None) -> dict:
     part = rec.get("participants") or {}
     part_ids = [int(x) for x in part.get("ids", [])]
     guests = int(part.get("guests", 0) or 0)
-    n_spk = int(s.get("num_speakers") or 0) or ((len(part_ids) + guests) if part_ids else 0)
+    # headcount from "Wer ist dabei?" (known people + new ones) beats the global setting
+    n_spk = (len(part_ids) + guests) if (part_ids or guests) else int(s.get("num_speakers") or 0)
     turns = diarize(samples, s["embedding_model"], n_spk, float(s["cluster_threshold"]),
                     int(s["threads"]), progress=lambda p: stage("Sprecher trennen", 0.05 + 0.3 * p))
     if not turns and duration > 1:
@@ -65,16 +71,15 @@ def process(rid: str, on_event=None) -> dict:
     matches = voiceprint.match_profiles(speaker_embs, profiles, threshold)
 
     speakers = []
-    unknown = 0
+    unknown = [lbl for lbl in sorted(by_label) if lbl not in matches]
     for lbl in sorted(by_label):
         if lbl in matches:
             p, score = matches[lbl]
             speakers.append({"label": lbl, "name": p["name"], "color": p["color"], "profile_id": p["id"],
                              "match_score": round(score, 3), "embedding": speaker_embs.get(lbl)})
-        else:
-            speakers.append({"label": lbl, "name": speaker_name(unknown), "color": db.PALETTE[(len(profiles) + unknown) % len(db.PALETTE)],
-                             "profile_id": None, "match_score": 0, "embedding": speaker_embs.get(lbl)})
-            unknown += 1
+    if unknown:  # one entry for everything not recognized; its voiceprint only if it is a single person
+        speakers.append({"label": UNKNOWN_LABEL, "name": UNKNOWN, "color": UNKNOWN_COLOR, "profile_id": None, "match_score": 0,
+                         "embedding": speaker_embs.get(unknown[0]) if len(unknown) == 1 else None, "voices": len(unknown)})
 
     # 3. words
     stage("Transkribieren", 0.4)
@@ -84,6 +89,11 @@ def process(rid: str, on_event=None) -> dict:
         seg["text"] = asr.apply_vocabulary(seg["text"], s.get("vocabulary", []))
     langs = [x.get("lang") for x in segs if x.get("lang")]
     language = max(set(langs), key=langs.count) if langs else (s.get("language") or "")
+
+    # unknown voices → the one bucket; each line keeps which voice it was, so naming one line can name them all
+    for seg in segs:
+        if seg["label"] in unknown:
+            seg["voice"], seg["label"] = seg["label"], UNKNOWN_LABEL
 
     # drop speakers that ended up without words
     used = {x["label"] for x in segs}
@@ -130,11 +140,65 @@ def merge_similar_speakers(turns: list[tuple[float, float, int]], embs: dict[int
     return turns
 
 
+def assign_segment(seg_id: int, name: str, remember: bool = True, whole_voice: bool = False) -> dict:
+    """"Wer sagt das?" for a transcript line: move it – or, with whole_voice, every line of that unknown voice – to a
+    person (created if needed). With remember, that audio also trains the person's voiceprint."""
+    name = name.strip()
+    row = db.connect().execute("SELECT * FROM segments WHERE id=?", (seg_id,)).fetchone()
+    if row is None or not name:
+        raise KeyError(seg_id)
+    seg = dict(row)
+    rid, old = seg["recording_id"], seg["speaker_id"]
+    lines = [seg]
+    if whole_voice and seg.get("voice") is not None:
+        lines = [x for x in db.list_segments(rid) if x["speaker_id"] == old and x.get("voice") == seg["voice"]]
+    profile = next((p for p in db.list_profiles(with_embedding=True) if p["name"].lower() == name.lower()), None)
+    target = next((x for x in db.list_speakers(rid) if x["name"].lower() == name.lower() and x["id"] != old), None)
+    if target is None:
+        color = profile["color"] if profile else db.PALETTE[len(db.list_speakers(rid)) % len(db.PALETTE)]
+        tid = db.add_speaker(rid, profile["name"] if profile else name, color, profile["id"] if profile else None)
+    else:
+        tid = target["id"]
+    for x in lines:
+        db.update_segment(x["id"], speaker_id=tid)
+    rec = db.get_recording(rid)
+    samples = audio.load(rec["audio_path"]) if rec and rec.get("audio_path") and Path(rec["audio_path"]).exists() else None
+    emb = voiceprint.get_embedder(config.load()["embedding_model"], 2)
+    if remember and samples is not None:
+        e = emb.embed_turns(samples, [(x["start"], x["end"]) for x in lines])
+        if e is not None:
+            if profile is not None and len(profile["embedding"]) == len(e):
+                db.update_profile(profile["id"], embedding=voiceprint.update_mean(profile["embedding"], profile["samples"], e),
+                                  samples=profile["samples"] + 1)
+            else:
+                profile = db.get_profile(db.create_profile(name, e))
+            db.update_speaker(tid, profile_id=profile["id"], color=profile["color"], name=profile["name"], embedding=e)
+    if old is not None:
+        _recount_bucket(old, samples, emb)
+        db.delete_speaker_if_unused(old)
+    return {"speaker_id": tid, "profile_id": profile["id"] if profile else None, "moved": len(lines)}
+
+
+def _recount_bucket(sid: int, samples, emb) -> None:
+    """After lines left the "Nicht erkannte Stimme" bucket: how many voices are still in it? One left → it gets its own
+    voiceprint again, so "Wer ist das? → Merken" works for it."""
+    sp = db.get_speaker(sid)
+    if sp is None or sp["name"] != UNKNOWN:
+        return
+    rest = [x for x in db.list_segments(sp["recording_id"]) if x["speaker_id"] == sid]
+    voices = {x.get("voice") for x in rest if x.get("voice") is not None}
+    e = emb.embed_turns(samples, [(x["start"], x["end"]) for x in rest]) if len(voices) <= 1 and samples is not None and rest else None
+    db.update_speaker(sid, voices=max(1, len(voices)), embedding=e)
+
+
 def remember_speaker(rid: str, speaker_id: int, name: str) -> dict:
     """Rename a speaker and store/merge their voiceprint as a profile -> recognized automatically from now on."""
     sp = db.get_speaker(speaker_id, with_embedding=True)
     if sp is None or sp["recording_id"] != rid:
         raise KeyError(speaker_id)
+    if (sp.get("voices") or 1) > 1:
+        raise ValueError(f"In „{sp['name']}“ stecken mehrere Personen. Tippe im Transkript bei einem Satz auf den Namen "
+                         "und wähle, wer das ist – so lernt REKORD jede Stimme einzeln.")
     e = sp.get("embedding")
     if e is None:
         e = _embedding_from_segments(rid, speaker_id)
@@ -165,19 +229,40 @@ def _embedding_from_segments(rid: str, speaker_id: int) -> np.ndarray | None:
     return voiceprint.get_embedder(s["embedding_model"], 2).embed_turns(samples, turns)
 
 
+ENROLL_MIN_SECONDS = 8.0  # hard floor; the app asks for ~45 s (a text per person)
+
+
 def enroll_from_audio(name: str, path: str) -> dict:
-    """Create/extend a voice profile from a clean sample of one person (e.g. 10-30 s)."""
+    """Create/extend a voice profile from a clean sample of one person (best: 30-60 s of reading).
+    Returns the profile plus "quality": seconds of speech and how consistent the voice was across the sample."""
     s = config.load()
     samples = audio.load(path)
-    e = voiceprint.get_embedder(s["embedding_model"], 2).embed_turns(samples, _speech_windows(samples))
-    if e is None:
+    windows = _speech_windows(samples, win=3.0)
+    speech = sum(b - a for a, b in windows)
+    if speech < ENROLL_MIN_SECONDS:
+        raise ValueError(f"Zu kurz ({speech:.0f} s Sprache). Bitte den ganzen Text vorlesen – mindestens 20 Sekunden.")
+    emb = voiceprint.get_embedder(s["embedding_model"], 2)
+    vecs = [v for a, b in windows if (v := emb.embed(samples[int(a * audio.SR):int(b * audio.SR)])) is not None]
+    if not vecs:
         raise ValueError("Probe zu kurz oder zu leise")
+    mean = voiceprint.normalize(np.mean(vecs, axis=0))
+    sims = sorted(voiceprint.cosine(v, mean) for v in vecs)
+    # how alike the windows are: one steady voice ~0.85–0.95, several people or heavy noise far below
+    consistency = sims[len(sims) // 4]
+    if consistency < 0.65 and len(vecs) >= 4:
+        raise ValueError("Die Probe klingt nach mehreren Stimmen oder starkem Störgeräusch. Bitte allein und in ruhiger "
+                         "Umgebung nochmal vorlesen.")
+    keep = [v for v in vecs if voiceprint.cosine(v, mean) >= 0.5] or vecs  # coughs, laughs, a door: left out
+    e = voiceprint.normalize(np.mean(keep, axis=0))
+    weight = 2 + int(speech // 20)  # a long reading counts more than a short naming in a meeting
     existing = next((p for p in db.list_profiles(with_embedding=True) if p["name"].lower() == name.lower()), None)
     if existing is not None and len(existing["embedding"]) == len(e):
-        db.update_profile(existing["id"], embedding=voiceprint.update_mean(existing["embedding"], existing["samples"], e, 2),
-                          samples=existing["samples"] + 2)
-        return db.get_profile(existing["id"])
-    return db.get_profile(db.create_profile(name, e, samples=2))
+        db.update_profile(existing["id"], embedding=voiceprint.update_mean(existing["embedding"], existing["samples"], e, weight),
+                          samples=existing["samples"] + weight)
+        prof = db.get_profile(existing["id"])
+    else:
+        prof = db.get_profile(db.create_profile(name, e, samples=weight))
+    return {**prof, "quality": {"seconds": round(speech, 1), "consistency": round(float(consistency), 2)}}
 
 
 def _speech_windows(samples: np.ndarray, win: float = 4.0) -> list[tuple[float, float]]:

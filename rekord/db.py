@@ -110,7 +110,9 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
-MIGRATIONS = {"recordings": {"title_locked": "INTEGER DEFAULT 0", "participants": "TEXT DEFAULT '{}'"}}
+MIGRATIONS = {"recordings": {"title_locked": "INTEGER DEFAULT 0", "participants": "TEXT DEFAULT '{}'"},
+              "speakers": {"voices": "INTEGER DEFAULT 1"},
+              "segments": {"voice": "INTEGER"}}  # which unknown voice (cluster) a line in the bucket belongs to  # >1: the "Nicht erkannte Stimme" bucket holds several people
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -237,13 +239,14 @@ def replace_transcript(rid: str, speakers: list[dict], segments: list[dict]) -> 
         for s in speakers:
             emb = s.get("embedding")
             cur = c.execute(
-                "INSERT INTO speakers(recording_id,label,name,color,profile_id,match_score,embedding) VALUES(?,?,?,?,?,?,?)",
+                "INSERT INTO speakers(recording_id,label,name,color,profile_id,match_score,embedding,voices) VALUES(?,?,?,?,?,?,?,?)",
                 (rid, s["label"], s["name"], s["color"], s.get("profile_id"), s.get("match_score", 0),
-                 emb_to_blob(emb) if emb is not None else None))
+                 emb_to_blob(emb) if emb is not None else None, int(s.get("voices", 1))))
             label_to_id[s["label"]] = cur.lastrowid
         for seg in segments:
-            cur = c.execute("INSERT INTO segments(recording_id,start,end,speaker_id,text,lang) VALUES(?,?,?,?,?,?)",
-                            (rid, seg["start"], seg["end"], label_to_id.get(seg.get("label")), seg["text"], seg.get("lang", "")))
+            cur = c.execute("INSERT INTO segments(recording_id,start,end,speaker_id,text,lang,voice) VALUES(?,?,?,?,?,?,?)",
+                            (rid, seg["start"], seg["end"], label_to_id.get(seg.get("label")), seg["text"], seg.get("lang", ""),
+                             seg.get("voice")))
             c.execute("INSERT INTO segments_fts(text,recording_id,segment_id) VALUES(?,?,?)", (seg["text"], rid, cur.lastrowid))
 
 
@@ -270,8 +273,22 @@ def get_speaker(sid: int, with_embedding: bool = False) -> dict | None:
     return d
 
 
+def add_speaker(rid: str, name: str, color: str, profile_id: int | None = None) -> int:
+    with tx() as c:
+        label = (c.execute("SELECT COALESCE(MAX(label), -1) FROM speakers WHERE recording_id=? AND label < 900", (rid,)).fetchone()[0]) + 1
+        return c.execute("INSERT INTO speakers(recording_id,label,name,color,profile_id) VALUES(?,?,?,?,?)",
+                         (rid, label, name, color, profile_id)).lastrowid
+
+
+def delete_speaker_if_unused(sid: int) -> None:
+    with tx() as c:
+        c.execute("DELETE FROM speakers WHERE id=? AND NOT EXISTS (SELECT 1 FROM segments WHERE speaker_id=?)", (sid, sid))
+
+
 def update_speaker(sid: int, **fields) -> None:
-    fields = {k: v for k, v in fields.items() if k in ("name", "color", "profile_id", "match_score")}
+    fields = {k: v for k, v in fields.items() if k in ("name", "color", "profile_id", "match_score", "embedding", "voices")}
+    if "embedding" in fields:
+        fields["embedding"] = emb_to_blob(fields["embedding"]) if fields["embedding"] is not None else None
     if fields:
         with tx() as c:
             c.execute(f"UPDATE speakers SET {', '.join(f'{k}=?' for k in fields)} WHERE id=?", (*fields.values(), sid))

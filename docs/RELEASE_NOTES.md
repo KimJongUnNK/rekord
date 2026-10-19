@@ -19,6 +19,17 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.0.7 – Einführung, Hilfe, richtige Stimmen
+- **Einführung beim ersten Start:** Speicherort → Aussehen → Sprache → Mikrofon → KI → deine Stimme → iPhone. Alles überspringbar, jederzeit wiederholbar (*Einstellungen → Hilfe → Einführung starten*).
+- **ⓘ an jedem Punkt:** Neben jeder Einstellung und jedem Begriff erklärt ein ⓘ, was er macht – Maus drüber oder antippen.
+- **Speicherort frei wählbar:** eingebauter Speicher, externe Festplatte, zweite SSD (NVMe) oder Netzlaufwerk (NAS) – getrennt für Daten und KI-Modelle. Beim ersten Start wird gefragt, **bevor** etwas heruntergeladen wird. Umziehen später mit Fortschritt; fehlt ein Laufwerk beim Start, sagt REKORD Bescheid statt einen leeren Ordner anzulegen.
+- **„Wer ist dabei?“ vor jeder Aufnahme:** Wie viele sprechen (dich mitgezählt) und wer ist schon bekannt. Ohne Angabe startet keine Aufnahme. REKORD trennt dann genau so viele Stimmen – auch wenn noch niemand bekannt ist.
+- **Keine „Sprecher 1, 2, 3“ mehr:** Stimmen, die REKORD nicht kennt, landen gesammelt unter **„Nicht erkannte Stimme“** – transkribiert wird trotzdem alles.
+- **„Wer ist das?“ nach der Aufnahme:** Pro unbekannter Stimme anhören, Namen eingeben, *Merken* – ab dann erkannt. Stellt sich jemand vor („Hier ist Emil“), steht der Name schon drin. Im Transkript ordnet **„Wer sagt das?“** einen Satz – oder alle Sätze dieser Stimme – einer Person zu.
+- **Einsprechen mit eigenem Text pro Person:** ca. 45 Sekunden, mindestens 25. REKORD prüft, ob wirklich nur eine Stimme zu hören ist, lässt Husten und Geräusche weg und zeigt die Qualität an. Auch in der iPhone-App.
+- **Lokale KI-Modelle löschen:** *Einstellungen → KI → Lokal* → **Löschen** neben jedem geladenen Modell.
+- **Behoben:** Das App-Fenster hat Aussehen, Mikrofon und Teilnehmer bei jedem Start vergessen.
+
 ### Neu in 1.0.6
 - **Sprecher-Erkennung:** Wird eine Person versehentlich als zwei Sprecher erkannt, führt REKORD die beiden jetzt automatisch zusammen (nur wenn die Stimmabdrücke eindeutig dieselbe Person sind und die Sprecherzahl nicht fest eingestellt ist).
 - Die Ende-zu-Ende-Tests laufen jetzt mit immer gleichen Test-Stimmen – kein Zufall mehr in der Qualitätskontrolle.

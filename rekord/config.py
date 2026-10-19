@@ -1,4 +1,5 @@
-"""Paths and persistent settings. Everything lives in one folder (REKORD_HOME)."""
+"""Paths and persistent settings. Everything lives in one folder (REKORD_HOME) – by default ~/Rekord, or wherever the
+user chose (external drive, second SSD, NAS): that choice is kept in a small pointer file outside the folder."""
 from __future__ import annotations
 
 import json
@@ -8,7 +9,34 @@ import threading
 from copy import deepcopy
 from pathlib import Path
 
-HOME = Path(os.environ.get("REKORD_HOME", Path.home() / "Rekord")).expanduser()
+DEFAULT_HOME = Path.home() / "Rekord"
+
+
+def pointer_path() -> Path:
+    """Where the chosen data folder is remembered (must stay on the computer, not on the external drive)."""
+    import sys
+    if sys.platform == "darwin":
+        base = Path.home() / "Library/Application Support"
+    elif sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA") or Path.home() / "AppData/Roaming")
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    return base / "REKORD" / "location.json"
+
+
+def _home() -> tuple[Path, bool]:
+    if os.environ.get("REKORD_HOME"):
+        return Path(os.environ["REKORD_HOME"]).expanduser(), False
+    try:
+        chosen = json.loads(pointer_path().read_text("utf-8")).get("home")
+        if chosen:
+            return Path(chosen), True
+    except (OSError, ValueError):
+        pass
+    return DEFAULT_HOME, False
+
+
+HOME, CUSTOM_HOME = _home()
 DATA = HOME
 AUDIO_DIR = HOME / "audio"
 MODELS_DIR = HOME / "models"
@@ -43,15 +71,40 @@ DEFAULTS: dict = {
     },
     "inbox_enabled": True,
     "pair_token": "",
+    "models_dir": "",  # "" = <data folder>/models; otherwise e.g. an external drive (local AI models go into …/ollama)
+    "storage_chosen": False,  # first start: no big download before the user picked where REKORD stores things
+    "welcome_done": False,
 }
 
 _lock = threading.RLock()
 _cache: dict | None = None
 
 
+class StorageMissing(RuntimeError):
+    pass
+
+
+def home_missing() -> bool:
+    """The chosen folder is on a drive that isn't connected (never create it on the internal disk instead)."""
+    return CUSTOM_HOME and not HOME.exists() and not HOME.parent.exists()
+
+
+def models_missing() -> bool:
+    return MODELS_DIR != HOME / "models" and not MODELS_DIR.exists() and not MODELS_DIR.parent.exists()
+
+
 def ensure_dirs() -> None:
-    for d in (HOME, AUDIO_DIR, MODELS_DIR, INBOX_DIR):
+    if home_missing():
+        raise StorageMissing(str(HOME))
+    for d in (HOME, AUDIO_DIR, INBOX_DIR):
         d.mkdir(parents=True, exist_ok=True)
+    if not models_missing():
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def ollama_models_dir() -> Path | None:
+    """Local AI models (Ollama) follow a custom models folder; otherwise Ollama's own default."""
+    return MODELS_DIR / "ollama" if MODELS_DIR != HOME / "models" else None
 
 
 def _merge(base: dict, over: dict) -> dict:
@@ -69,14 +122,22 @@ def load() -> dict:
     with _lock:
         if _cache is not None:
             return deepcopy(_cache)
-        ensure_dirs()
+        if home_missing():  # drive unplugged: run on defaults, the UI asks to connect it (nothing gets written)
+            _cache = _merge(DEFAULTS, {"pair_token": "-", "storage_chosen": True, "welcome_done": True})
+            return deepcopy(_cache)
+        existed = SETTINGS_PATH.exists()
         stored = {}
-        if SETTINGS_PATH.exists():
+        if existed:
             try:
                 stored = json.loads(SETTINGS_PATH.read_text("utf-8"))
             except json.JSONDecodeError:
                 stored = {}
+            # installed before storage choice / welcome existed: don't ask an existing user again
+            stored.setdefault("storage_chosen", True)
+            stored.setdefault("welcome_done", True)
         s = _merge(DEFAULTS, stored)
+        _apply_models_dir(s)
+        ensure_dirs()
         if not s.get("pair_token"):
             s["pair_token"] = secrets.token_urlsafe(18)
             SETTINGS_PATH.write_text(json.dumps(s, indent=2, ensure_ascii=False), "utf-8")
@@ -84,12 +145,20 @@ def load() -> dict:
         return deepcopy(s)
 
 
+def _apply_models_dir(s: dict) -> None:
+    global MODELS_DIR
+    MODELS_DIR = Path(s["models_dir"]).expanduser() if s.get("models_dir") else HOME / "models"
+
+
 def save(patch: dict) -> dict:
     global _cache
     with _lock:
         s = _merge(load(), patch)
+        if home_missing():
+            raise StorageMissing(str(HOME))
         SETTINGS_PATH.write_text(json.dumps(s, indent=2, ensure_ascii=False), "utf-8")
         _cache = s
+        _apply_models_dir(s)
         return deepcopy(s)
 
 

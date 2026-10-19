@@ -53,15 +53,17 @@ struct EnrollSheet: View {
     @State private var busy = false
     @State private var error: String?
 
-    private let text = "Hallo, ich nehme jetzt eine kurze Sprachprobe auf. REKORD lernt meine Stimme, damit es mich in Meetings automatisch erkennt. Ich spreche ganz normal, so wie im Alltag. Eins, zwei, drei, vier, fünf."
+    @State private var variant = 0
+    private let target = 45, minimum = 25
 
     var body: some View {
         NavigationStack {
             Form {
                 TextField("Name", text: $name).font(.title3.bold())
-                Section(intro ? "Vorstellung (10–15 s)" : "Vorlesen (ca. 15 s)") {
-                    Text(intro ? "Handy zur Person. Name, was du machst, worum es dir heute geht – ganz normal reden." : text)
-                        .font(.callout)
+                Section(intro ? "Handy zur Person – sie liest ihren eigenen Text (ca. 45 s)" : "Vorlesen (ca. 45 s)") {
+                    Text(ReadingText.make(name: name, variant: variant))
+                        .font(.body)
+                    Button("Anderer Text") { variant += 1 }.font(.footnote)
                     HStack {
                         Button {
                             recorder?.isRecording == true ? stopRec() : startRec()
@@ -70,8 +72,12 @@ struct EnrollSheet: View {
                                   systemImage: recorder?.isRecording == true ? "stop.circle.fill" : "record.circle")
                         }
                         Spacer()
-                        Text("\(seconds) s").monospacedDigit().foregroundStyle(seconds >= 8 ? .green : .secondary)
+                        Text("\(seconds) s").monospacedDigit().foregroundStyle(seconds >= minimum ? .green : .secondary)
                     }
+                    ProgressView(value: min(1, Double(seconds) / Double(target))).tint(seconds >= minimum ? .green : .accentColor)
+                    Text(seconds < minimum ? "Mindestens \(minimum) Sekunden – je länger, desto sicherer die Erkennung."
+                         : seconds < target ? "Reicht. Bis zum Ende lesen macht die Erkennung noch sicherer." : "Perfekt – du kannst stoppen.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
                 if let error { Text(error).foregroundStyle(.red) }
             }
@@ -80,7 +86,8 @@ struct EnrollSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Abbrechen") { stopRec(); done(nil); dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(busy ? "…" : "Speichern") { save() }.disabled(name.isEmpty || fileURL == nil || busy || recorder?.isRecording == true)
+                    Button(busy ? "…" : "Speichern") { save() }
+                        .disabled(name.isEmpty || fileURL == nil || busy || recorder?.isRecording == true || seconds < minimum)
                 }
             }
         }
@@ -88,6 +95,7 @@ struct EnrollSheet: View {
 
     private func startRec() {
         Task {
+            guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { error = "Zuerst den Namen eingeben – der Text wird für die Person erstellt."; return }
             guard await AVAudioApplication.requestRecordPermission() else { error = "Kein Mikrofon-Zugriff"; return }
             let s = AVAudioSession.sharedInstance()
             try? s.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
@@ -99,7 +107,7 @@ struct EnrollSheet: View {
             fileURL = url
             seconds = 0
             timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-                Task { @MainActor in seconds += 1; if seconds >= 30 { stopRec() } }
+                Task { @MainActor in seconds += 1; if seconds >= 120 { stopRec() } }
             }
         }
     }

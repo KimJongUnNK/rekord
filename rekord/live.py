@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import audio, config, db, jobs, models
+from . import audio, config, db, jobs, models, pipeline
 from .audio import SR
 from .engines import asr, voiceprint
 
@@ -60,7 +60,8 @@ class LiveSession:
             profiles = [p for p in profiles if p["id"] in self.participants]
         self.cluster = voiceprint.OnlineClusterer(profiles, float(self.s["live_profile_threshold"]),
                                                   float(self.s["live_cluster_threshold"]),
-                                                  closed_set=bool(self.participants) and self.guests == 0)
+                                                  closed_set=bool(self.participants) and self.guests == 0,
+                                                  max_speakers=len(self.participants) + self.guests)
         self.engine = None
         if self.s.get("live_transcribe", True):
             try:
@@ -70,7 +71,7 @@ class LiveSession:
         self.title = title or time.strftime("Meeting %d.%m.%Y %H:%M")
         self.rec = db.create_recording(self.title, "", source=source, status="recording")
         self.rid = self.rec["id"]
-        if self.participants:
+        if self.participants or self.guests:
             db.update_recording(self.rid, participants={"ids": self.participants, "guests": self.guests})
         self.wav_path = config.AUDIO_DIR / f"{self.rid}.wav"
         self.wav = audio.WavAppender(self.wav_path)
@@ -249,19 +250,23 @@ class LiveSession:
         if key is None:
             if r.get("name"):
                 return {"key": None, "name": r["name"], "color": r["color"], "known": True, "profile_id": r.get("profile_id")}
-            return {"key": None, "name": "Neue Stimme", "color": "#888888", "known": False}
+            return {"key": None, "name": pipeline.UNKNOWN, "color": pipeline.UNKNOWN_COLOR, "known": False}
         c = next(c for c in self.cluster.clusters if c["key"] == key)
         if c["profile"]:
             return {"key": key, "name": c["profile"]["name"], "color": c["profile"]["color"], "known": True}
-        idx = [x["key"] for x in self.cluster.clusters if not x["profile"]].index(key)
-        return {"key": key, "name": f"Sprecher {idx + 1}", "color": db.PALETTE[(5 + idx) % len(db.PALETTE)], "known": False}
+        return {"key": key, "name": pipeline.UNKNOWN, "color": pipeline.UNKNOWN_COLOR, "known": False}
 
     def _roster(self) -> None:
         items = []
         heard = {c["profile"]["id"] for c in self.cluster.clusters if c["profile"]}
+        talk = lambda k: sum(s["end"] - s["start"] for s in self.segments if s["key"] == k)  # noqa: E731
+        unknown = [c for c in self.cluster.clusters if not c["profile"]]
         for c in self.cluster.clusters:
-            items.append({**self._label({"key": c["key"]}),
-                          "talk": round(sum(s["end"] - s["start"] for s in self.segments if s["key"] == c["key"]), 1)})
+            if c["profile"]:
+                items.append({**self._label({"key": c["key"]}), "talk": round(talk(c["key"]), 1)})
+        if unknown:  # one entry; tapping it names the voice heard last
+            last = next((s["key"] for s in reversed(self.segments) if s["key"] in {c["key"] for c in unknown}), unknown[-1]["key"])
+            items.append({**self._label({"key": last}), "talk": round(sum(talk(c["key"]) for c in unknown), 1), "voices": len(unknown)})
         for p in self.cluster.profiles:  # announced participants who haven't spoken yet
             if self.participants and p["id"] in self.participants and p["id"] not in heard:
                 items.append({"key": None, "name": p["name"], "color": p["color"], "known": True, "talk": 0, "waiting": True})
@@ -269,14 +274,20 @@ class LiveSession:
 
     def _save_live_transcript(self) -> None:
         keys = sorted({s["key"] for s in self.segments if s["key"] is not None})
-        speakers = []
+        speakers, unknown = [], []
         for k in keys:
             c = next(c for c in self.cluster.clusters if c["key"] == k)
-            lab = self._label({"key": k})
-            speakers.append({"label": k, "name": lab["name"], "color": lab["color"],
-                             "profile_id": c["profile"]["id"] if c["profile"] else None,
+            if not c["profile"]:
+                unknown.append(c)
+                continue
+            speakers.append({"label": k, "name": c["profile"]["name"], "color": c["profile"]["color"], "profile_id": c["profile"]["id"],
                              "match_score": round(float(c.get("pscore", 0)), 3), "embedding": c["emb"]})
-        segs = [{"start": s["start"], "end": s["end"], "label": s["key"], "text": s["text"]} for s in self.segments if s["text"]]
+        if unknown:
+            speakers.append({"label": pipeline.UNKNOWN_LABEL, "name": pipeline.UNKNOWN, "color": pipeline.UNKNOWN_COLOR,
+                             "embedding": unknown[0]["emb"] if len(unknown) == 1 else None, "voices": len(unknown)})
+        gone = {c["key"] for c in unknown}
+        segs = [{"start": s["start"], "end": s["end"], "label": pipeline.UNKNOWN_LABEL if s["key"] in gone else s["key"], "text": s["text"],
+                 "voice": s["key"] if s["key"] in gone else None} for s in self.segments if s["text"]]
         db.replace_transcript(self.rid, speakers, segs)
 
 

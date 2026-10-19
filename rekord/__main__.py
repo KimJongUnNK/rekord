@@ -36,7 +36,16 @@ async def _serve_all(main, extra: list) -> None:
 
 
 def serve(host: str, port: int, https: bool, open_browser: bool, auto_download: bool = True) -> None:
+    import os
+    import time
+
     import uvicorn
+    if os.environ.pop("REKORD_RESTARTING", None) == "1":  # restarted into a new data folder: old process is ending
+        open_browser = False
+        for _ in range(75):
+            if _free(host, port):
+                break
+            time.sleep(0.2)
 
     from . import tls
     from .server import app, lan_ips

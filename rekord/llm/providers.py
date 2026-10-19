@@ -150,7 +150,11 @@ def _openai(cfg: dict, system: str, messages: list[dict], max_tokens: int, compa
 def _ollama(cfg: dict, system: str, messages: list[dict]) -> Iterator[str]:
     from . import ollama
     base = (cfg.get("base_url") or "http://localhost:11434").rstrip("/")
-    if not ollama.start(base):  # installed but not running → start it, like a user would
+    try:
+        started = ollama.start(base)  # installed but not running → start it, like a user would
+    except RuntimeError as e:  # e.g. the drive with the models is not connected
+        raise LLMError(str(e)) from e
+    if not started:
         raise LLMError("Ollama ist nicht installiert. Einstellungen → KI → Lokal → „Ollama herunterladen“.")
     model = cfg.get("model")
     if not model:

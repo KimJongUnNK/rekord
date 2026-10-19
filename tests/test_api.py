@@ -188,3 +188,32 @@ def test_openai_key_fills_model(client, monkeypatch):
     s = config.load()
     assert s["llm"]["openai"]["model"] == "gpt-5.5"
     config.save({"llm": {"provider": "anthropic", "openai": {"api_key": "", "model": ""}}})
+
+
+def test_delete_local_model_switches_to_another(client, monkeypatch):
+    from rekord.llm import ollama
+    gone = []
+    monkeypatch.setattr(ollama, "delete", lambda m, base=None: gone.append(m))
+    monkeypatch.setattr(ollama, "status", lambda base=None: {"models": [{"name": "qwen3:4b", "size_gb": 2.6}]})
+    config.save({"llm": {"provider": "ollama", "ollama": {"model": "qwen3:8b"}}})
+    r = client.delete("/api/ollama/models/qwen3:8b")
+    assert r.status_code == 200 and gone == ["qwen3:8b"] and r.json()["model"] == "qwen3:4b"
+    tok = config.load()["pair_token"]
+    lan = TestClient(app, client=("192.168.1.90", 5000), headers={"X-Rekord-Token": tok})
+    assert lan.delete("/api/ollama/models/qwen3:4b").status_code == 403  # deleting: only at the computer
+    config.save({"llm": {"provider": "anthropic", "ollama": {"model": ""}}})
+
+
+def test_storage_info_and_first_start_choice(client, monkeypatch):
+    import rekord.server as srv
+    s = client.get("/api/storage").json()
+    assert s["home"] == str(config.HOME) and s["drives"] and "usage" in s
+    started = []
+    monkeypatch.setattr(srv, "start_downloads", lambda: started.append(1))
+    monkeypatch.setattr(app.state, "auto_download", True, raising=False)
+    config.save({"storage_chosen": False})
+    assert client.get("/api/status").json()["storage_chosen"] is False
+    r = client.post("/api/storage/choose", json={"home": str(config.HOME)})  # keep the default → go
+    assert r.status_code == 200 and started == [1] and config.load()["storage_chosen"] is True
+    assert client.post("/api/storage/move", json={"what": "models", "target": "relativ/pfad"}).status_code == 400
+    monkeypatch.setattr(app.state, "auto_download", False, raising=False)

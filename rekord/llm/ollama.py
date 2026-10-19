@@ -97,7 +97,8 @@ def status(base_url: str | None = None) -> dict:
     ram = ram_gb()
     out = {"installed": binary() is not None, "running": False, "version": "", "models": [],
            "recommended": RECOMMENDED, "default": recommended_for(ram), "ram_gb": ram, "pulls": pulls(),
-           "setup": setup_state(), "can_install": _asset() is not None, "download_url": "https://ollama.com/download"}
+           "setup": setup_state(), "can_install": _asset() is not None, "download_url": "https://ollama.com/download",
+           "service": system_service()}
     try:
         v = httpx.get(f"{base}/api/version", timeout=2).json()
         out["running"], out["installed"] = True, True
@@ -123,10 +124,17 @@ def start(base_url: str | None = None, wait: float = 20) -> bool:
     b = binary()
     if not b:
         return False
+    from .. import config
+    if config.models_missing():
+        raise RuntimeError(f"Das Laufwerk mit den KI-Modellen fehlt ({config.MODELS_DIR}). Bitte anschließen.")
+    env = system.child_env()
+    if (d := config.ollama_models_dir()) is not None:  # models on the chosen drive/folder
+        d.mkdir(parents=True, exist_ok=True)
+        env["OLLAMA_MODELS"] = str(d)
     # macOS: the server inside the app bundle, not the menu bar app – on its first start the app asks for an admin
     # password (CLI symlink) and only then starts serving
     exe = str(Path(b) / "Contents/Resources/ollama") if b.endswith(".app") else b
-    subprocess.Popen([exe, "serve"], env=system.child_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+    subprocess.Popen([exe, "serve"], env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, **system.hidden())
     t0 = time.time()
     while time.time() - t0 < wait:
@@ -134,6 +142,56 @@ def start(base_url: str | None = None, wait: float = 20) -> bool:
         if _running(base_url):
             return True
     return False
+
+
+def stop() -> None:
+    """End a running Ollama (ours or the user's app) – e.g. before its models move to another drive."""
+    if sys.platform == "win32":
+        for exe in ("ollama app.exe", "ollama.exe"):
+            system._run(["taskkill", "/F", "/IM", exe])
+    else:
+        if sys.platform == "darwin":
+            system._run(["osascript", "-e", 'tell application "Ollama" to quit'])
+        system._run(["pkill", "-f", "ollama serve"])
+        system._run(["pkill", "-x", "ollama"])
+    for _ in range(20):
+        if not _running(None):
+            return
+        time.sleep(0.5)
+
+
+def apply_models_dir(base_url: str | None = None) -> None:
+    """Make every way Ollama starts use the chosen models folder, then restart it if it was running."""
+    from .. import config
+    d = config.ollama_models_dir()
+    if sys.platform == "win32":  # the Ollama tray app reads the user environment
+        if d is not None:
+            system._run(["setx", "OLLAMA_MODELS", str(d)])
+        else:
+            system._run(["reg", "delete", r"HKCU\Environment", "/v", "OLLAMA_MODELS", "/f"])
+    elif sys.platform == "darwin":  # GUI apps started later in this login session
+        system._run(["launchctl", "setenv", "OLLAMA_MODELS", str(d)] if d is not None else ["launchctl", "unsetenv", "OLLAMA_MODELS"])
+    if _running(base_url):
+        stop()
+        start(base_url)
+
+
+def system_service() -> bool:
+    """Linux: Ollama installed by its own script runs as a system service (as user "ollama") – our folder choice can't
+    reach it; the UI explains how to set OLLAMA_MODELS there."""
+    if not sys.platform.startswith("linux") or not shutil.which("systemctl"):
+        return False
+    r = system._run(["systemctl", "is-active", "ollama"])
+    return bool(r and r.stdout.strip() == "active")
+
+
+def delete(model: str, base_url: str | None = None) -> None:
+    r = httpx.request("DELETE", f"{_base(base_url)}/api/delete", json={"model": model}, timeout=60)
+    if r.status_code == 404:
+        raise RuntimeError(f"{model} ist nicht (mehr) da.")
+    r.raise_for_status()
+    with _lock:
+        _pulls.pop(model, None)
 
 
 # ------------------------------------------------------------------ install Ollama itself
