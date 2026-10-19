@@ -28,6 +28,7 @@ def test_read_follows_the_microphone_clock():
     assert second[0] == 701 and second[-1] == 1400
     assert third[:100].tolist() == list(range(1401, 1501)) and not third[100:].any()
     assert a.read(10).tolist() == [0.0] * 10
+    assert a.received == 1500
 
 
 def test_drift_guard_drops_old_call_sound():

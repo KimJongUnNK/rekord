@@ -53,7 +53,9 @@ if ok:
     while time.time() - t0 < secs:
         time.sleep(0.1)
         got += len(call.read(1600))
-    print(f"read {got / capture.SR:.1f} s")
+    print(f"read {got / capture.SR:.1f} s, received from the system {call.received / capture.SR:.1f} s")
+    if sys.platform == "darwin":  # ScreenCaptureKit delivers sound buffers (also silence): proves the decoding path
+        assert call.received > 0, "ScreenCaptureKit started but delivered no sound"
 call.stop()
 if call.exc is not None and isinstance(call.exc, BUGS) and "permission" not in str(call.exc).lower():
     import traceback

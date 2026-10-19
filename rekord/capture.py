@@ -76,6 +76,7 @@ class SystemAudio:
         self.exc: BaseException | None = None  # the underlying exception (tests/CI tell setup problems from bugs)
         self._mac = None
         self.started = False
+        self.received = 0  # samples that really came from the system (diagnostics, CI)
 
     # the mic drives the clock: each mic chunk takes the same number of call samples
     def read(self, n: int) -> np.ndarray:
@@ -103,6 +104,7 @@ class SystemAudio:
         with self._lock:
             self._buf.append(x)
             self._have += len(x)
+            self.received += len(x)
 
     def start(self, timeout: float = 8) -> bool:
         target = self._run_mac if sys.platform == "darwin" else self._run_soundcard
