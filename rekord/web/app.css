@@ -166,7 +166,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .line span.t { font: 600 11px var(--mono); color: var(--fg3); margin-left: 6px; }
 .line p { margin: 2px 0 0; }
 .level { height: 6px; background: var(--line); border-radius: 6px; overflow: hidden; }
-.level i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #22C55E, #EAB308 70%, #EF4444); transition: width .08s; }
+.level i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #22C55E, #EAB308 70%, #EF4444); background-size: var(--meter-w, 100%) 100%; }
 
 /* ------------------------------------------------ recording detail */
 .det-head { display: flex; gap: 16px; align-items: flex-start; }

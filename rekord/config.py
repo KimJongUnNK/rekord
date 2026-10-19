@@ -38,7 +38,7 @@ DEFAULTS: dict = {
         "provider": "anthropic",  # anthropic | openai | ollama | compatible | none
         "anthropic": {"api_key": "", "model": "claude-opus-5-5", "effort": "medium", "fallbacks": True},
         "openai": {"api_key": "", "model": "", "base_url": ""},
-        "ollama": {"base_url": "http://localhost:11434", "model": "llama3.1"},
+        "ollama": {"base_url": "http://localhost:11434", "model": ""},
         "compatible": {"api_key": "", "model": "", "base_url": "http://localhost:1234/v1"},
     },
     "inbox_enabled": True,

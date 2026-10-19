@@ -285,7 +285,7 @@ def test_provider_errors_are_friendly():
     s = config.load()
     s["llm"]["provider"] = "ollama"
     s["llm"]["ollama"]["base_url"] = "http://127.0.0.1:9"
-    with pytest.raises(providers.LLMError, match="Ollama läuft nicht"):
+    with pytest.raises(providers.LLMError, match="Ollama ist nicht installiert"):
         providers.complete(s, "x", [{"role": "user", "content": "x"}])
     s["llm"]["provider"] = "none"
     with pytest.raises(providers.LLMError):
@@ -347,3 +347,9 @@ def test_auto_summary_only_with_configured_ai(monkeypatch):
     assert jobs.wants_auto_summary(s)
     s["auto_summary"] = False
     assert not jobs.wants_auto_summary(s)
+
+
+def test_strip_think_streaming():
+    from rekord.llm.providers import _strip_think
+    assert "".join(_strip_think(iter(["Hi ", "<thi", "nk>geheim</th", "ink>\n# Titel"]))) == "Hi # Titel"
+    assert "".join(_strip_think(iter(["a < b <tag>"]))) == "a < b <tag>"

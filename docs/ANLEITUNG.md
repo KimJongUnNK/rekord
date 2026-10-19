@@ -128,7 +128,7 @@ Alles läuft unter **Einstellungen → KI**.
 |---|---|---|
 | **Claude** | [console.anthropic.com](https://console.anthropic.com) → *API Keys* → *Create Key* → Key bei **Claude** einfügen → **Testen** | pro Nutzung, meist Cent-Beträge pro Meeting |
 | **ChatGPT** | [platform.openai.com](https://platform.openai.com/api-keys) → *Create new secret key* → Key bei **ChatGPT** einfügen → Modell **Laden** → auswählen → **Testen** | pro Nutzung. Das ChatGPT-Plus-Abo zählt **nicht**. |
-| **Lokal** | [ollama.com](https://ollama.com) installieren → Terminal: `ollama pull qwen3:8b` → bei **Lokal** Modell **Laden** → auswählen | **gratis**, nichts verlässt den Computer. Braucht ~8 GB freien Arbeitsspeicher. |
+| **Lokal** | Bei **Lokal** steht, was fehlt: ist Ollama noch nicht da, auf **Ollama herunterladen** klicken und installieren. Danach bei einem Modell auf **Laden** klicken. Ist der Download fertig, wird es automatisch verwendet. | **gratis**, nichts verlässt den Computer. *qwen3:8b* braucht ~16 GB RAM, *qwen3:4b* läuft schon ab 8 GB. |
 
 **Mit deinem Claude-Abo statt API-Key (Claude Desktop):**
 REKORD → *Einstellungen → Claude Desktop (MCP)* → **Kopieren** →
@@ -211,7 +211,7 @@ Oben gibt's Sprung-Knöpfe zu den Bereichen. *Darstellung* und *Audio & Mikrofon
 |---|---|
 | **Darstellung** | **Erscheinungsbild** System / Hell / Dunkel · **Akzentfarbe** (9 fertige oder eigene) · **Dichte** Luftig / Kompakt |
 | **Audio & Mikrofon** | **Mikrofon** wählen + *Pegel testen* · **Standard-Quelle** Mikrofon oder Mikro + Call-Ton · **Audio-Verarbeitung**: Rauschunterdrückung, Echo-Unterdrückung, automatische Lautstärke · **Live-Erkennung** an/aus (aus spart Akku) · **Bildschirm wach halten** |
-| **KI** | Anbieter wählen: Claude, ChatGPT, Lokal, Kompatibel, Aus · **API-Key** · **Modell** (*Laden* holt die Liste) · Claude: **Denkaufwand**, **Ausweichmodell** · Lokal/Kompatibel: **Ollama-Adresse** bzw. **Server-Adresse**, **Kontextlänge** · **Verbindung** → *Testen* · **Sprache der Zusammenfassungen** · **Automatisch zusammenfassen** + Standard-Vorlage |
+| **KI** | Anbieter wählen: Claude, ChatGPT, Lokal, Kompatibel, Aus · Lokal: **Lokales Modell** mit *Laden*-Knopf und Fortschritt, deine Modelle antippen zum Verwenden · **API-Key** · **Modell** (*Laden* holt die Liste) · Claude: **Denkaufwand**, **Ausweichmodell** · Lokal/Kompatibel: **Ollama-Adresse** bzw. **Server-Adresse**, **Kontextlänge** · **Verbindung** → *Testen* · **Sprache der Zusammenfassungen** · **Automatisch zusammenfassen** + Standard-Vorlage |
 | **Transkription** | **Sprache** (fest eingestellt = genauer, *Automatisch* für gemischte Meetings) · **Engine** · **Modell** (*small* = Standard, *turbo* = beste Qualität) · **CPU-Threads** · **Vokabular** für Namen, die falsch erkannt werden |
 | **Sprecher-Erkennung** | **Personen-Erkennung (Aufnahmen)** und **Personen-Erkennung (live)**: wie streng (höher = weniger Verwechslungen) · **Sprecher trennen**: erscheint eine Person doppelt, runterdrehen · **Anzahl Sprecher**: wenn bekannt, fest einstellen · **Stimmabdruck-Modell** |
 | **Modelle** | Sprachmodelle *Laden* oder *Entfernen* |

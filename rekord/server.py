@@ -312,6 +312,34 @@ def llm_models(provider: str):
         return {"models": [], "error": str(e)}
 
 
+@app.get("/api/ollama")
+def ollama_status():
+    from .llm import ollama
+    return ollama.status(config.load()["llm"]["ollama"].get("base_url"))
+
+
+@app.post("/api/ollama/start")
+async def ollama_start():
+    from .llm import ollama
+    ok = await asyncio.to_thread(ollama.start, config.load()["llm"]["ollama"].get("base_url"))
+    return {"ok": ok}
+
+
+@app.post("/api/ollama/pull")
+async def ollama_pull(request: Request):
+    from .llm import ollama
+    model = (await request.json())["model"].strip()
+    if not re.match(r"^[\w.\-/:]+$", model):
+        raise HTTPException(400, "Ungültiger Modellname")
+
+    def done(m: str):  # first local model → use it right away
+        s = config.load()
+        if s["llm"]["provider"] == "ollama" and not s["llm"]["ollama"].get("model"):
+            config.save({"llm": {"ollama": {"model": m}}})
+    ollama.pull(model, config.load()["llm"]["ollama"].get("base_url"), on_done=done)
+    return {"ok": True}
+
+
 @app.post("/api/llm/test")
 def llm_test():
     t0 = time.time()

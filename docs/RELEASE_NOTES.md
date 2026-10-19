@@ -16,6 +16,11 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.0.4
+- **Lokale KI ohne Terminal:** Unter *Einstellungen → KI → Lokal* erkennt REKORD Ollama und startet es bei Bedarf. Deine vorhandenen Modelle sind antippbar, neue lädst du per **Laden**-Knopf mit Fortschrittsbalken. Das erste geladene Modell wird automatisch verwendet.
+- Denk-Text lokaler Modelle (`<think>…</think>`) landet nicht mehr in Zusammenfassungen.
+- **Behoben:** Die Pegel-Anzeige blieb nach dem Sprechen auf dem Höchstwert hängen. Jetzt misst sie in dB und fällt sauber zurück.
+
 ### Neu in 1.0.3
 - **Behoben (Linux):** Der Modell-Download schlug auf Fedora, Arch und openSUSE mit einem SSL-Fehler fehl. REKORD bringt jetzt seine eigene Zertifikatsliste mit.
 - **Behoben (Linux):** Das Öffnen des Browsers ist unter KDE abgestürzt (`kde-open`, falsche Systembibliotheken).

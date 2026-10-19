@@ -147,25 +147,74 @@ def _openai(cfg: dict, system: str, messages: list[dict], max_tokens: int, compa
 # ------------------------------------------------------------------ Ollama (native API: lets us raise num_ctx)
 
 def _ollama(cfg: dict, system: str, messages: list[dict]) -> Iterator[str]:
+    from . import ollama
     base = (cfg.get("base_url") or "http://localhost:11434").rstrip("/")
-    body = {"model": cfg.get("model") or "llama3.1", "stream": True,
+    if not ollama.start(base):  # installed but not running → start it, like a user would
+        raise LLMError("Ollama ist nicht installiert. Einstellungen → KI → Lokal → „Ollama herunterladen“.")
+    model = cfg.get("model")
+    if not model:
+        raise LLMError("Kein lokales Modell gewählt. Einstellungen → KI → Lokal → Modell laden.")
+    body = {"model": model, "stream": True, "think": False,
             "messages": [{"role": "system", "content": system}] + messages,
             "options": {"num_ctx": int(cfg.get("num_ctx", 32768))}}
     try:
         with httpx.stream("POST", f"{base}/api/chat", json=body, timeout=httpx.Timeout(600, connect=5)) as r:
             if r.status_code == 404:
-                raise LLMError(f"Ollama-Modell '{body['model']}' fehlt: ollama pull {body['model']}")
+                raise LLMError(f"Modell „{model}“ ist nicht geladen. Einstellungen → KI → Lokal → Laden.")
+            if r.status_code == 400 and body.get("think") is False:  # older Ollama without the think flag
+                r.close()
+                body.pop("think")
+                yield from _strip_think(_ollama_raw(base, body))
+                return
             r.raise_for_status()
-            for line in r.iter_lines():
-                if not line:
-                    continue
-                d = json.loads(line)
-                if d.get("error"):
-                    raise LLMError(f"Ollama: {d['error']}")
-                if (c := d.get("message", {}).get("content")):
-                    yield c
+            yield from _strip_think(_ollama_lines(r))
     except httpx.ConnectError as e:
-        raise LLMError(f"Ollama läuft nicht auf {base} (ollama serve).") from e
+        raise LLMError(f"Ollama antwortet nicht auf {base}.") from e
+
+
+def _ollama_raw(base: str, body: dict) -> Iterator[str]:
+    with httpx.stream("POST", f"{base}/api/chat", json=body, timeout=httpx.Timeout(600, connect=5)) as r:
+        r.raise_for_status()
+        yield from _ollama_lines(r)
+
+
+def _ollama_lines(r) -> Iterator[str]:
+    for line in r.iter_lines():
+        if not line:
+            continue
+        d = json.loads(line)
+        if d.get("error"):
+            raise LLMError(f"Ollama: {d['error']}")
+        if (c := d.get("message", {}).get("content")):
+            yield c
+
+
+def _strip_think(chunks: Iterator[str]) -> Iterator[str]:
+    """Some local models wrap their reasoning in <think>…</think>; never show that in a summary.
+    Works on a stream: tag halves split across chunks are held back until they are decided."""
+    def partial(text: str, tag: str) -> int:  # length of the longest suffix of text that starts tag
+        return next((k for k in range(min(len(tag) - 1, len(text)), 0, -1) if tag.startswith(text[-k:])), 0)
+
+    buf, inside = "", False
+    for c in chunks:
+        buf += c
+        while buf:
+            tag = "</think>" if inside else "<think>"
+            pos = buf.find(tag)
+            if pos >= 0:
+                if not inside and pos:
+                    yield buf[:pos]
+                buf, inside = buf[pos + len(tag):], not inside
+                if not inside:
+                    buf = buf.lstrip()
+                continue
+            hold = partial(buf, tag)
+            if not inside and len(buf) > hold:
+                yield buf[:len(buf) - hold]
+            buf = buf[len(buf) - hold:]
+            break
+    if buf and not inside:
+        yield buf
 
 
 # ------------------------------------------------------------------ discovery & test

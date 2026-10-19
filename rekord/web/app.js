@@ -285,8 +285,6 @@ class Down16k extends AudioWorkletProcessor {
   process(inputs) {
     const ch = inputs[0] && inputs[0][0];
     if (!ch) return true;
-    let sum = 0;
-    for (let i = 0; i < ch.length; i++) sum += ch[i] * ch[i];
     // fractional-step linear resampler with a light box filter (anti-alias good enough for speech)
     while (this.pos < ch.length) {
       const i = Math.floor(this.pos), f = this.pos - i;
@@ -298,7 +296,6 @@ class Down16k extends AudioWorkletProcessor {
       this.pos += this.ratio;
     }
     this.pos -= ch.length;
-    this.port.postMessage({ rms: Math.sqrt(sum / ch.length) });
     return true;
   }
 }
@@ -321,7 +318,7 @@ class Capture {
     const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
     await this.ctx.audioWorklet.addModule(url);
     this.node = new AudioWorkletNode(this.ctx, "down16k");
-    this.node.port.onmessage = (e) => { if (e.data instanceof ArrayBuffer) this.onPcm && this.onPcm(e.data); else this.onLevel && this.onLevel(e.data.rms); };
+    this.node.port.onmessage = (e) => { if (e.data instanceof ArrayBuffer && this.onPcm) this.onPcm(e.data); };
     const mix = this.ctx.createGain();
     this.ctx.createMediaStreamSource(mic).connect(mix);
     if (mode === "mic+system") {
@@ -336,11 +333,34 @@ class Capture {
       } catch (e) { toast("Systemton abgelehnt – nur Mikrofon."); }
     }
     mix.connect(this.node);
+    if (this.onLevel) this.meter(mix);
     const mute = this.ctx.createGain(); mute.gain.value = 0;
     this.node.connect(mute).connect(this.ctx.destination);
     this.mediaStream = mic;
   }
+  // Level meter: dBFS from an AnalyserNode, read once per frame. Rises instantly, falls back smoothly,
+  // so it can't get stuck at a peak (and doesn't depend on worklet messages, which WebKit throttles).
+  meter(source) {
+    const an = this.ctx.createAnalyser();
+    an.fftSize = 2048;
+    source.connect(an);
+    const buf = new Float32Array(an.fftSize);
+    let shown = 0;
+    const tick = () => {
+      if (!this.ctx) return;
+      an.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      const db = 20 * Math.log10(Math.sqrt(sum / buf.length) + 1e-9);
+      const v = Math.max(0, Math.min(1, (db + 60) / 54));   // -60 dB → 0 %, -6 dB → 100 %
+      shown = v > shown ? v : shown * 0.9 + v * 0.1;         // fast attack, smooth release
+      this.onLevel(shown);
+      this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
   stop() {
+    if (this.raf) cancelAnimationFrame(this.raf);
     this.streams.forEach((s) => s.getTracks().forEach((t) => t.stop()));
     this.streams = [];
     if (this.ctx) this.ctx.close().catch(() => {});
@@ -508,7 +528,7 @@ async function startLive(title) {
   try {
     s.capture = new Capture({
       onPcm: (buf) => { if (s.paused) return; if (s.ws && s.ws.readyState === 1) s.ws.send(buf); else if (s.offline) s.chunks.push(buf); },
-      onLevel: (rms) => { const v = Math.min(1, rms * 9); const l = $("#lvl"); if (l) l.style.width = v * 100 + "%"; const r = $("#ring"); if (r) r.style.setProperty("--lvl", v.toFixed(2)); },
+      onLevel: (v) => { const l = $("#lvl"); if (l) l.style.width = v * 100 + "%"; const r = $("#ring"); if (r) r.style.setProperty("--lvl", v.toFixed(2)); },
     });
     await s.capture.start(prefs.inputMode);
   } catch (e) {
@@ -1119,6 +1139,58 @@ const LANGS = [["", "Automatisch (pro Satz)"], ["de", "Deutsch"], ["en", "Englis
   ["nl", "Niederländisch"], ["pt", "Portugiesisch"], ["pl", "Polnisch"], ["tr", "Türkisch"], ["ru", "Russisch"], ["uk", "Ukrainisch"], ["hr", "Kroatisch"],
   ["sr", "Serbisch"], ["ar", "Arabisch"], ["zh", "Chinesisch"], ["ja", "Japanisch"], ["ko", "Koreanisch"]];
 
+// Lokal (Ollama): detect, start, one-click model downloads with progress – no terminal
+let ollTimer = null;
+async function ollamaPanel(cfg) {
+  clearTimeout(ollTimer);
+  const box = $("#oll"); if (!box) return;
+  let st;
+  try { st = await api("/api/ollama"); } catch (e) { box.textContent = e.message; return; }
+  const gb = (n) => n.toLocaleString("de-AT", { maximumFractionDigits: 1 }) + " GB";
+  const pulling = Object.entries(st.pulls).filter(([, v]) => v.state === "downloading");
+  const installed = new Set(st.models.map((m) => m.name));
+  let html = "";
+  if (!st.installed) {
+    html = `<p style="margin-top:0"><b>Dafür braucht es das kostenlose Programm Ollama.</b> Einmal installieren, den Rest macht REKORD.</p>
+      <div class="row"><a class="btn primary" href="${st.download_url}" target="_blank" rel="noopener">Ollama herunterladen</a>
+      <button class="btn" id="oll-recheck">Ist installiert – prüfen</button></div>`;
+  } else if (!st.running) {
+    html = `<div class="row"><span class="muted">Ollama ist installiert, läuft aber nicht.</span><button class="btn primary" id="oll-start">Ollama starten</button></div>`;
+  } else {
+    html = `<div class="muted" style="font-size:13px;margin-bottom:10px"><span class="dot ok"></span>Ollama läuft${st.version ? " · v" + esc(st.version) : ""}</div>`;
+    if (st.models.length) html += `<div class="eyebrow" style="margin-bottom:6px">Deine Modelle – antippen zum Verwenden</div>
+      <div class="row" style="margin-bottom:14px">${st.models.map((m) => `<button class="btn sm ${m.name === cfg.model ? "primary" : ""}" data-use="${esc(m.name)}">${m.name === cfg.model ? "✓ " : ""}${esc(m.name)} <span class="muted">${gb(m.size_gb)}</span></button>`).join("")}</div>`;
+    html += `<div class="eyebrow" style="margin-bottom:6px">${st.models.length ? "Weitere laden" : "Modell laden"}</div>` + st.recommended.map((r) => {
+      const pr = st.pulls[r.name] || {};
+      const pct = pr.total ? Math.round((pr.done / pr.total) * 100) : 0;
+      const right = installed.has(r.name) ? `<span class="badge">geladen</span>`
+        : pr.state === "downloading" ? `<span class="muted">${pct ? pct + " %" : esc(pr.status || "…")}</span>`
+        : `<button class="btn sm" data-pull="${esc(r.name)}">Laden</button>`;
+      return `<div class="model-row"><div><b>${esc(r.name)}</b> <span class="muted">${gb(r.size_gb)} · ab ${r.ram_gb} GB RAM</span>
+        <div class="muted" style="font-size:13px">${esc(r.note)}${pr.state === "error" ? ` · <span style="color:#EF4444">${esc(pr.error)}</span>` : ""}</div>
+        ${pr.state === "downloading" ? `<div class="progress" style="width:100%"><i style="width:${pct}%"></i></div>` : ""}</div><div>${right}</div></div>`;
+    }).join("");
+  }
+  box.innerHTML = html;
+  $("#oll-recheck") && ($("#oll-recheck").onclick = () => ollamaPanel(cfg));
+  $("#oll-start") && ($("#oll-start").onclick = async (e) => { e.target.disabled = true; e.target.textContent = "Startet …";
+    const r = await api("/api/ollama/start", { method: "POST" }); if (!r.ok) toast("Ollama startet nicht – einmal manuell öffnen.", 5000); ollamaPanel(cfg); });
+  $$("#oll [data-use]").forEach((b) => b.onclick = async () => {
+    await api("/api/settings", { method: "PUT", json: { llm: { ollama: { model: b.dataset.use } } } });
+    cfg.model = b.dataset.use; toast(`${b.dataset.use} wird verwendet`); refreshStatus(); ollamaPanel(cfg);
+  });
+  $$("#oll [data-pull]").forEach((b) => b.onclick = async () => {
+    b.disabled = true; b.textContent = "startet …";
+    await api("/api/ollama/pull", { method: "POST", json: { model: b.dataset.pull } }); ollamaPanel(cfg);
+  });
+  const wasPulling = pulling.length > 0;
+  if (wasPulling || !st.running) ollTimer = setTimeout(async () => {
+    if (!$("#oll")) return;
+    const s = await api("/api/settings"); cfg.model = s.llm.ollama.model;  // a finished first download is auto-selected
+    ollamaPanel(cfg); refreshStatus();
+  }, wasPulling ? 1000 : 4000);
+}
+
 async function viewSettings() {
   let s = await api("/api/settings");
   const st = state.status || (await api("/api/status"));
@@ -1232,7 +1304,7 @@ async function viewSettings() {
   let testCap = null;
   $("#mic-test").onclick = async () => {
     if (testCap) { testCap.stop(); testCap = null; $("#mic-test").textContent = "Pegel testen"; $("#mic-lvl").style.width = 0; return; }
-    testCap = new Capture({ onLevel: (r) => { const l = $("#mic-lvl"); if (l) l.style.width = Math.min(100, r * 900) + "%"; } });
+    testCap = new Capture({ onLevel: (v) => { const l = $("#mic-lvl"); if (l) l.style.width = v * 100 + "%"; } });
     try { await testCap.start("mic"); $("#mic-test").textContent = "Stopp"; fillMics(); } catch (e) { toast(e.message); testCap = null; }
   };
   $$("#imode button").forEach((b) => b.onclick = () => { setPref("inputMode", b.dataset.v); $$("#imode button").forEach((x) => x.classList.toggle("on", x === b)); });
@@ -1250,14 +1322,17 @@ async function viewSettings() {
       + `<div class="field"><label for="eff">Denkaufwand<span class="hint">Höher = gründlicher, langsamer, teurer.</span></label><select id="eff">${["low", "medium", "high", "xhigh", "max"].map((e) => opt(e, c.effort, e)).join("")}</select></div>
          <div class="field"><div class="lbl">Ausweichmodell<span class="hint">Lehnt das Modell ab, springt automatisch ein anderes Claude-Modell ein.</span></div><label class="row"><input type="checkbox" id="fb" ${c.fallbacks ? "checked" : ""}> Aktiv</label></div>`;
     if (p === "openai") html = keyField("API-Key", "platform.openai.com → API Keys. Achtung: ChatGPT-Plus-Abo ≠ API-Guthaben.") + modelField("Auf „Laden“ klicken, um deine verfügbaren Modelle zu sehen.");
-    if (p === "ollama") html = `<div class="field"><label for="bu">Ollama-Adresse<span class="hint">ollama.com installieren, dann z. B. <span class="kbd">ollama pull qwen3:8b</span></span></label>
-      <input type="url" id="bu" value="${esc(c.base_url || "http://localhost:11434")}"></div>` + modelField("Installierte Modelle laden.")
+    if (p === "ollama") html = `<div class="field"><div class="lbl">Lokales Modell<span class="hint">Läuft komplett auf diesem Computer, gratis. Ein Klick auf <b>Laden</b> lädt es herunter.</span></div>
+        <div id="oll">Prüfe Ollama …</div></div>
+      <div class="field"><label for="bu">Ollama-Adresse<span class="hint">Nur ändern, wenn Ollama auf einem anderen Rechner läuft.</span></label>
+      <input type="url" id="bu" value="${esc(c.base_url || "http://localhost:11434")}"></div>`
       + `<div class="field"><label for="ctx">Kontextlänge<span class="hint">Mehr = längere Meetings am Stück, braucht mehr RAM.</span></label><select id="ctx">${[8192, 16384, 32768, 65536, 131072].map((n) => opt(n, c.num_ctx || 32768, n.toLocaleString("de-AT") + " Tokens")).join("")}</select></div>`;
     if (p === "compatible") html = `<div class="field"><label for="bu">Server-Adresse<span class="hint">LM Studio: http://localhost:1234/v1 · llama.cpp: http://localhost:8080/v1 · OpenRouter: https://openrouter.ai/api/v1</span></label>
       <input type="url" id="bu" value="${esc(c.base_url || "")}"></div>` + keyField("API-Key", "Nur falls der Server einen verlangt.") + modelField("Modelle vom Server laden.")
       + `<div class="field"><label for="ctx">Kontextlänge</label><select id="ctx">${[8192, 16384, 32768, 65536, 131072].map((n) => opt(n, c.context_tokens || 32768, n.toLocaleString("de-AT") + " Tokens")).join("")}</select></div>`;
     if (p !== "none") html += `<div class="field"><div class="lbl">Verbindung</div><div class="row"><button class="btn" id="ltest">Testen</button><span id="lres" class="muted"></span></div></div>`;
     $("#prov-cfg").innerHTML = html;
+    if (p === "ollama") ollamaPanel(c);
     const patch = (obj) => saveNow({ llm: { [p]: obj } });
     $("#k") && $("#k").addEventListener("change", (e) => e.target.value && patch({ api_key: e.target.value.trim() }).then(() => { e.target.value = ""; provCfg(); toast("Key gespeichert"); }));
     $("#m") && $("#m").addEventListener("change", (e) => patch({ model: e.target.value.trim() }).then(() => toast("Modell gespeichert")));
@@ -1379,7 +1454,7 @@ async function viewSettings() {
     try { await api("/api/shutdown", { method: "POST" }); view.innerHTML = `<div class="page empty"><h2>REKORD ist beendet.</h2><p>Du kannst dieses Fenster schließen.</p></div>`; }
     catch (e) { toast(e.message, 5000); }
   });
-  cleanup = () => { if (testCap) testCap.stop(); };
+  cleanup = () => { if (testCap) testCap.stop(); clearTimeout(ollTimer); };
 }
 
 // ================================================================ mind map renderer (pure SVG, horizontal tree)
