@@ -173,6 +173,7 @@ def installed(tmp_path, monkeypatch):
     (app / "_internal").mkdir()
     (app / "_internal" / "old-only.txt").write_text("old")
     monkeypatch.setattr(system, "frozen", lambda: True)
+    monkeypatch.setattr(sys, "platform", "linux")  # the same swap on every CI machine
     monkeypatch.setattr(sys, "executable", str(app / "REKORD"))
     monkeypatch.delenv("APPIMAGE", raising=False)
     started = []
@@ -254,6 +255,7 @@ def test_appimage_is_replaced_in_place(tmp_path, monkeypatch):
     img.parent.mkdir()
     img.write_bytes(b"old")
     monkeypatch.setattr(system, "frozen", lambda: True)
+    monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(sys, "executable", str(tmp_path / "mnt" / "usr/lib/rekord/REKORD"))
     monkeypatch.setenv("APPIMAGE", str(img))
     started = []
@@ -313,17 +315,18 @@ def test_old_copy_starts_the_newest_installed(tmp_path, monkeypatch, installed):
     assert updater.registered() == {"version": __version__, "exe": str(app / "REKORD")}
     newest = tmp_path / "elsewhere" / "REKORD"
     newest.parent.mkdir()
-    newest.write_text("#!/bin/sh\necho started > \"$(dirname \"$0\")/ran\"\n")
-    newest.chmod(0o755)
+    newest.write_text("newest")
     (tmp_path / "cfg" / "app.json").write_text(json.dumps({"version": "9.9.9", "exe": str(newest)}))
     updater.remember_install()  # an older one doesn't overwrite the newest
     assert updater.registered()["exe"] == str(newest)
-    assert updater.hand_over_to_newest([]) is True
-    for _ in range(50):
-        if (newest.parent / "ran").exists():
-            break
-        time.sleep(0.1)
-    assert (newest.parent / "ran").exists()
+    spawned = []
+
+    class Popen:
+        def __init__(self, cmd, **kw):
+            spawned.append(cmd)
+    monkeypatch.setattr(updater.subprocess, "Popen", Popen)
+    assert updater.hand_over_to_newest(["--background"]) is True
+    assert spawned == [[str(newest), "--background"]]
     newest.unlink()  # newest removed → no hand-over, this one runs
     assert updater.hand_over_to_newest([]) is False
 
