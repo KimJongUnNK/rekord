@@ -361,19 +361,31 @@ def _apply_windows(file: Path, root: Path, work: Path, v: str) -> list[str]:
     script = work / "swap.ps1"
     script.write_text(f"""$ErrorActionPreference = 'Continue'
 $dir = '{q(root)}'; $new = '{q(new)}'; $old = '{q(work / "old")}'; $log = '{q(work / "swap.log")}'
-try {{ Wait-Process -Id {os.getpid()} -Timeout 60 -ErrorAction SilentlyContinue }} catch {{}}
-# every REKORD from this folder must be closed (also "REKORD mcp" for Claude Desktop) - files in use can't be moved
-Get-Process REKORD -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like "$dir\\*" }} | Stop-Process -Force -ErrorAction SilentlyContinue
+$trace = '{q(work / "swap-trace.log")}'
+function Note($m) {{ Add-Content -LiteralPath $trace -Value ((Get-Date -Format 'HH:mm:ss.fff') + ' ' + $m) -Encoding UTF8 }}
 # files may stay locked for a moment (virus scanner, Explorer): try for up to 20 s
-function Retry($block) {{ for ($i = 0; $i -lt 40; $i++) {{ try {{ & $block; return $true }} catch {{ Start-Sleep -Milliseconds 500 }} }}; return $false }}
-if (Retry {{ Move-Item -LiteralPath $dir -Destination $old -ErrorAction Stop }}) {{
-  if (-not (Retry {{ Move-Item -LiteralPath $new -Destination $dir -ErrorAction Stop }})) {{
-    Retry {{ Move-Item -LiteralPath $old -Destination $dir -ErrorAction Stop }} | Out-Null
-    "Der neue Ordner konnte nicht an seinen Platz." | Out-File -FilePath $log -Encoding utf8
-  }}
-}} else {{ "Windows hat REKORD-Dateien noch benutzt." | Out-File -FilePath $log -Encoding utf8 }}
+function Retry($block) {{ for ($i = 0; $i -lt 40; $i++) {{ try {{ & $block; return $true }} catch {{ Note "retry: $_"; Start-Sleep -Milliseconds 500 }} }}; return $false }}
+try {{
+  Note "start (PowerShell $($PSVersionTable.PSVersion))"
+  try {{ Wait-Process -Id {os.getpid()} -Timeout 60 -ErrorAction SilentlyContinue }} catch {{}}
+  Note 'old REKORD has quit'
+  # every REKORD from this folder must be closed (also "REKORD mcp" for Claude Desktop) - files in use can't be moved
+  Get-Process REKORD -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like "$dir\\*" }} | Stop-Process -Force -ErrorAction SilentlyContinue
+  if (Retry {{ Move-Item -LiteralPath $dir -Destination $old -ErrorAction Stop }}) {{
+    Note 'old version moved aside'
+    if (Retry {{ Move-Item -LiteralPath $new -Destination $dir -ErrorAction Stop }}) {{ Note 'new version in place' }}
+    else {{
+      Retry {{ Move-Item -LiteralPath $old -Destination $dir -ErrorAction Stop }} | Out-Null
+      "Der neue Ordner konnte nicht an seinen Platz." | Out-File -FilePath $log -Encoding utf8
+    }}
+  }} else {{ "Windows hat REKORD-Dateien noch benutzt." | Out-File -FilePath $log -Encoding utf8 }}
+}} catch {{ Note "error: $_"; "Update-Skript: $_" | Out-File -FilePath $log -Encoding utf8 }}
 $env:REKORD_RESTARTING = '1'
-Start-Process -FilePath (Join-Path $dir 'REKORD.exe') -WorkingDirectory $env:USERPROFILE {('-ArgumentList ' + args) if args else ''}
+$home_ = if ($env:USERPROFILE) {{ $env:USERPROFILE }} else {{ Split-Path $dir }}
+try {{
+  $p = Start-Process -FilePath (Join-Path $dir 'REKORD.exe') -WorkingDirectory $home_ {('-ArgumentList ' + args + ' ') if args else ''}-PassThru -ErrorAction Stop
+  Note "started REKORD (pid $($p.Id))"
+}} catch {{ Note "start failed: $_" }}
 """, "utf-8-sig")
     return ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", str(script)]
 

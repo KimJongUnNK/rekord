@@ -97,6 +97,23 @@ def wait_version(want: str, timeout: float) -> bool:
     return False
 
 
+def diagnose(root: Path) -> None:
+    """Everything that tells why an update didn't work (CI only shows this output)."""
+    say("---- diagnosis")
+    try:
+        say("update state:", api("/api/update", timeout=3))
+    except Exception as e:  # noqa: BLE001
+        say("hub not reachable:", e)
+    say("REKORD processes:", system.rekord_processes())
+    for d in (root.parent, root.parent / ".rekord-update"):
+        if d.exists():
+            say(f"{d}:", sorted(x.name for x in d.iterdir()))
+    for f in ("swap-trace.log", "swap.log"):
+        f = root.parent / ".rekord-update" / f
+        if f.exists():
+            say(f"{f.name}:", f.read_text("utf-8-sig", errors="replace"))
+
+
 def main() -> int:
     dist = Path(sys.argv[1] if len(sys.argv) > 1 else "desktop/dist").resolve()
     tmp = Path(tempfile.mkdtemp(prefix="rekord-update-"))
@@ -146,6 +163,9 @@ def main() -> int:
         assert len(system.rekord_processes()) == 1
         say("OK: updated in place, one REKORD")
         return 0
+    except Exception:
+        diagnose(root)
+        raise
     finally:
         try:
             api("/api/shutdown", "POST")

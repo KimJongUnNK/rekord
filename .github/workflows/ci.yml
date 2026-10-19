@@ -18,21 +18,21 @@ jobs:
       - name: unit + api tests
         shell: bash
         run: |
-          pytest -m "not models" -q -rfs --tb=line > unit.log 2>&1 || { echo "::error title=tests::$(grep -E '^(FAILED|ERROR)|Error|assert' unit.log | tail -c 3000 | tr '\n%' ' _')"; exit 1; }
-          echo "::notice title=tests ${{ runner.os }}::$(grep -E '^SKIPPED|passed' unit.log | tr '\n%' ' _' | cut -c1-900)"
+          pytest -m "not models" -q -rfs --tb=line > unit.log 2>&1 || { echo "::error title=tests::$(grep -E '^(FAILED|ERROR)|Error|assert' unit.log | tail -c 3000 | tr -d '\r' | tr '\n%' ' _')"; exit 1; }
+          echo "::notice title=tests ${{ runner.os }}::$(grep -E '^SKIPPED|passed' unit.log | tr -d '\r' | tr '\n%' ' _' | cut -c1-900)"
       - name: online meetings – call sound on the real OS (WASAPI / ScreenCaptureKit / Pulse)
         shell: bash
         run: |
           set +e
           python scripts/capture_smoke.py > capture.log 2>&1; rc=$?
           cat capture.log
-          if [ $rc -ne 0 ]; then echo "::error title=call sound ${{ runner.os }}::$(tail -c 2500 capture.log | tr '\n%' ' _')"; exit 1; fi
+          if [ $rc -ne 0 ]; then echo "::error title=call sound ${{ runner.os }}::$(tail -c 2500 capture.log | tr -d '\r' | tr '\n%' ' _')"; exit 1; fi
           echo "::notice title=call sound ${{ runner.os }}::$(tr '\n' ' ' < capture.log | cut -c1-900)"
       - name: end-to-end with real models (downloads ~250 MB)
         if: matrix.os == 'ubuntu-latest'
         run: |
           python scripts/make_test_audio.py > e2e.log 2>&1 && pytest -m models -q -rs >> e2e.log 2>&1 || { echo "::error title=e2e::$(tail -c 3000 e2e.log | tr '\n' ' ')"; exit 1; }
-          echo "::notice title=e2e::$(grep -E '^SKIPPED|passed' e2e.log | tr '\n%' ' _' | cut -c1-900)"
+          echo "::notice title=e2e::$(grep -E '^SKIPPED|passed' e2e.log | tr -d '\r' | tr '\n%' ' _' | cut -c1-900)"
   ios:
     runs-on: macos-15
     steps:
@@ -62,7 +62,7 @@ jobs:
           set +e
           python scripts/update_smoke.py desktop/dist > update.log 2>&1; rc=$?
           cat update.log
-          if [ $rc -ne 0 ]; then echo "::error title=update ${{ runner.os }}::$(tail -c 2500 update.log | tr '\n%' ' _')"; exit 1; fi
+          if [ $rc -ne 0 ]; then echo "::error title=update ${{ runner.os }}::$(tail -c 2500 update.log | tr -d '\r' | tr '\n%' ' _')"; exit 1; fi
           echo "::notice title=update ${{ runner.os }}::$(grep -E 'check:|now running|processes|OK' update.log | tr '\n' ' ' | cut -c1-900)"
       - uses: actions/upload-artifact@v7
         with:
