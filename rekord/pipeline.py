@@ -9,7 +9,7 @@ import numpy as np
 
 from . import audio, config, db
 from .engines import asr, voiceprint
-from .engines.diarize import diarize, refine_turns
+from .engines.diarize import clean_turns, diarize, refine_turns
 
 log = logging.getLogger("rekord.pipeline")
 
@@ -50,10 +50,12 @@ def process(rid: str, on_event=None) -> dict:
     stage("Personen erkennen", 0.36)
     emb = voiceprint.get_embedder(s["embedding_model"], 2)
     turns = refine_turns(samples, turns, emb, hop=0.5 if duration < 900 else 1.0)
-    by_label: dict[int, list[tuple[float, float]]] = {}
-    for a, b, spk in turns:
-        by_label.setdefault(spk, []).append((a, b))
-    speaker_embs = {lbl: e for lbl, ts in by_label.items() if (e := emb.embed_turns(samples, ts)) is not None}
+    by_label, speaker_embs = _voiceprints(samples, turns, emb)
+    if not n_spk and len(speaker_embs) > 1:  # one person split into two "speakers"? → merge near-identical voices
+        merged = merge_similar_speakers(turns, speaker_embs, float(s.get("merge_threshold", MERGE_THRESHOLD)))
+        if merged != turns:
+            turns = clean_turns(merged)
+            by_label, speaker_embs = _voiceprints(samples, turns, emb)
     profiles = [p for p in db.list_profiles(with_embedding=True) if p["embedding"] is not None]
     threshold = float(s["profile_threshold"])
     if part_ids:  # announced participants: compare only against them; with no guests it is a closed set
@@ -94,6 +96,38 @@ def process(rid: str, on_event=None) -> dict:
     if on_event:
         on_event({"type": "done", "id": rid})
     return {"duration": duration, "speakers": len(speakers), "segments": len(segs), "seconds": time.time() - t0}
+
+
+# Voiceprints of the same person (two halves of their turns) score 0.7–0.9, different people mostly below 0.4.
+MERGE_THRESHOLD = 0.65
+
+
+def _voiceprints(samples, turns, emb):
+    by_label: dict[int, list[tuple[float, float]]] = {}
+    for a, b, spk in turns:
+        by_label.setdefault(spk, []).append((a, b))
+    return by_label, {lbl: e for lbl, ts in by_label.items() if (e := emb.embed_turns(samples, ts)) is not None}
+
+
+def merge_similar_speakers(turns: list[tuple[float, float, int]], embs: dict[int, np.ndarray],
+                           threshold: float = MERGE_THRESHOLD) -> list[tuple[float, float, int]]:
+    """Clustering sometimes splits one voice into two speakers. Merge the most similar pair while their
+    voiceprints are clearly the same person (weighted by speaking time, so the bigger cluster dominates)."""
+    embs = dict(embs)
+    talk = {k: sum(b - a for a, b, s in turns if s == k) for k in embs}
+    while len(embs) > 1:
+        score, keep, drop = max((voiceprint.cosine(embs[a], embs[b]), a, b) for a in embs for b in embs if a < b)
+        if score < threshold:
+            break
+        if talk[drop] > talk[keep]:
+            keep, drop = drop, keep
+        w = talk[keep] / ((talk[keep] + talk[drop]) or 1)
+        embs[keep] = voiceprint.normalize(w * embs[keep] + (1 - w) * embs[drop])
+        talk[keep] += talk.pop(drop)
+        del embs[drop]
+        turns = [(a, b, keep if s == drop else s) for a, b, s in turns]
+        log.info("merged speaker %d into %d (voiceprint similarity %.2f)", drop, keep, score)
+    return turns
 
 
 def remember_speaker(rid: str, speaker_id: int, name: str) -> dict:

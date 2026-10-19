@@ -19,6 +19,10 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.0.6
+- **Sprecher-Erkennung:** Wird eine Person versehentlich als zwei Sprecher erkannt, führt REKORD die beiden jetzt automatisch zusammen (nur wenn die Stimmabdrücke eindeutig dieselbe Person sind und die Sprecherzahl nicht fest eingestellt ist).
+- Die Ende-zu-Ende-Tests laufen jetzt mit immer gleichen Test-Stimmen – kein Zufall mehr in der Qualitätskontrolle.
+
 ### Neu in 1.0.5 – alles mit einem Klick
 - **Lokale KI in einem Klick:** *Lokal einrichten* installiert Ollama selbst (Mac, Windows, Linux – ohne Website, ohne Terminal), lädt das Modell, das zu deinem Arbeitsspeicher passt, und schaltet es ein. Mit Fortschrittsanzeige.
 - **Erster Start:** Die Karte *„Noch ein Schritt“* fragt einmal: Lokal, Claude, ChatGPT oder ohne KI. Ist schon Ollama oder LM Studio mit einem Modell da, nimmt REKORD das automatisch.

@@ -51,7 +51,9 @@ def voice(name: str) -> sherpa_onnx.OfflineTts:
         tgz.unlink()
     model = next(d.glob("*.onnx"))
     cfg = sherpa_onnx.OfflineTtsConfig(model=sherpa_onnx.OfflineTtsModelConfig(
-        vits=sherpa_onnx.OfflineTtsVitsModelConfig(model=str(model), tokens=str(d / "tokens.txt"), data_dir=str(d / "espeak-ng-data")),
+        # no sampling noise → identical audio on every run and machine (otherwise every CI run tests different voices)
+        vits=sherpa_onnx.OfflineTtsVitsModelConfig(model=str(model), tokens=str(d / "tokens.txt"), data_dir=str(d / "espeak-ng-data"),
+                                                   noise_scale=0.0, noise_scale_w=0.0),
         num_threads=4))
     return sherpa_onnx.OfflineTts(cfg)
 

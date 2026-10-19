@@ -353,3 +353,17 @@ def test_strip_think_streaming():
     from rekord.llm.providers import _strip_think
     assert "".join(_strip_think(iter(["Hi ", "<thi", "nk>geheim</th", "ink>\n# Titel"]))) == "Hi # Titel"
     assert "".join(_strip_think(iter(["a < b <tag>"]))) == "a < b <tag>"
+
+
+def test_merge_similar_speakers_fixes_over_split_voice():
+    import numpy as np
+
+    from rekord.pipeline import merge_similar_speakers
+    rng = np.random.default_rng(1)
+    a, b = rng.normal(size=192), rng.normal(size=192)
+    a2 = a + rng.normal(scale=0.4, size=192)  # same person, other cluster
+    turns = [(0, 5, 0), (5, 9, 1), (9, 12, 2), (12, 20, 0), (20, 22, 2)]
+    out = merge_similar_speakers(turns, {0: a, 1: b, 2: a2}, 0.65)
+    assert {s for _, _, s in out} == {0, 1}  # 2 → 0 (0 talks more)
+    assert [s for _, _, s in out] == [0, 1, 0, 0, 0]
+    assert merge_similar_speakers(turns, {0: a, 1: b}, 0.65) == turns  # different people stay apart
