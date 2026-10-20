@@ -1111,10 +1111,9 @@ async function viewDetail(id) {
     });
   }
 
-  function tplOptions(sel = "auto") {
-    const byCat = {};
-    state.templates.filter((t) => t.id !== "mindmap").forEach((t) => (byCat[t.category] = byCat[t.category] || []).push(t));
-    return Object.entries(byCat).map(([c, ts]) => `<optgroup label="${esc(c)}">${ts.map((t) => `<option value="${t.id}" ${t.id === sel ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</optgroup>`).join("");
+  function tplOptions(sel = "auto") {  // in the order set under Vorlagen – the most important on top
+    return state.templates.filter((t) => t.id !== "mindmap")
+      .map((t) => `<option value="${t.id}" ${t.id === sel ? "selected" : ""}>${esc(t.name)} · ${esc(t.category)}</option>`).join("");
   }
 
   function tabSummary() {
@@ -1602,16 +1601,65 @@ async function enrollDialog(opts = {}) {
 // ================================================================ TEMPLATES
 async function viewTemplates() {
   state.templates = (await api("/api/templates")).items;
-  const byCat = {};
-  state.templates.forEach((t) => (byCat[t.category] = byCat[t.category] || []).push(t));
+  const list = state.templates;
   view.innerHTML = `<div class="page">
-    <div class="row"><span class="eyebrow">${state.templates.length} Vorlagen</span></div>
+    <div class="row"><span class="eyebrow">${list.length} Vorlagen</span></div>
     <h1 class="big">Vorlagen<span class="acc">.</span></h1>
     <div class="row" style="margin-bottom:10px"><button class="btn primary" id="new">Eigene Vorlage</button>
       <span class="muted">Jede Vorlage ist ein Prompt. Bau dir dein eigenes Protokoll-Format.</span></div>
-    ${Object.entries(byCat).map(([c, ts]) => `<h2>${esc(c)}</h2><div class="grid">${ts.map((t) => `<div class="card tpl" data-id="${t.id}">
-      <b>${esc(t.name)}</b>${t.builtin ? "" : ` <span class="badge acc">eigene</span>`}<div class="muted" style="font-size:13.5px;margin-top:4px">${esc(t.description || "")}</div></div>`).join("")}</div>`).join("")}</div>`;
-  $$(".tpl").forEach((el) => el.onclick = () => editTemplate(state.templates.find((t) => t.id === el.dataset.id)));
+    <div class="row" style="margin-bottom:12px"><span class="muted" style="font-size:13.5px">⠿ <b>Ziehen</b> oder ↑ ↓ – oben steht, was dir am wichtigsten ist.
+      In dieser Reihenfolge erscheinen die Vorlagen auch beim Zusammenfassen.${tip("tplorder")}</span><span class="spacer"></span>
+      <button class="btn ghost sm" id="tpl-reset">Reihenfolge zurücksetzen</button></div>
+    <div id="tpl-list" class="tpl-list">${list.map((t, i) => `<div class="card tpl" draggable="true" data-id="${t.id}">
+      <span class="grip" title="Ziehen zum Sortieren" aria-hidden="true">⠿</span><span class="tpl-rank">${i + 1}</span>
+      <div class="tpl-body"><b>${esc(t.name)}</b> <span class="badge">${esc(t.category)}</span>${t.builtin ? "" : ` <span class="badge acc">eigene</span>`}
+        <div class="muted" style="font-size:13.5px;margin-top:4px">${esc(t.description || "")}</div></div>
+      <div class="tpl-move"><button type="button" class="btn ghost sm icon" data-top title="Ganz nach oben">⤒</button>
+        <button type="button" class="btn ghost sm icon" data-up title="Nach oben">↑</button>
+        <button type="button" class="btn ghost sm icon" data-down title="Nach unten">↓</button></div></div>`).join("")}</div></div>`;
+  const box = $("#tpl-list");
+  let saveT = null, dragging = null, moved = false;
+  const save = () => {
+    $$(".tpl", box).forEach((el, i) => { $(".tpl-rank", el).textContent = i + 1; });
+    clearTimeout(saveT);
+    saveT = setTimeout(async () => {
+      const ids = $$(".tpl", box).map((el) => el.dataset.id);
+      await api("/api/settings", { method: "PUT", json: { template_order: ids } });
+      state.templates = ids.map((id) => list.find((t) => t.id === id));
+      toast("Reihenfolge gespeichert");
+    }, 350);
+  };
+  const flash = (el) => { el.classList.add("tpl-moved"); setTimeout(() => el.classList.remove("tpl-moved"), 500); };
+  $$(".tpl", box).forEach((el) => {
+    el.onclick = (e) => {
+      if (moved || e.target.closest(".tpl-move")) return;
+      editTemplate(state.templates.find((t) => t.id === el.dataset.id));
+    };
+    $("[data-up]", el).onclick = () => { if (el.previousElementSibling) { box.insertBefore(el, el.previousElementSibling); flash(el); save(); } };
+    $("[data-down]", el).onclick = () => { if (el.nextElementSibling) { box.insertBefore(el.nextElementSibling, el); flash(el); save(); } };
+    $("[data-top]", el).onclick = () => { if (el !== box.firstElementChild) { box.insertBefore(el, box.firstElementChild); flash(el); save(); view.scrollTo({ top: 0, behavior: "smooth" }); } };
+    el.addEventListener("dragstart", (e) => {
+      dragging = el; moved = false; el.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", el.dataset.id);
+    });
+    el.addEventListener("dragend", () => {
+      el.classList.remove("dragging"); dragging = null;
+      if (moved) { save(); setTimeout(() => { moved = false; }, 50); }
+    });
+  });
+  // while dragging, the card moves live to where it would land
+  listen(box, "dragover", (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    const after = $$(".tpl:not(.dragging)", box).find((x) => { const r = x.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+    if (after === undefined) { if (box.lastElementChild !== dragging) { box.appendChild(dragging); moved = true; } }
+    else if (after !== dragging.nextElementSibling) { box.insertBefore(dragging, after); moved = true; }
+  });
+  listen(box, "drop", (e) => e.preventDefault());
+  $("#tpl-reset").onclick = async () => {
+    await api("/api/settings", { method: "PUT", json: { template_order: [] } });
+    state.templates = null; toast("Ursprüngliche Reihenfolge"); viewTemplates();
+  };
   $("#new").onclick = () => editTemplate(null);
 }
 async function editTemplate(t) {
@@ -2215,6 +2263,7 @@ async function viewSettings() {
   $("#mcp-cc").textContent = `claude mcp add rekord -e REKORD_HOME="${st.home}" -- "${cmd}" ${args.join(" ")}`;
   $("#mcp-copy").onclick = () => { navigator.clipboard.writeText($("#mcp").textContent); toast("Kopiert"); };
   const renderInt = (it) => {
+    if (!$("#int-cd")) return;  // the settings page was left before the answer came
     const cd = it.claude_desktop, cc = it.claude_code, ok = (t) => `<span style="color:#22C55E">✓ ${t}</span>`;
     if (!IS_LOCAL) { $("#int-cd").textContent = $("#int-cc").textContent = "Nur am Computer selbst einrichtbar."; return; }
     $("#int-cd").innerHTML = `<div class="row">${cd.connected ? ok("Verbunden") : `<button class="btn ${cd.installed ? "primary" : ""}" id="cd-connect">Mit Claude Desktop verbinden</button>`}
@@ -2241,7 +2290,7 @@ async function viewSettings() {
       catch (err) { toast(err.message, 5000); e.target.checked = !e.target.checked; }
     });
   };
-  integrations().then((it) => { renderInt(it); renderAutostart(it); }).catch((e) => { $("#int-cd").textContent = e.message; });
+  integrations().then((it) => { renderInt(it); renderAutostart(it); }).catch((e) => { const el = $("#int-cd"); if (el) el.textContent = e.message; });
 
   $("#inbox").onchange = (e) => save({ inbox_enabled: e.target.checked });
   $("#upd-auto").onchange = (e) => save({ update_check: e.target.checked });

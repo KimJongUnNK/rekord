@@ -61,6 +61,7 @@ DEFAULTS: dict = {
     "vocabulary": [],  # list of {"from": "...", "to": "..."} corrections and hotwords
     "auto_summary": True,
     "default_template": "auto",
+    "template_order": [],  # Vorlagen in the user's order of importance (ids); empty = built-in order
     "summary_language": "de",
     "llm": {
         "provider": "anthropic",  # anthropic | openai | ollama | compatible | none

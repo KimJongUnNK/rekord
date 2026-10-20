@@ -263,7 +263,17 @@ pre.code { font: 12.5px/1.5 var(--mono); background: var(--card2); border: 1px s
 /* ------------------------------------------------ people / templates */
 .person { display: flex; gap: 14px; align-items: center; }
 .person .avatar { width: 48px; height: 48px; font-size: 18px; }
-.tpl { cursor: pointer; transition: border-color .15s; }
+.tpl { cursor: pointer; transition: border-color .15s, background-color .3s, transform .15s; }
+.tpl-list { display: flex; flex-direction: column; gap: 8px; }
+.tpl-list .tpl { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.tpl .grip { cursor: grab; color: var(--fg3); font-size: 20px; line-height: 1; user-select: none; padding: 4px 2px; }
+.tpl .tpl-rank { font: 800 14px/1 var(--mono); color: var(--fg3); min-width: 22px; text-align: right; }
+.tpl .tpl-body { flex: 1; min-width: 0; }
+.tpl .tpl-move { display: flex; gap: 2px; opacity: .55; transition: opacity .15s; }
+.tpl:hover .tpl-move, .tpl:focus-within .tpl-move { opacity: 1; }
+.tpl.dragging { opacity: .45; transform: scale(.99); border-style: dashed; }
+.tpl.dragging .grip { cursor: grabbing; }
+.tpl.tpl-moved { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .tpl:hover { border-color: var(--fg3); }
 .tpl b { font: 800 16px/1.2 var(--display); }
 

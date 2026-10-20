@@ -19,6 +19,11 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.0.11 – Vorlagen nach deiner Wichtigkeit
+- **Vorlagen sortieren:** am ⠿-Griff ziehen oder mit ↑ ↓ ⤒ verschieben – was dir wichtig ist, kommt nach oben. Die Reihenfolge gilt überall: beim Zusammenfassen, bei der Standard-Vorlage und in der iPhone-App. *Reihenfolge zurücksetzen* stellt die ursprüngliche wieder her.
+- Die Vorlagen-Auswahl beim Zusammenfassen ist jetzt eine Liste in deiner Reihenfolge (Kategorie steht dahinter).
+- **Behoben:** Wer die Einstellungen sehr schnell wieder verlassen hat, bekam im Hintergrund einen Fehler.
+
 ### Neu in 1.0.10 – lokale KI: das beste Modell für deinen Computer
 - **REKORD erkennt deinen Computer** (Arbeitsspeicher + Apple-Chip oder NVIDIA-Grafik) und wählt das stärkste lokale Modell, das darauf flott läuft – z. B. *qwen3:14b* bei 24 GB mit Apple-Chip, *qwen3:30b* ab 32 GB. Vorher war bei 8b Schluss.
 - *Einstellungen → KI → Lokal*: **Bestes Modell laden & verwenden** mit einem Klick (schaltet nach dem Download automatisch um).

@@ -305,3 +305,16 @@ def test_best_local_model_and_load_and_use(client, monkeypatch):
     finally:
         srv.should_exit = True
         config.save({"llm": {"provider": "anthropic", "ollama": {"base_url": "http://localhost:11434", "model": ""}}})
+
+
+def test_templates_in_my_order(client):
+    """Vorlagen: dragged to the top = first everywhere (picker, iPhone app); unknown ids don't break anything."""
+    default = [t["id"] for t in client.get("/api/templates").json()["items"]]
+    tid = client.post("/api/templates", json={"name": "Mein Board-Meeting", "prompt": "# Board", "category": "Eigene"}).json()["id"]
+    client.put("/api/settings", json={"template_order": [tid, "lecture", "gone-template", "sales"]})
+    ids = [t["id"] for t in client.get("/api/templates").json()["items"]]
+    assert ids[:3] == [tid, "lecture", "sales"]
+    assert ids[3:] == [i for i in default if i not in ("lecture", "sales")]  # the rest keeps its order
+    client.put("/api/settings", json={"template_order": []})
+    assert [t["id"] for t in client.get("/api/templates").json()["items"]][: len(default)] == default
+    client.delete(f"/api/templates/{tid}")

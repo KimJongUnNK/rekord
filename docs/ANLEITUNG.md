@@ -250,7 +250,8 @@ Ein Chat über **alle** Aufnahmen: *„Was hat Lisa letzte Woche zum Budget gesa
 - Jede Bestätigung („Stimme merken“) verbessert den Stimmabdruck.
 
 ### Vorlagen
-31 fertige Formate in Kategorien (Business, Vertrieb, Events, Medien, HR, Bildung, Kreativ, Persönlich, Recht, Analyse).
+31 fertige Formate (Business, Vertrieb, Events, Medien, HR, Bildung, Kreativ, Persönlich, Recht, Analyse) – als eine Liste in **deiner Reihenfolge**.
+- **Sortieren:** am **⠿**-Griff packen und nach oben oder unten ziehen – oder **↑ ↓**, **⤒** schiebt ganz nach oben. Wird sofort gespeichert. Was oben steht, steht auch beim **Zusammenfassen** (und in der iPhone-App) ganz oben in der Auswahl. **Reihenfolge zurücksetzen** stellt die ursprüngliche wieder her.
 - Vorlage anklicken → ansehen. **Speichern** legt eine eigene Kopie an, die du anpassen kannst.
 - **Eigene Vorlage:** Namen, Kategorie, Kurzbeschreibung und den Text schreiben, was die KI liefern soll.
 

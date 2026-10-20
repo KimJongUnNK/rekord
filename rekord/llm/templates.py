@@ -134,7 +134,11 @@ BY_ID = {t["id"]: t for t in BUILTIN}
 
 
 def all_templates() -> list[dict]:
-    return BUILTIN + db.list_custom_templates()
+    """All templates in the user's order (Vorlagen: drag to the top what matters most); the rest as before."""
+    from .. import config
+    items = BUILTIN + db.list_custom_templates()
+    order = {tid: i for i, tid in enumerate(config.load().get("template_order") or [])}
+    return sorted(items, key=lambda t: (0, order[t["id"]]) if t["id"] in order else (1, items.index(t)))
 
 
 def get(tid: str) -> dict:
