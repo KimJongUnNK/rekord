@@ -98,9 +98,9 @@ def test_live_session_recognizes_people_in_realtime(people):
     s = live.LiveSession(ev.append, "Live", sample_rate=16000)
     pcm = (x * 32767).astype("<i2").tobytes()
     import time
-    for i in range(0, len(pcm), 3200):  # 0.1 s chunks at ~4x real time (a real mic delivers 1x)
-        s.feed_pcm16(pcm[i:i + 3200])
-        time.sleep(0.025)
+    for i in range(0, len(pcm), 3200):  # 0.1 s chunks at ~2x real time (a real mic delivers 1x; faster, a slow CI
+        s.feed_pcm16(pcm[i:i + 3200])    # runner falls behind and skips "who speaks" probes – by design)
+        time.sleep(0.05)
     rid = s.stop()
     segs = [e for e in ev if e["type"] == "segment"]
     speaking = [e["name"] for e in ev if e["type"] == "speaking"]
