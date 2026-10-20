@@ -99,7 +99,7 @@ Die KI liest den Text deines Meetings und schreibt daraus das Protokoll. Du hast
 
 ## Deine erste Aufnahme
 
-1. Großer **roter Knopf** (oder **Leertaste**).
+1. Großer **roter Knopf** (oder **Strg + R**, am Mac **⌘ R**).
 2. REKORD fragt **„Wer ist dabei?“**:
    - **Vor Ort** (alle im selben Raum) oder **Online** (Teams, Zoom, Meet …). Bei *Online* nimmt REKORD auch die Stimmen der anderen aus dem Call auf – direkt am Computer, auch mit Kopfhörern.
    - **Wie viele sprechen?** (dich mitgezählt)
@@ -131,6 +131,9 @@ Ja, mit der **REKORD-App** fürs iPhone (eine echte App, keine Webseite – Inst
 
 **Geht das auch in der Uni?**
 Ja. Vor der Aufnahme **Vorlesung** wählen: Mitzählen musst du nicht. REKORD erkennt die vortragende Person und sammelt Fragen aus dem Hörsaal unter „Publikum“. Danach gibt es automatisch einen **Lernzettel** mit Kernaussagen, Definitionen und Prüfungsrelevantem. Die Stimme des Profs lernt REKORD, indem du ihn **einfach reden lässt** oder sie **aus einer Aufnahme** nimmst – vorlesen muss niemand etwas.
+
+**Ist das eine Web-App?**
+Nein. REKORD ist am Computer ein **echtes Programm** mit eigenem Fenster (Mac, Windows, Linux) und am iPhone eine echte App. Ein paar Seiten (Fragen, Personen, Vorlagen, Einstellungen) ziehen gerade noch ins neue Fenster um und öffnen sich bis dahin in der bisherigen Ansicht – mehr dazu in der [Anleitung](docs/ANLEITUNG.md#das-rekord-fenster).
 
 **Welche Sprachen versteht REKORD?**
 Rund 99 Sprachen, auch gemischt im selben Gespräch. Am genauesten, wenn du die Sprache in den Einstellungen fest einstellst.

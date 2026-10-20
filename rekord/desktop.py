@@ -1,5 +1,6 @@
-"""Desktop app for Windows/macOS/Linux: the hub runs in-process, the UI in a native webview window -
-or, where no webview is available (typical on Linux), in the default browser as an installable PWA."""
+"""Desktop app for Windows/macOS/Linux: the hub runs in-process, the window is REKORD's native program
+(Qt Quick, rekord/app). Where that can't start, the previous interface opens instead: a webview window or,
+without a webview, the browser. Pages not ported yet open the previous interface on their own (--classic)."""
 from __future__ import annotations
 
 import json
@@ -74,12 +75,16 @@ def _wait_free(port: int, timeout: float = 15) -> None:
 # ------------------------------------------------------------------ one REKORD, one window
 
 window_open = False  # this process shows the hub's window (the hub can bring it to the front)
+focus_hook = None  # the native window registers how it comes to the front
 
 
 def focus() -> bool:
     """Bring this process's window to the front (a second start of REKORD asks for this instead of opening another)."""
     if not window_open:
         return False
+    if focus_hook is not None:
+        focus_hook()
+        return True
     try:
         import webview
         for w in webview.windows:
@@ -101,13 +106,44 @@ def _allow_focus() -> None:
             pass
 
 
-def _show(url: str, port: int, info: dict) -> None:
-    """REKORD already runs: bring its window to the front, or open a window for it (hub in the background)."""
+def _show(url: str, port: int, info: dict, host: str = "127.0.0.1") -> None:
+    """REKORD already runs: bring its window to the front. Runs it only in the background (started with the
+    computer), this start takes its place – the native window needs the engine in its own process. While that
+    background REKORD records (e.g. from the iPhone) it stays, and the previous interface shows it instead."""
     if info.get("window"):
         _allow_focus()
         if _post(port, "/api/window/focus") == 200:
             return
+    from . import app
+    if app.usable() and _take_over(port):
+        _start_hub(host, port)
+        _ui(url, port, host)
+        return
     _window(url, own_hub=False, port=port)
+
+
+def _ui(url: str, port: int, host: str, restarted: bool = False) -> None:
+    """The window for the hub in this process: the native program, or the previous interface where it can't start."""
+    from . import app
+    if app.usable() and app.run(port) == 0:
+        return
+    if os.environ.get("REKORD_SELFTEST_UI"):  # CI checks the native window: no fallback, a clear failure
+        from pathlib import Path
+        msg = "the native window can't start here (usable=%s)" % app.usable()
+        try:
+            Path(os.environ["REKORD_SELFTEST_UI"]).mkdir(parents=True, exist_ok=True)
+            (Path(os.environ["REKORD_SELFTEST_UI"]) / "result.txt").write_text(msg, encoding="utf-8")
+        except OSError:
+            pass
+        print(msg, flush=True)
+        os._exit(3)
+    _window(url, own_hub=True, restarted=restarted, port=port, host=host)
+
+
+def classic(url: str) -> None:
+    """--classic <url>: one page of the previous interface in its own window, next to the native one."""
+    from urllib.parse import urlparse
+    _window(url, own_hub=False, port=urlparse(url).port or 8765)
 
 
 def _take_over(port: int) -> bool:
@@ -219,7 +255,7 @@ def run(port: int = 8765, lan: bool = False, background: bool = False) -> None:
     info = _status(port) if _port_open(port) else None
     if info is not None and not updater.newer(__version__, str(info.get("version", "0"))):
         if not background:  # the same (or a newer) version runs → just show it
-            _show(url, port, info)
+            _show(url, port, info, host)
         return
     if info is not None and not _take_over(port):
         # the old version is recording right now: never cut that off – take over as soon as it's finished
@@ -233,4 +269,4 @@ def run(port: int = 8765, lan: bool = False, background: bool = False) -> None:
     if background:  # CI smoke test / started with the computer
         while True:
             time.sleep(3600)
-    _window(url, own_hub=True, restarted=restarted, port=port, host=host)
+    _ui(url, port, host, restarted)

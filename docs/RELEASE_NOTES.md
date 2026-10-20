@@ -19,6 +19,17 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.1.0 – REKORD ist jetzt ein echtes Programm
+- **Eigenes Fenster statt Webseite:** REKORD läuft am Computer als natives Programm (Mac, Windows, Linux) – schneller, direkter, durchgehend animiert. Kein Browser, kein Web-Fenster.
+- **Aufnahmen:** neue Liste mit Sprecher-Punkten, Fortschritt der Auswertung direkt in der Zeile, Suche (auch im Gesagten), Ordner-Filter, **Importieren** oder Dateien einfach ins Fenster ziehen.
+- **Aufnahme ansehen:** Redeanteile jeder Person, Zusammenfassung und Transkript – aktualisiert sich von selbst, während REKORD auswertet.
+- **Live:** großer animierter Sprecher in der Farbe der Person (Ringe, wenn gesprochen wird, Leuchten im Takt der Stimme), Redeanteile, Mitschrift live, unbekannte Stimme antippen → benennen. **Wer ist dabei?** mit Vor Ort, Online und Vorlesung, merkt sich die letzte Runde. Mikrofon direkt auf der Live-Seite wählen.
+- **Tastatur:** Strg/⌘ + R neue Aufnahme · Leertaste Pause · H Moment markieren · Strg/⌘ + F Suchen · Strg/⌘ + I Importieren.
+- **Hell, dunkel oder wie das System** – Umschalter unten links.
+- **Schließen während einer Aufnahme** speichert sie zuerst. Mit *Mit dem Computer starten* bleibt REKORD nach dem Schließen fürs iPhone erreichbar.
+- Fragen, Personen, Vorlagen und Einstellungen ziehen als Nächstes um und öffnen sich bis dahin in einem eigenen Fenster der bisherigen Ansicht (gleiche Daten).
+- Mikrofone mit 44,1 oder 48 kHz (die meisten Macs und Headsets) werden für die Erkennung sauber umgerechnet.
+
 ### Neu in 1.0.11 – Vorlagen nach deiner Wichtigkeit
 - **Vorlagen sortieren:** am ⠿-Griff ziehen oder mit ↑ ↓ ⤒ verschieben – was dir wichtig ist, kommt nach oben. Die Reihenfolge gilt überall: beim Zusammenfassen, bei der Standard-Vorlage und in der iPhone-App. *Reihenfolge zurücksetzen* stellt die ursprüngliche wieder her.
 - Die Vorlagen-Auswahl beim Zusammenfassen ist jetzt eine Liste in deiner Reihenfolge (Kategorie steht dahinter).

@@ -1,0 +1,17 @@
+singleton Theme 1.0 Theme.qml
+Icon 1.0 Icon.qml
+Btn 1.0 Btn.qml
+Chip 1.0 Chip.qml
+Segmented 1.0 Segmented.qml
+Page 1.0 Page.qml
+Sidebar 1.0 Sidebar.qml
+LibraryPage 1.0 LibraryPage.qml
+RecordingRow 1.0 RecordingRow.qml
+DetailPage 1.0 DetailPage.qml
+LivePage 1.0 LivePage.qml
+SpeakerOrb 1.0 SpeakerOrb.qml
+WhoDialog 1.0 WhoDialog.qml
+NameDialog 1.0 NameDialog.qml
+ClassicPage 1.0 ClassicPage.qml
+Sheet 1.0 Sheet.qml
+Toasts 1.0 Toasts.qml

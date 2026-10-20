@@ -191,6 +191,39 @@ Danach kannst du Claude direkt fragen: *„Was haben wir im letzten Meeting ents
 
 ---
 
+## Das REKORD-Fenster
+
+Ab Version 1.1 ist REKORD am Computer ein **echtes Programm** – kein Browser, keine Webseite im Fenster. Es startet schneller, reagiert direkt und ist durchgehend animiert. Die iPhone-App ist ebenfalls eine echte App.
+
+**Schon im neuen Fenster:**
+
+| Bereich | Was geht |
+|---|---|
+| **Aufnahmen** | Liste mit Sprecher-Punkten und Fortschritt der Auswertung · **Suchen** (auch im Gesagten) · **Ordner** als Filter · **Importieren** oder Dateien einfach ins Fenster ziehen |
+| **Aufnahme ansehen** | Redeanteile jeder Person · Reiter **Zusammenfassung** und **Transkript** · aktualisiert sich von selbst, solange REKORD auswertet |
+| **Live** | großer Aufnahmeknopf · **Mikrofon** wählen (darunter) · **Wer ist dabei?** mit **Vor Ort**, **Online** und **Vorlesung** · groß in der Farbe der Person, wer gerade spricht · Redeanteile · **Nicht erkannte Stimme** antippen → Namen eingeben → **Merken** · **Mitschrift** live · **Markieren**, **Pause**, **Stopp & speichern** |
+
+**Zieht als Nächstes um:** *Fragen*, *Personen* (Einsprechen), *Vorlagen*, *Einstellungen*, die Einführung beim ersten Start sowie Bearbeiten und Export einer Aufnahme (**Bearbeiten, Fragen, Export** oben rechts). Diese Seiten öffnen sich bis dahin in einem eigenen Fenster der bisherigen Ansicht – mit denselben Daten, alles bleibt synchron.
+
+**Tastatur**
+
+| Taste | Was passiert |
+|---|---|
+| **Strg + R** (Mac: **⌘ R**) | Neue Aufnahme – von überall |
+| **Leertaste** | Pause / weiter (während der Aufnahme) |
+| **H** | Wichtigen Moment markieren (★) |
+| **Strg + F** (Mac: **⌘ F**) | Suchen |
+| **Strg + I** (Mac: **⌘ I**) | Importieren |
+| **Strg + 1** / **Strg + 2** | Aufnahmen / Live |
+
+**Hell oder dunkel:** das kleine Symbol unten links schaltet um – *wie das System*, *hell*, *dunkel*.
+
+**Schließen:** Läuft gerade eine Aufnahme, fragt REKORD vorher und speichert sie (**Speichern & beenden**). Ist *Mit dem Computer starten* an, läuft REKORD nach dem Schließen unsichtbar weiter, damit das iPhone es erreicht – ein Klick aufs REKORD-Symbol holt das Fenster zurück.
+
+**Mikrofon am Mac:** Beim ersten Aufnehmen fragt macOS, ob REKORD das Mikrofon benutzen darf → **Erlauben**. Aus Versehen abgelehnt? *Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon* → REKORD an.
+
+---
+
 ## 6. Das Menü: jeder Punkt erklärt
 
 So sieht die Leiste aus: am Computer links, am Handy unten. Dort heißt *Einstellungen* kurz **Optionen**.
@@ -303,14 +336,15 @@ Die Installations-Zeile von oben funktioniert weiterhin auch als Update.
 | Problem | Lösung |
 |---|---|
 | **Mac:** *„REKORD ist beschädigt“* | Terminal öffnen, `xattr -dr com.apple.quarantine /Applications/REKORD.app` eingeben, REKORD nochmal öffnen |
-| **Kein Mikrofon im App-Fenster** | Im Browser **http://localhost:8765** öffnen, dort geht's immer. Mac: *Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon* → REKORD an |
+| **Kein Mikrofon** | *Live* → unter dem Aufnahmeknopf das richtige **Mikrofon** wählen. Mac: *Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon* → REKORD an |
 | **iPhone findet den Computer nicht** | Gleiches WLAN? (Gäste-WLANs trennen Geräte.) Ist REKORD am Computer offen? (Tipp: *Speicher & Datenschutz* → **Mit dem Computer starten**.) Windows: Firewall „Private Netzwerke“ erlaubt? Linux: *iPhone & Geräte* → **Für iPhone freigeben** |
 | **Lokal einrichten hängt oder bricht ab** | Internet prüfen, nochmal **Lokal einrichten** – fertige Teile werden nicht neu geladen. |
 | **„Modelle werden geladen“ geht nicht weiter** | Internet prüfen → *Einstellungen → Modelle* → **Laden** |
 | **Zusammenfassung zeigt Fehler** | *Einstellungen → KI* → **Testen**. Key richtig kopiert? Guthaben auf dem API-Konto? |
 | **Claude Desktop sieht REKORD nicht** | Claude ganz beenden und neu öffnen (*Claude neu starten*). Steht unter *Claude Desktop (MCP)* **Verbunden**? |
 | **Falsche Person erkannt** | Im Transkript auf den Namen tippen → richtigen Namen eingeben, *Stimme merken* bleibt an |
-| **REKORD beenden** | Fenster schließen. Läuft es im Browser: *Einstellungen* → ganz unten **REKORD beenden** |
+| **REKORD beenden** | Fenster schließen (läuft eine Aufnahme, wird sie vorher gespeichert). Mit *Mit dem Computer starten* läuft REKORD im Hintergrund weiter – ganz beenden: *Einstellungen* → ganz unten **REKORD beenden** |
+| **Lieber die bisherige Ansicht** | REKORD mit der Umgebungsvariable `REKORD_CLASSIC=1` starten – dann öffnet sich alles wie vor Version 1.1. |
 | **Fenster bleibt leer / Fehler suchen** | REKORD schreibt Meldungen in **rekord.log**: Mac `~/Library/Application Support/REKORD/`, Windows `%APPDATA%\REKORD\`, Linux `~/.config/REKORD/`. Beim [Problem melden](https://github.com/KimJongUnNK/rekord/issues/new) gern mitschicken. |
 | **Zwei REKORD-Fenster / alte Version** | Ab 1.0.8 nicht mehr möglich (siehe [Updates](#updates)). Einmalig von einer älteren Version: alle REKORD-Fenster schließen, dann die neue öffnen. |
 | **Backup** | Den **Speicherort**-Ordner kopieren (steht unter *Einstellungen → Speicher & Datenschutz*). Da liegt alles drin. |
@@ -338,7 +372,7 @@ Oder von Hand – alle Dateien liegen auf der [Release-Seite](https://github.com
 | Arch, Manjaro, EndeavourOS | `sudo pacman -U rekord-*.pkg.tar.zst` |
 | Ohne root | `tar xzf REKORD-*-Linux-x86_64.tar.gz && ./rekord-*/install.sh` |
 
-REKORD öffnet sich unter Linux im Browser. Die Pakete (deb, rpm, pacman) geben die Firewall-Ports fürs iPhone selbst frei.
+REKORD öffnet unter Linux sein eigenes Fenster (X11 und Wayland). Fehlt dem System etwas dafür – z. B. auf einem Server ohne Bildschirm –, öffnet sich die bisherige Ansicht im Browser. Die Pakete (deb, rpm, pacman) geben die Firewall-Ports fürs iPhone selbst frei.
 Mit AppImage oder tar.gz: *Einstellungen → iPhone & Geräte* → **Für iPhone freigeben** (fragt nach deinem Passwort). Von Hand:
 - Fedora, openSUSE, RHEL: `sudo firewall-cmd --permanent --add-port=8765/tcp && sudo firewall-cmd --reload`
 - Ubuntu, Mint: `sudo ufw allow 8765/tcp`

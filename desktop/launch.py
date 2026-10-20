@@ -1,7 +1,8 @@
 """Entry point for the packaged desktop app (PyInstaller).
 
-No arguments (double-click, app menu)  → hub + window/browser.  --background → hub only.
+No arguments (double-click, app menu)  → hub + REKORD's window.  --background → hub only.
 With a subcommand → the normal CLI, e.g.  `rekord mcp`, `rekord serve --host 0.0.0.0`, `rekord models list`.
+Internal: --classic <url> (a page of the previous interface), --qt-probe (can the native window start here?).
 """
 import os
 import sys
@@ -9,7 +10,7 @@ import sys
 from rekord.__main__ import main as cli
 from rekord.desktop import run
 
-COMMANDS = {"serve", "desktop", "process", "models", "enroll", "mcp", "-h", "--help"}
+COMMANDS = {"serve", "desktop", "process", "models", "enroll", "mcp", "-h", "--help", "--classic", "--qt-probe"}
 
 if __name__ == "__main__":
     from rekord.system import ensure_output

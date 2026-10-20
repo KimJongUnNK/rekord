@@ -29,6 +29,11 @@ jobs:
         run: |
           cd desktop
           pyinstaller rekord.spec --noconfirm > build.log 2>&1 || { echo "::error title=pyinstaller::$(tail -c 3000 build.log | tr '\n' ' ')"; exit 1; }
+      - name: the packaged app opens its native window
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then BIN="desktop/dist/REKORD.app/Contents/MacOS/REKORD"; else BIN="desktop/dist/REKORD/REKORD.exe"; fi
+          python scripts/window_smoke.py "$BIN" window-shots > window.log 2>&1 || { cat window.log; echo "::error title=window::$(tail -c 2500 window.log | tr -d '\r' | tr '\n%' ' _')"; exit 1; }
       - name: smoke test (packaged app serves the UI)
         shell: bash
         run: |
@@ -69,12 +74,22 @@ jobs:
     container: python:3.12-bullseye
     steps:
       - uses: actions/checkout@v7
-      - run: pip install ".[mcp,docx]" pyinstaller pillow
+      - name: Qt's X11 libraries, so they travel inside the app (libxcb-cursor0 & co. are missing on many desktops)
+        run: |
+          apt-get update -q && apt-get install -y -q libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon0 libegl1 libgl1 libfontconfig1 \
+            libdbus-1-3 xvfb xauth
+      # glibc 2.31 here: pip takes the newest Qt for Python built for it (6.9) – runs on Debian 11+, Ubuntu 20.04+ …
+      - run: pip install ".[mcp,docx]" "PySide6>=6.8" pyinstaller pillow
       - name: build
         run: |
           cd desktop
           pyinstaller rekord.spec --noconfirm > build.log 2>&1 || { echo "::error title=pyinstaller::$(tail -c 3000 build.log | tr '\n' ' ')"; exit 1; }
           tar -C dist -czf ../rekord-linux-dist.tar.gz REKORD
+      - name: the packaged app opens its native window (X server)
+        run: |
+          xvfb-run -a -s "-screen 0 1440x960x24" python scripts/window_smoke.py desktop/dist/REKORD/REKORD window-shots > window.log 2>&1 \
+            || { cat window.log; echo "::error title=window linux::$(tail -c 2500 window.log | tr '\n%' ' _')"; exit 1; }
       - uses: actions/upload-artifact@v7
         with: { name: linux-dist, path: rekord-linux-dist.tar.gz }
 

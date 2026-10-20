@@ -12,14 +12,22 @@ jobs:
       - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
       - run: pip install -e ".[all,dev]"
-      - name: virtual speaker for the online-meeting test (Linux)
+      - name: virtual speaker for the online-meeting test, Qt libraries for the window tests (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -y -q pulseaudio pulseaudio-utils
+        run: sudo apt-get update -q && sudo apt-get install -y -q pulseaudio pulseaudio-utils libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
       - name: unit + api tests
         shell: bash
         run: |
           pytest -m "not models" -q -rfs --tb=line > unit.log 2>&1 || { echo "::error title=tests::$(grep -E '^(FAILED|ERROR)|Error|assert' unit.log | tail -c 3000 | tr -d '\r' | tr '\n%' ' _')"; exit 1; }
           echo "::notice title=tests ${{ runner.os }}::$(grep -E '^SKIPPED|passed' unit.log | tr -d '\r' | tr '\n%' ' _' | cut -c1-900)"
+      - name: native window – every page with demo data (screenshots in the artifacts)
+        shell: bash
+        run: |
+          QT_QPA_PLATFORM=offscreen python scripts/ui_preview.py ui-preview > ui.log 2>&1 || { cat ui.log; echo "::error title=window ${{ runner.os }}::$(tail -c 2000 ui.log | tr -d '\r' | tr '\n%' ' _')"; exit 1; }
+          echo "::notice title=window ${{ runner.os }}::$(grep 'UI preview' ui.log)"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with: { name: "ui-preview-${{ runner.os }}", path: ui-preview/, if-no-files-found: ignore }
       - name: online meetings – call sound on the real OS (WASAPI / ScreenCaptureKit / Pulse)
         shell: bash
         run: |
@@ -56,6 +64,23 @@ jobs:
         run: |
           cd desktop
           pyinstaller rekord.spec --noconfirm > build.log 2>&1 || { echo "::error title=pyinstaller::$(tail -c 3000 build.log | tr '\n' ' ')"; exit 1; }
+          du -sh dist/* | tr '\n' ' '
+      - name: Linux desktop for the window test (X server, xcb libraries)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q xvfb libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libegl1
+      - name: the packaged app opens its native window (double-click start, every page, screenshots)
+        shell: bash
+        run: |
+          set +e
+          if [ "$RUNNER_OS" = "macOS" ]; then BIN="desktop/dist/REKORD.app/Contents/MacOS/REKORD"; elif [ "$RUNNER_OS" = "Windows" ]; then BIN="desktop/dist/REKORD/REKORD.exe"; else BIN="desktop/dist/REKORD/REKORD"; fi
+          if [ "$RUNNER_OS" = "Linux" ]; then RUN="xvfb-run -a -s '-screen 0 1440x960x24'"; else RUN=""; fi
+          eval $RUN python scripts/window_smoke.py "$BIN" window-shots > window.log 2>&1; rc=$?
+          cat window.log
+          if [ $rc -ne 0 ]; then echo "::error title=window ${{ runner.os }}::$(tail -c 2500 window.log | tr -d '\r' | tr '\n%' ' _')"; exit 1; fi
+          echo "::notice title=window ${{ runner.os }}::$(grep -E 'UI selftest|OK' window.log | tr -d '\r' | tr '\n' ' ')"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with: { name: "window-shots-${{ runner.os }}", path: window-shots/, if-no-files-found: ignore }
       - name: started like a double-click (Windows, no console) – the hub must answer
         if: runner.os == 'Windows'
         shell: pwsh

@@ -376,14 +376,50 @@ def test_second_start_brings_the_window_to_the_front(monkeypatch):
 
 
 def test_hub_without_window_gets_one(monkeypatch):
+    """REKORD runs only in the background (started with the computer): this start takes its place with the
+    native window – that needs the engine in its own process."""
+    from rekord import app
     hub = _hub(__version__, window=False)
-    opened = []
+    opened, started, ui = [], [], []
+    monkeypatch.setattr(app, "usable", lambda: True)
     monkeypatch.setattr(desktop, "_window", lambda *a, **k: opened.append(k))
+    monkeypatch.setattr(desktop, "_start_hub", lambda host, port: started.append(port))
+    monkeypatch.setattr(desktop, "_ui", lambda url, port, host, restarted=False: ui.append(port))
     try:
         desktop._show("http://x", hub.port, desktop._status(hub.port))
     finally:
         hub.stop()
-    assert hub.focus == [] and opened and opened[0]["own_hub"] is False
+    assert hub.focus == [] and opened == [] and started == ui == [hub.port]
+
+
+def test_background_hub_that_records_keeps_running(monkeypatch):
+    """The background REKORD records (e.g. from the iPhone): never cut off – the previous interface shows it."""
+    from rekord import app
+    hub = _hub(__version__, window=False, live=[{"id": "r1"}], shutdown_code=409)
+    opened, started = [], []
+    monkeypatch.setattr(app, "usable", lambda: True)
+    monkeypatch.setattr(desktop, "_window", lambda *a, **k: opened.append(k))
+    monkeypatch.setattr(desktop, "_start_hub", lambda host, port: started.append(port))
+    try:
+        desktop._show("http://x", hub.port, desktop._status(hub.port))
+        assert desktop._status(hub.port) is not None  # still running
+    finally:
+        hub.stop()
+    assert started == [] and opened and opened[0]["own_hub"] is False
+
+
+def test_without_native_window_the_previous_interface_opens(monkeypatch):
+    from rekord import app
+    hub = _hub(__version__, window=False)
+    opened = []
+    monkeypatch.setattr(app, "usable", lambda: False)
+    monkeypatch.setattr(desktop, "_window", lambda *a, **k: opened.append(k))
+    try:
+        desktop._show("http://x", hub.port, desktop._status(hub.port))
+        assert desktop._status(hub.port) is not None  # the background REKORD stays
+    finally:
+        hub.stop()
+    assert opened and opened[0]["own_hub"] is False
 
 
 def test_newer_version_takes_over_from_an_old_one():

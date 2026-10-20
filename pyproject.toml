@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rekord"
-version = "1.0.11"
+version = "1.1.0"
 description = "Lokaler KI-Notizrekorder: aufnehmen, transkribieren, live erkennen wer spricht, zusammenfassen mit Claude/ChatGPT/Ollama."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,11 +30,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-desktop = ["pywebview>=5"]
+# REKORD's window (Qt Quick, native) – pywebview only for pages that still open in the previous interface
+desktop = ["PySide6>=6.8", "pywebview>=5"]
 mcp = ["mcp>=1.2"]
 docx = ["python-docx>=1.1"]
 gpu = ["faster-whisper>=1.0"]
-all = ["pywebview>=5", "mcp>=1.2", "python-docx>=1.1"]
+all = ["PySide6>=6.8", "pywebview>=5", "mcp>=1.2", "python-docx>=1.1"]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "playwright>=1.44", "pillow>=10", "soundfile>=0.12"]
 
 [project.scripts]
@@ -44,7 +45,7 @@ rekord = "rekord.__main__:main"
 include = ["rekord*"]
 
 [tool.setuptools.package-data]
-rekord = ["web/*", "web/icons/*"]
+rekord = ["web/*", "web/icons/*", "app/qml/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

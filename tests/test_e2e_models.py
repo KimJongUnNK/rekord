@@ -244,3 +244,52 @@ def test_lecture_separates_lecturer_and_audience(people, monkeypatch):
     assert prof["name"] == "Prof. Test"
     assert any(s["name"] == "Prof. Test" for s in db.list_speakers(r["id"]))
     db.delete_profile(prof["id"])
+
+
+def test_native_window_live_recording(people, monkeypatch):
+    """The desktop window's own live path: microphone chunks at 48 kHz (a typical device rate) → bridge → engine.
+    Audio that arrives while the models load is kept; names appear live; Stopp saves and hands over the recording."""
+    pytest.importorskip("PySide6.QtQuick", exc_type=ImportError)
+    import os
+    import time
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtGui import QGuiApplication
+
+    from rekord import audio, live
+    from rekord.app import bridge
+    QGuiApplication.instance() or QGuiApplication(["rekord-e2e"])
+
+    def pump(cond, timeout):
+        end = time.time() + timeout
+        while time.time() < end and not cond():
+            QCoreApplication.processEvents()
+            time.sleep(0.005)
+        return cond()
+
+    monkeypatch.setattr(bridge.Mic, "start", lambda self, device_id="": True)  # the chunks come from the file below
+    monkeypatch.setattr(bridge.Mic, "stop", lambda self: None)
+    x = audio.load(FIX / "meeting1.wav")
+    x48 = live.resample(x, 16000, 48000)
+    pcm = (np.clip(x48, -1, 1) * 32767).astype("<i2").tobytes()
+    lv = bridge.Live()
+    done = []
+    lv.finished.connect(done.append)
+    ids = {p["name"]: p["id"] for p in db.list_profiles()}
+    lv.start("Native", "person", [ids["Emil"], ids["Lisa"], ids["Jake"]], 3)
+    step = 9600  # 0.1 s at 48 kHz, 16 bit
+    for i in range(0, len(pcm), step):
+        lv._mic.chunk.emit(pcm[i:i + step], 48000)
+        pump(lambda: False, 0.02)  # ~5x real time
+    assert pump(lambda: lv.state == "recording", 60)
+    pump(lambda: False, 3)
+    lv.stop()
+    assert pump(lambda: bool(done), 180)
+    names = [r["name"] for r in lv.lines.items()]
+    assert len(names) >= 6 and names[:2] == ["Emil", "Lisa"] and "Jake" in names
+    assert {r["name"] for r in lv.roster} >= {"Emil", "Lisa", "Jake"}
+    rec = db.get_recording(done[0])
+    assert rec["title"] == "Native" and rec["audio_path"].endswith(".m4a")
+    assert abs(rec["duration"] - len(x) / 16000) < 0.5  # nothing lost while the models loaded
+    assert rec["participants"]["ids"] == [ids["Emil"], ids["Lisa"], ids["Jake"]]
