@@ -367,3 +367,19 @@ def test_merge_similar_speakers_fixes_over_split_voice():
     assert {s for _, _, s in out} == {0, 1}  # 2 → 0 (0 talks more)
     assert [s for _, _, s in out] == [0, 1, 0, 0, 0]
     assert merge_similar_speakers(turns, {0: a, 1: b}, 0.65) == turns  # different people stay apart
+
+
+def test_wait_idle_gives_up_after_the_timeout(monkeypatch):
+    """Tests (and quitting) wait for the background worker – but never forever."""
+    import queue as q
+
+    from rekord import jobs
+    fresh: q.Queue = q.Queue()
+    monkeypatch.setattr(jobs, "_q", fresh)
+    assert jobs.wait_idle(0.1) is True
+    fresh.put(("process", "x"))
+    t = time.time()
+    assert jobs.wait_idle(0.3) is False and time.time() - t < 2
+    fresh.get()
+    fresh.task_done()
+    assert jobs.wait_idle(0.1) is True

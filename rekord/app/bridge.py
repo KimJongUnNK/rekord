@@ -540,6 +540,9 @@ class Live(QObject):
         self._t0, self._paused_at, self._paused_total = time.time(), 0.0, 0.0
         self._state = "recording"
         self._tick.start()
+        if config.load()["desktop"].get("keep_awake", True):
+            from .. import system
+            system.keep_awake(True)
         self.changed.emit()
 
     @Slot()
@@ -657,6 +660,8 @@ class Live(QObject):
             self._highlights += 1
             self.toast.emit("★ Moment markiert")
         elif kind == "__finished__":
+            from .. import system
+            system.keep_awake(False)
             self._sess = None
             self._state = "idle"
             self._speaking, self._level = {}, 0.0
@@ -760,6 +765,8 @@ class VoiceRecorder(QObject):
             Path(self._path).unlink(missing_ok=True)
             self._path = ""
         self._speech = self._wall = 0.0
+        self._level = 0.0  # the level meter starts at zero next time
+        self.levelChanged.emit()
         self.changed.emit()
 
     @Slot(str)
@@ -803,6 +810,7 @@ class AppState(QObject):
     changed = Signal()
     focusRequested = Signal()
     toast = Signal(str)
+    navigate = Signal(str, str)  # go to a page (and a section of it), e.g. Einstellungen → Speicher
 
     def __init__(self, port: int, keep_running: bool = False, parent=None):
         super().__init__(parent)
@@ -843,6 +851,18 @@ class AppState(QObject):
         return self._keep
 
     themeChanged = Signal()
+    accentChanged = Signal()
+
+    @Property(str, notify=accentChanged)
+    def accent(self):
+        return config.load()["desktop"].get("accent") or "#FF5A1F"
+
+    @Slot(str)
+    def setAccent(self, color: str) -> None:  # noqa: N802 - QML API
+        import re
+        if re.fullmatch(r"#[0-9a-fA-F]{6}", color or ""):
+            config.save({"desktop": {"accent": color.upper()}})
+            self.accentChanged.emit()
 
     @Slot(str, result="QVariant")
     def pref(self, key: str):
@@ -884,7 +904,7 @@ class AppState(QObject):
                 "downloading": f"{dl['name']} {round(dl['progress']['done'] / max(1, dl['progress']['total']) * 100)} %" if dl else "",
                 "ai": f"{providers.PROVIDERS.get(s['llm']['provider'], '')}" + (f" · {providers.model_name(s)}" if providers.model_name(s) else "") if ok else "",
                 "aiProblem": "" if ok else problem, "live": bool(live.active()), "pending": jobs.pending(),
-                "storageMissing": config.home_missing(), "welcomeDone": bool(s.get("welcome_done")),
+                "storageMissing": str(config.HOME) if config.home_missing() else "", "welcomeDone": bool(s.get("welcome_done")),
                 "update": up["latest"] if up["available"] else "", "updateState": up["state"],
                 "updateProgress": up["done"] / up["total"] if up.get("total") else 0.0, "updateError": up.get("error") or ""}
         except Exception as e:  # noqa: BLE001
@@ -897,7 +917,7 @@ class AppState(QObject):
         the settings explain how."""
         from .. import updater
         if not updater.info().get("can_install"):
-            self.openClassic("settings?s=data")
+            self.navigate.emit("settings", "data")  # the settings explain how (e.g. a system package)
             return
 
         def go():

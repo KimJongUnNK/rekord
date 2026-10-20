@@ -713,12 +713,16 @@ def pair(request: Request):
     s = config.load()
     port = getattr(app.state, "port", None) or request.url.port or 8765
     urls = [f"http://{ip}:{port}" for ip in lan_ips()]
-    img = qrcode.make(json.dumps({"rekord": 1, "urls": urls, "token": s["pair_token"]}),
-                      image_factory=qrcode.image.svg.SvgPathImage, box_size=8)
+    payload = json.dumps({"rekord": 1, "urls": urls, "token": s["pair_token"]})
+    img = qrcode.make(payload, image_factory=qrcode.image.svg.SvgPathImage, box_size=8)
     buf = io.BytesIO()
     img.save(buf)
-    return {"urls": urls, "qr_app": buf.getvalue().decode(), "code": pairing.current_code(), "devices": pairing.devices(),
-            "lan": bool(getattr(app.state, "lan", False))}
+    qr = qrcode.QRCode(border=0)  # the same code as rows of 0/1 – the desktop window draws it itself
+    qr.add_data(payload)
+    qr.make(fit=True)
+    rows = ["".join("1" if c else "0" for c in row) for row in qr.get_matrix()]
+    return {"urls": urls, "qr_app": buf.getvalue().decode(), "qr_rows": rows, "code": pairing.current_code(),
+            "devices": pairing.devices(), "lan": bool(getattr(app.state, "lan", False))}
 
 
 # ------------------------------------------------------------------ recordings

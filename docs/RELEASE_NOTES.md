@@ -19,6 +19,18 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.3.0 – Einstellungen und Einführung im neuen Fenster
+- **Einstellungen** komplett im REKORD-Fenster: Darstellung, Mikrofon mit **Pegel testen**, KI (Claude, ChatGPT, lokal, kompatibel – mit Verbindungstest), Transkription, Sprecher-Erkennung, Modelle, iPhone, Claude Desktop, Speicher, Updates. Sprung-Knöpfe oben, ⓘ bei jedem Punkt.
+- **Akzentfarbe** wählen – das ganze Fenster färbt sich sofort um (Text auf hellen Farben wird automatisch dunkel).
+- **Lokale KI mit einem Klick** direkt im Fenster: Ollama installieren, bestes Modell für deinen Computer laden, Modelle verwenden oder löschen, Fortschritt live.
+- **iPhone koppeln:** QR-Code und 6-stelliger Code mit Countdown, gekoppelte Geräte trennen.
+- **Speicherort umziehen** (auch auf externe Festplatte, NVMe, NAS) mit Fortschritt; **„Laufwerk fehlt“** zeigt klar, was los ist: *Nochmal prüfen* oder *Neu auf diesem Computer anfangen*.
+- **Einführung beim ersten Start** im Fenster: Speicherort → Aussehen → Sprache → Mikrofon (mit Pegel) → KI → deine Stimme → iPhone → **Erste Aufnahme**. Jeder Schritt überspringbar, später unter *Einstellungen → Hilfe* nochmal.
+- **Computer wach halten:** Während einer Aufnahme schläft der Computer nicht ein.
+- Ohne KI zeigt *Aufnahmen* eine Karte, um eine KI zu verbinden.
+- Neue Tastenkürzel: **Strg + 3** Personen, **Strg + ,** Einstellungen.
+- **Beenden ohne Absturzmeldung**, auch wenn im Hintergrund gerade eine Aufnahme ausgewertet wird – die Auswertung geht beim nächsten Start weiter.
+
 ### Neu in 1.2.0 – Aufnahmen und Personen komplett im neuen Fenster
 - **Player:** Wellenform, farbige Sprecher-Leiste mit ★-Momenten, ±15 s, Tempo bis 2× – klick irgendwo hin, und es spielt ab dort.
 - **Sprecher:** antippen → umbenennen, **Stimme merken** (künftig automatisch erkannt) oder doppelt erkannte zusammenführen.

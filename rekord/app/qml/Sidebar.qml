@@ -199,7 +199,7 @@ Rectangle {
             radius: 12
             color: Theme.accentSoft
             border.width: 1
-            border.color: Qt.rgba(1, 0.353, 0.122, 0.35)
+            border.color: Theme.accentLine
             ColumnLayout {
                 id: upCol
                 anchors.fill: parent

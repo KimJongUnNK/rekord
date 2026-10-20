@@ -89,6 +89,10 @@ def test_pairing_qr_and_code(client):
     p = client.get("/api/pair").json()
     assert p["qr_app"].lstrip().startswith("<?xml") and "token" not in p and "qr_web" not in p
     assert len(p["code"]["code"]) == 6 and p["code"]["code"].isdigit() and p["code"]["expires"] > 0
+    # the same code as a matrix for the desktop window, which draws it itself: square, only 0/1
+    rows = p["qr_rows"]
+    assert len(rows) >= 21 and all(len(r) == len(rows) and set(r) <= {"0", "1"} for r in rows)
+    assert rows[0][:7] == "1111111" and rows[6][:7] == "1111111"  # a finder pattern in the corner
 
 
 def test_lan_is_only_for_the_iphone_app(client):

@@ -78,7 +78,8 @@ DEFAULTS: dict = {
     "welcome_done": False,
     "update_check": True,  # look for a new REKORD version (GitHub releases) – installing always needs a click
     # the native window: chosen microphone, and who was there last time ("Wer ist dabei?" starts from that)
-    "desktop": {"mic": "", "theme": "system", "who": {"meeting": "person", "ids": [], "total": 0}},
+    "desktop": {"mic": "", "theme": "system", "accent": "#FF5A1F", "keep_awake": True,
+                "who": {"meeting": "person", "ids": [], "total": 0}},
 }
 
 _lock = threading.RLock()

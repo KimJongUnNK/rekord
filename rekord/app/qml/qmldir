@@ -44,3 +44,15 @@ ExportView 1.0 ExportView.qml
 EnrollDialog 1.0 EnrollDialog.qml
 PersonDialog 1.0 PersonDialog.qml
 PeoplePage 1.0 PeoplePage.qml
+Field 1.0 Field.qml
+Section 1.0 Section.qml
+QrView 1.0 QrView.qml
+LocalAiProgress 1.0 LocalAiProgress.qml
+OllamaPanel 1.0 OllamaPanel.qml
+DrivePicker 1.0 DrivePicker.qml
+StorageJob 1.0 StorageJob.qml
+UpdatePanel 1.0 UpdatePanel.qml
+SettingsPage 1.0 SettingsPage.qml
+AiChoice 1.0 AiChoice.qml
+WelcomeWizard 1.0 WelcomeWizard.qml
+MissingPage 1.0 MissingPage.qml

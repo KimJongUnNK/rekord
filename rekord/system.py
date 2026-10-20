@@ -79,6 +79,38 @@ def app_command() -> list[str]:
     return [sys.executable] if frozen() else [sys.executable, "-m", "rekord"]
 
 
+# ------------------------------------------------------------------ keep the computer awake while recording
+
+_awake: subprocess.Popen | None = None
+
+
+def keep_awake(on: bool) -> bool:
+    """During a recording the computer must not fall asleep (the screen may turn off). True if it worked."""
+    global _awake
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | (ES_SYSTEM_REQUIRED if on else 0))
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+    if _awake is not None:
+        _awake.terminate()
+        _awake = None
+    if not on:
+        return True
+    cmd = (["caffeinate", "-i", "-w", str(os.getpid())] if sys.platform == "darwin" else
+           ["systemd-inhibit", "--what=sleep:idle", "--who=REKORD", "--why=Aufnahme läuft", "--mode=block", "tail", f"--pid={os.getpid()}", "-f", "/dev/null"])  # ends with REKORD, even after a crash
+    if not shutil.which(cmd[0]):
+        return False
+    try:
+        _awake = subprocess.Popen(cmd, env=child_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except OSError:
+        return False
+
+
 # ------------------------------------------------------------------ Linux firewall (iPhone needs the ports)
 
 def run(cmd: list[str], timeout: float = 30) -> subprocess.CompletedProcess:

@@ -240,6 +240,43 @@ def main(out: Path) -> int:
     shot("library-light")
     o["rekord"].setTheme("system")
 
+    # ---- Einstellungen: every section
+    win.setProperty("page", "settings")
+    settings = win.findChild(QObject, "settingsPage")
+    shot("settings")
+    for key in ("ai", "asr", "models", "pair", "int", "data"):
+        call(settings, "jump", key)
+        shot(f"settings-{key}")
+    o["rekord"].setAccent("#2D7FF9")  # another accent color, everywhere at once
+    call(settings, "jump", "look")
+    shot("settings-accent")
+    o["rekord"].setAccent("#FF5A1F")
+
+    # ---- the first-start guide, step by step
+    wiz = win.findChild(QObject, "welcomeWiz")
+    win.setProperty("welcomeOpen", True)
+    wait(1.0)
+    if not wiz.property("opened"):
+        problems_extra.append("welcome: the guide didn't open")
+    for i, step in enumerate(wiz.property("steps").toVariant() or []):
+        call(wiz, "go", i)
+        shot(f"welcome-{step}")
+    win.setProperty("welcomeOpen", False)
+    o["voice"].discard()
+
+    # ---- the drive with the data is unplugged
+    real_missing = config.home_missing
+    config.home_missing = lambda: True
+    win.setProperty("page", "library")
+    o["rekord"].refresh()
+    shot("missing")
+    if win.property("shownPage") != "missing":
+        problems_extra.append("missing drive: the window still shows " + str(win.property("shownPage")))
+    config.home_missing = real_missing
+    o["rekord"].refresh()
+    win.setProperty("page", "library")
+    wait(0.5)
+
     problems = list(w.warnings) + problems_extra
     if sess is None or sess.fed == 0:
         problems.append("live: the microphone audio never reached the session")
@@ -253,4 +290,6 @@ def main(out: Path) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(Path(sys.argv[1] if len(sys.argv) > 1 else "ui-preview")))
+    code = main(Path(sys.argv[1] if len(sys.argv) > 1 else "ui-preview"))
+    sys.stdout.flush()
+    os._exit(code)  # like the app itself: no teardown of the window's objects in Python's shutdown order

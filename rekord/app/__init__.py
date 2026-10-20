@@ -168,11 +168,13 @@ def _selftest(app, win, out: Path, warnings: list[str]) -> None:
     """CI: walk through the pages of the packaged app, save a screenshot of each, quit (exit code 2 on QML warnings)."""
     from PySide6.QtCore import QTimer
     out.mkdir(parents=True, exist_ok=True)
-    steps = [("library", lambda: win.setProperty("page", "library")),
+    steps = [("welcome", lambda: win.setProperty("welcomeOpen", True)),  # a fresh install starts with it anyway
+             ("library", lambda: (win.setProperty("welcomeOpen", False), win.setProperty("page", "library"))),
              ("live", lambda: win.setProperty("page", "live")),
              ("who", lambda: win.setProperty("whoOpen", True)),
              ("people", lambda: (win.setProperty("whoOpen", False), win.setProperty("page", "people"))),
-             ("classic", lambda: win.setProperty("page", "settings"))]
+             ("settings", lambda: win.setProperty("page", "settings")),
+             ("classic", lambda: win.setProperty("page", "ask"))]
 
     def shoot(i: int) -> None:
         try:

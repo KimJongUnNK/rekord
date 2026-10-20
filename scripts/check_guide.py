@@ -1,4 +1,5 @@
-"""Checks that docs/ANLEITUNG.md covers every menu item, tab, button and settings field of the web app.
+"""Checks that docs/ANLEITUNG.md covers every menu item, tab, button and settings field – of the REKORD window
+(rekord/app/qml) and of the previous interface (rekord/web, still used where the window can't start).
 
 Labels are pulled from the UI source, so new UI elements show up here until the guide mentions them.
 Run: python scripts/check_guide.py   (exit code 1 = gaps)
@@ -54,6 +55,19 @@ groups["Einsprechen"] = set(re.findall(r'<button type="button" data-m="\w+">([^<
     | {"Anderer Text", "Gesprächsidee", "Stimme lernen", "Stimme speichern"}
 groups["Koppeln"] = {"Kopplungs-Code", "Neuer Code", "Gekoppelte Geräte", "Trennen", "Alle Geräte trennen", "QR-Code scannen"}
 groups["Speicherort"] = {"Speicherort", "KI-Modelle", "Laufwerk fehlt", "Nochmal prüfen", "Neu auf diesem Computer anfangen", "Umziehen"}
+
+# ---- the REKORD window (Qt Quick)
+QML = ROOT / "rekord/app/qml"
+settings_qml = (QML / "SettingsPage.qml").read_text("utf-8")
+wizard_qml = (QML / "WelcomeWizard.qml").read_text("utf-8")
+groups["Fenster: Einstellungen – Bereiche"] = set(re.findall(r'\["\w+", "([^"]+)"\]', settings_qml.split("readonly property var sections:")[1].split("readonly property var langs")[0]))
+groups["Fenster: Einstellungen – Felder"] = set(re.findall(r'^\s*label: "([^"]+)"', settings_qml, re.M)) \
+    | set(re.findall(r'\["\w+", "([^"]+)", "\w+", "[^"]+", [\d.]+, [\d.]+\]', settings_qml))  # the sliders
+groups["Fenster: Einstellungen – Knöpfe"] = {"Pegel testen", "Testen", "Neuer Code", "Alle Geräte trennen", "Einführung starten", "REKORD beenden",
+                                             "Lokal einrichten", "Verwenden", "Alle nicht verwendeten löschen", "Laden & verwenden", "Umziehen"}
+groups["Fenster: Einführung"] = set(re.findall(r'"Schritt " \+ \(w\.i \+ 1\) \+ " · ([^"]+)"', wizard_qml)) | {"Erste Aufnahme", "Zur App", "Überspringen"}
+groups["Fenster: Laufwerk fehlt"] = set(re.findall(r'text: "([^"]+)"; (?:enabled|iconName)', (QML / "MissingPage.qml").read_text("utf-8"))) \
+    | set(re.findall(r'iconName: "\w+"; text: "([^"]+)"', (QML / "MissingPage.qml").read_text("utf-8")))
 
 missing = 0
 for name, labels in groups.items():

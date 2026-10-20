@@ -78,13 +78,13 @@ Page {
 
         // ---- first start / storage
         Rectangle {
-            visible: rekord.status.storageMissing || rekord.status.welcomeDone === false || (rekord.status.ready === false && !rekord.status.downloading)
+            visible: rekord.status.welcomeDone === false || (rekord.status.ready === false && !rekord.status.downloading)
             Layout.fillWidth: true
             Layout.preferredHeight: setupRow.implicitHeight + 36
             radius: Theme.radius
             color: Theme.accentSoft
             border.width: 1
-            border.color: Qt.rgba(1, 0.353, 0.122, 0.35)
+            border.color: Theme.accentLine
             RowLayout {
                 id: setupRow
                 anchors.fill: parent
@@ -95,22 +95,49 @@ Page {
                     Layout.fillWidth: true
                     spacing: 2
                     Text {
-                        text: rekord.status.storageMissing ? "Der Speicherort ist nicht verbunden" : "Einmal einrichten – dann läuft alles von selbst"
+                        text: rekord.status.welcomeDone === false ? "Einmal einrichten – dann läuft alles von selbst" : "Die Spracherkennung fehlt noch"
                         font.family: Theme.text; font.pixelSize: 16; font.weight: Font.Bold; color: Theme.fg
                     }
                     Text {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
-                        text: rekord.status.storageMissing ? "Steck das Laufwerk an, auf dem deine Aufnahmen liegen – oder wähle einen anderen Ort."
-                            : "Speicherort wählen, Spracherkennung laden (einmalig, ~500 MB) und optional eine KI für Zusammenfassungen verbinden."
+                        text: rekord.status.welcomeDone === false ? "Speicherort wählen, Spracherkennung laden (einmalig, ~700 MB) und optional eine KI für Zusammenfassungen verbinden."
+                            : "Ohne die Sprachmodelle (~700 MB, einmalig) kann REKORD nicht mitschreiben. Unter Einstellungen → Modelle laden."
                         font.family: Theme.text; font.pixelSize: 14; color: Theme.fg2
                     }
                 }
                 Btn {
                     kind: "primary"
-                    text: rekord.status.storageMissing ? "Speicherort" : "Einrichten"
-                    onClicked: rekord.openClassic(rekord.status.storageMissing ? "settings?s=data" : "")
+                    text: rekord.status.welcomeDone === false ? "Einrichten" : "Modelle"
+                    onClicked: rekord.status.welcomeDone === false ? page.app.welcome(true) : page.app.go("settings", "models")
                 }
+            }
+        }
+
+        // ---- no AI yet: who writes the protocols? (once there's something to summarize)
+        Rectangle {
+            id: aiCard
+            property bool hidden: !!rekord.pref("ai_card_hidden")
+            visible: !hidden && rekord.status.welcomeDone === true && !rekord.status.ai && list.count > 0 && !library.query
+            Layout.fillWidth: true
+            Layout.preferredHeight: aiCol.implicitHeight + 36
+            radius: Theme.radius
+            color: Theme.card
+            border.width: 1
+            border.color: Theme.line
+            ColumnLayout {
+                id: aiCol
+                x: 18; y: 18
+                width: parent.width - 36
+                spacing: 12
+                RowLayout {
+                    Layout.fillWidth: true
+                    Icon { name: "spark"; width: 22; height: 22; color: Theme.accent }
+                    Text { Layout.fillWidth: true; text: "Protokolle, To-dos, Mind Map – verbinde eine KI"; font.family: Theme.text; font.pixelSize: 16; font.weight: Font.Bold; color: Theme.fg; elide: Text.ElideRight }
+                    Tip { key: "provider" }
+                    Btn { kind: "ghost"; small: true; text: "Später"; onClicked: { rekord.setPref("ai_card_hidden", true); aiCard.hidden = true } }
+                }
+                AiChoice { Layout.fillWidth: true; app: page.app; withNone: false; onReady: page.app.toast("KI verbunden – in jeder Aufnahme unter „Zusammenfassung“.") }
             }
         }
 

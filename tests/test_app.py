@@ -240,8 +240,8 @@ def test_window_selftest_mode_quits_with_result(tmp_path):
     code = "import sys; from rekord import app; sys.exit(app.run(8765))"
     r = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=120, cwd=ROOT)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
-    assert "UI selftest: 5 pages, 0 QML warnings" in r.stdout
-    assert len(list((tmp_path / "shots").glob("*.png"))) == 5
+    assert "UI selftest: 7 pages, 0 QML warnings" in r.stdout
+    assert len(list((tmp_path / "shots").glob("*.png"))) == 7
 
 
 def test_usable_respects_classic_and_missing_display(qt, monkeypatch):
@@ -329,3 +329,81 @@ def test_preferences_of_the_window(qt):
     st.setPref("enroll_mode", "free")
     assert st.pref("enroll_mode") == "free" and config.load()["desktop"]["enroll_mode"] == "free"
     assert st.pref("gibts_nicht") is None
+
+
+def test_accent_color_is_checked_and_kept(qt):
+    st = bridge.AppState(8765)
+    seen = []
+    st.accentChanged.connect(lambda: seen.append(st.accent))
+    st.setAccent("#2d7ff9")
+    assert st.accent == "#2D7FF9" and config.load()["desktop"]["accent"] == "#2D7FF9" and seen == ["#2D7FF9"]
+    for bad in ("red", "#12345", "#GGGGGG", "", "#2D7FF9; rm"):
+        st.setAccent(bad)
+    assert st.accent == "#2D7FF9" and len(seen) == 1
+    st.setAccent("#FF5A1F")
+
+
+def test_missing_drive_shows_its_path_and_welcome_state(qt, monkeypatch):
+    st = bridge.AppState(8765)
+    monkeypatch.setattr(config, "home_missing", lambda: True)
+    st.refresh()
+    assert st.status["storageMissing"] == str(config.HOME)
+    monkeypatch.setattr(config, "home_missing", lambda: False)
+    config.save({"welcome_done": False})
+    st.refresh()
+    assert st.status["storageMissing"] == "" and st.status["welcomeDone"] is False
+    config.save({"welcome_done": True})
+
+
+def test_update_that_cant_install_itself_opens_the_settings(qt, monkeypatch):
+    from rekord import updater
+    st = bridge.AppState(8765)
+    went = []
+    st.navigate.connect(lambda p, s: went.append((p, s)))
+    monkeypatch.setattr(updater, "info", lambda: {"can_install": False})
+    st.installUpdate()
+    assert went == [("settings", "data")]
+
+
+def test_voice_level_starts_at_zero_again(qt, monkeypatch):
+    monkeypatch.setattr(bridge.Mic, "start", lambda self, device_id="": True)
+    monkeypatch.setattr(bridge.Mic, "stop", lambda self: None)
+    v = bridge.VoiceRecorder()
+    v.start(60)
+    pump(lambda: v.recording)
+    loud = (np.sin(np.arange(4800) / 48000 * 2 * np.pi * 200) * 20000).astype("<i2").tobytes()
+    v._on_chunk(loud, 48000)  # noqa: SLF001
+    assert v.level > 0.2
+    v.discard()
+    assert v.level == 0.0 and not v.recording
+
+
+def test_keeping_the_computer_awake(monkeypatch):
+    from rekord import system
+    started, stopped = [], []
+
+    class Proc:
+        def __init__(self, cmd, **kw):
+            started.append(cmd)
+
+        def terminate(self):
+            stopped.append(1)
+    monkeypatch.setattr(system.sys, "platform", "linux")
+    monkeypatch.setattr(system.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(system.subprocess, "Popen", Proc)
+    assert system.keep_awake(True)
+    assert started[0][0] == "systemd-inhibit" and f"--pid={os.getpid()}" in started[0]  # ends with REKORD, even after a crash
+    assert system.keep_awake(False) and stopped == [1]
+    monkeypatch.setattr(system.sys, "platform", "darwin")
+    assert system.keep_awake(True) and started[1][:2] == ["caffeinate", "-i"]
+    system.keep_awake(False)
+    monkeypatch.setattr(system.shutil, "which", lambda name: None)
+    assert system.keep_awake(True) is False  # nothing to keep it awake with: recording works anyway
+
+
+def test_quitting_ends_the_process_without_python_teardown(monkeypatch):
+    from rekord import desktop
+    ended = []
+    monkeypatch.setattr(desktop.os, "_exit", lambda code: ended.append(code))
+    desktop._end()  # noqa: SLF001
+    assert ended == [0]

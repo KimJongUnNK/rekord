@@ -138,7 +138,7 @@ Beim ersten Öffnen erscheint die Einführung. Jeder Schritt lässt sich **Über
 |---|---|
 | **Willkommen** | Was REKORD kann, in drei Sätzen. |
 | **Speicherort** | **Wo soll REKORD speichern?** Laufwerk antippen – eingebaut, externe Festplatte (USB/Thunderbolt), zweite SSD (NVMe) oder Netzlaufwerk (NAS) – oder einen Ordner eintragen. *KI-Modelle im selben Ordner* abwählen, um die großen Modelle woanders hinzulegen. Erst danach lädt REKORD etwas herunter. Liegt der Ort woanders, zieht REKORD kurz um und startet neu. |
-| **Aussehen** | Hell/Dunkel, Akzentfarbe, Dichte – du siehst es sofort. |
+| **Aussehen** | Hell/Dunkel und Akzentfarbe – du siehst es sofort. |
 | **Sprache** | **Sprache in den Meetings** (fest eingestellt = am genauesten, *Automatisch* für gemischte Runden) und **Protokolle schreiben auf** (Deutsch, Englisch oder wie im Gespräch). Bei Englisch bekommt man zum Einsprechen auch einen englischen Text. |
 | **Mikrofon** | Mikrofon wählen, etwas sagen – der Balken muss ausschlagen. |
 | **KI** | **Lokal · gratis** (ein Klick, läuft im Hintergrund weiter), **Claude** oder **ChatGPT** (Key einfügen, wird sofort getestet) oder *Erstmal ohne*. |
@@ -161,7 +161,7 @@ Gezählt werden nur Sekunden, in denen wirklich gesprochen wird: mindestens 25, 
 ## 4. KI verbinden
 
 Transkript und Sprecher-Erkennung gehen **ohne KI**. Für Protokoll, To-dos, Mind Map und Fragen brauchst du eine.
-Beim ersten Start zeigt REKORD unter *Aufnahmen* die Karte **„Noch ein Schritt“** – dort einfach antippen. Später: **Einstellungen → KI**.
+Ohne KI zeigt REKORD unter *Aufnahmen* die Karte **„Protokolle, To-dos, Mind Map – verbinde eine KI“** – dort einfach antippen (*Später* blendet sie aus). Jederzeit: **Einstellungen → KI**.
 Ist auf dem Computer schon Ollama oder LM Studio mit einem Modell, nimmt REKORD das automatisch.
 
 | | So geht's | Kosten |
@@ -204,7 +204,11 @@ Ab Version 1.1 ist REKORD am Computer ein **echtes Programm** – kein Browser, 
 | **Live** | großer Aufnahmeknopf · **Mikrofon** wählen (darunter) · **Wer ist dabei?** mit **Vor Ort**, **Online** und **Vorlesung** · groß in der Farbe der Person, wer gerade spricht · Redeanteile · **Nicht erkannte Stimme** antippen → Namen eingeben → **Merken** · **Mitschrift** live · **Markieren**, **Pause**, **Stopp & speichern** |
 | **Personen** | alle bekannten Stimmen mit Aufnahmen und Stimmproben · **Person einsprechen** mit drei Wegen: **Text vorlesen** (eigener Text pro Name, **↻ Anderer Text**), **Einfach reden lassen** (**💬 Gesprächsidee**), **Aus Aufnahme lernen** (Aufnahme wählen, Stimme anhören ▶, auswählen, **Stimme lernen**) · Sekundenzähler zählt nur echte Sprache (mind. 25, ideal ~45 s) · **…oder eine Datei mit nur dieser Person** · Stift-Symbol: Name, Farbe, **Stimmabdruck löschen** · bei **Wer ist dabei?** gleich **Neue Person jetzt einsprechen** |
 
-**Zieht als Nächstes um:** *Fragen* (über alle Aufnahmen), *Vorlagen*, *Einstellungen* und die Einführung beim ersten Start. Diese Seiten öffnen sich bis dahin in einem eigenen Fenster der bisherigen Ansicht – mit denselben Daten, alles bleibt synchron.
+| **Einstellungen** | alle Bereiche wie unten beschrieben, mit Sprung-Knöpfen oben · **Akzentfarbe** färbt sofort das ganze Fenster · **Pegel testen** fürs Mikrofon · lokale KI mit einem Klick, Modelle laden/löschen · **QR-Code** und **6-stelliger Code** fürs iPhone, läuft sichtbar ab und erneuert sich · Speicherort und KI-Modelle **umziehen** mit Fortschritt · **Updates** mit „Was ist neu“ · **REKORD beenden** |
+| **Einführung** | beim ersten Start, Schritt für Schritt (siehe [Erster Start](#erster-start-die-einführung)) – später unter *Einstellungen → Speicher & Datenschutz → Hilfe → Einführung starten* |
+| **Laufwerk fehlt** | Liegt der Speicherort auf einer Festplatte, die gerade nicht angeschlossen ist, zeigt REKORD genau das statt einer leeren Liste: **Nochmal prüfen** oder **Neu auf diesem Computer anfangen** |
+
+**Zieht als Nächstes um:** *Fragen* (über alle Aufnahmen) und *Vorlagen*. Diese beiden Seiten öffnen sich bis dahin in einem eigenen Fenster der bisherigen Ansicht – mit denselben Daten, alles bleibt synchron.
 
 **Tastatur**
 
@@ -215,7 +219,8 @@ Ab Version 1.1 ist REKORD am Computer ein **echtes Programm** – kein Browser, 
 | **H** | Wichtigen Moment markieren (★) |
 | **Strg + F** (Mac: **⌘ F**) | Suchen |
 | **Strg + I** (Mac: **⌘ I**) | Importieren |
-| **Strg + 1** / **Strg + 2** | Aufnahmen / Live |
+| **Strg + 1** / **Strg + 2** / **Strg + 3** | Aufnahmen / Live / Personen |
+| **Strg + ,** (Mac: **⌘ ,**) | Einstellungen |
 
 **Hell oder dunkel:** das kleine Symbol unten links schaltet um – *wie das System*, *hell*, *dunkel*.
 
@@ -290,12 +295,12 @@ Ein Chat über **alle** Aufnahmen: *„Was hat Lisa letzte Woche zum Budget gesa
 - **Eigene Vorlage:** Namen, Kategorie, Kurzbeschreibung und den Text schreiben, was die KI liefern soll.
 
 ### Einstellungen
-Oben gibt's Sprung-Knöpfe zu den Bereichen. *Darstellung* und *Audio & Mikrofon* gelten **nur für dieses Gerät**, alles andere für den ganzen Computer.
+Oben gibt's Sprung-Knöpfe zu den Bereichen. *Darstellung* und *Audio & Mikrofon* gelten **nur für dieses Gerät**, alles andere für den ganzen Computer. Die Meeting-Art (*Vor Ort*, *Online*, *Vorlesung*) wählst du vor jeder Aufnahme bei **Wer ist dabei?** – REKORD merkt sich die letzte.
 
 | Bereich | Felder (so heißen sie in der App) |
 |---|---|
-| **Darstellung** | **Erscheinungsbild** System / Hell / Dunkel · **Akzentfarbe** (9 fertige oder eigene) · **Dichte** Luftig / Kompakt |
-| **Audio & Mikrofon** | **Mikrofon** wählen + *Pegel testen* · **Meeting-Art** Vor Ort, Online oder Vorlesung (Vorauswahl, wird vor jeder Aufnahme bestätigt) · **Audio-Verarbeitung**: Rauschunterdrückung, Echo-Unterdrückung, automatische Lautstärke · **Live-Erkennung** an/aus (aus spart Akku) · **Bildschirm wach halten** |
+| **Darstellung** | **Erscheinungsbild** System / Hell / Dunkel · **Akzentfarbe** (9 fertige oder eigene als `#RRGGBB`) |
+| **Audio & Mikrofon** | **Mikrofon** wählen + *Pegel testen* · **Mitschrift während der Aufnahme** an/aus (aus = nur zeigen, wer spricht, die Texte kommen danach – spart Rechenleistung) · **Computer wach halten**: während einer Aufnahme geht der Computer nicht in den Ruhezustand (der Bildschirm darf aus) |
 | **KI** | Anbieter wählen: Claude, ChatGPT, Lokal, Kompatibel, Aus · Lokal: **Lokales Modell** – **Lokal einrichten** (installiert alles) · *Dein Computer*: RAM + Grafikchip erkannt, **Bestes Modell … laden & verwenden** · *Auf diesem Computer*: **Verwenden** oder **🗑 Löschen** je Modell (war es aktiv, springt REKORD auf ein anderes), **Alle nicht verwendeten löschen** · *Weitere Modelle*: **Laden & verwenden** (zu große mit *Trotzdem laden*) · *Anderes Modell*: jeden Namen von ollama.com/library eintippen → **Laden & verwenden** · Claude/ChatGPT: **Key erstellen ↗** · **API-Key** · **Modell** (*Laden* holt die Liste) · Claude: **Denkaufwand**, **Ausweichmodell** · Lokal/Kompatibel: **Ollama-Adresse** bzw. **Server-Adresse**, **Kontextlänge** · **Verbindung** → *Testen* · **Sprache der Zusammenfassungen** · **Automatisch zusammenfassen** + Standard-Vorlage |
 | **Transkription** | **Sprache** (fest eingestellt = genauer, *Automatisch* für gemischte Meetings) · **Engine** · **Modell** (*small* = Standard, *turbo* = beste Qualität) · **CPU-Threads** · **Vokabular** für Namen, die falsch erkannt werden |
 | **Sprecher-Erkennung** | **Personen-Erkennung (Aufnahmen)** und **Personen-Erkennung (live)**: wie streng (höher = weniger Verwechslungen) · **Sprecher trennen**: erscheint eine Person doppelt, runterdrehen · **Anzahl Sprecher**: wenn bekannt, fest einstellen · **Stimmabdruck-Modell** |
@@ -303,6 +308,8 @@ Oben gibt's Sprung-Knöpfe zu den Bereichen. *Darstellung* und *Audio & Mikrofon
 | **iPhone & Geräte** | **QR-Code** für die iPhone-App · **Adresse** · **Kopplungs-Code** (6 Ziffern, 10 Minuten gültig, *Neuer Code*) · **Gekoppelte Geräte** (*Trennen* je Gerät, **Alle Geräte trennen**) · Linux: **Firewall** → *Für iPhone freigeben*, falls sie das iPhone blockiert |
 | **Claude Desktop (MCP)** | **Claude Desktop**: *Mit Claude Desktop verbinden*, danach *Claude neu starten* · **Claude Code**: *Mit Claude Code verbinden* · *Von Hand eintragen*: Konfiguration zum **Kopieren** |
 | **Speicher & Datenschutz** | **Speicherort**: wo Aufnahmen, Datenbank und Stimmabdrücke liegen – *Ändern …* → Laufwerk wählen (eingebaut, extern, NVMe, NAS) → **Umziehen**; REKORD kopiert alles, startet neu, der alte Ordner bleibt als Sicherheitskopie · **KI-Modelle**: wo Sprachmodelle und lokale KI liegen – eigenes Laufwerk möglich, *Ändern …* nimmt vorhandene Modelle mit · **Eingangsordner**: Dateien, die hier landen, werden automatisch verarbeitet · **Was verlässt das Gerät?** · **Mit dem Computer starten**: REKORD läuft ab dem Einschalten im Hintergrund, das iPhone kann sich jederzeit verbinden · **Hilfe**: *Einführung starten*, *Anleitung ↗* · **Version & Updates**: *Nach Updates suchen*, **Jetzt auf … aktualisieren**, *Automatisch nach Updates suchen* (siehe [Updates](#updates)) · **Beenden** → *REKORD beenden* |
+
+In der **bisherigen Ansicht** (startet, wo das REKORD-Fenster nicht geht, und im Browser am Handy) gibt es zusätzlich: **Dichte** *Luftig* / *Kompakt* · **Audio-Verarbeitung** (Rauschunterdrückung, Echo-Unterdrückung, automatische Lautstärke des Browsers) · **Live-Erkennung** an/aus (aus spart Akku am Handy) · **Bildschirm wach halten**.
 
 **In der iPhone-App** gibt's die Reiter *Live*, *Aufnahmen*, *Personen* und *Einstellungen* (Theme, Akzentfarbe, Mikrofon, KI, Hub). *Fragen über alle* und *Vorlagen* gibt's am Computer.
 Auch dort fragt der rote Knopf zuerst **Wer ist dabei?**. Starts über Sperrbildschirm-Widget, Kontrollzentrum oder Action Button nehmen die zuletzt bestätigte Runde.

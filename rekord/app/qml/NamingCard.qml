@@ -11,7 +11,7 @@ Card {
     readonly property var rows: build()
     visible: rows.length > 0 && !page.app.namingLater[page.rid]
     implicitHeight: col.implicitHeight + 32
-    border.color: Qt.rgba(1, 0.353, 0.122, 0.35)
+    border.color: Theme.accentLine
     color: Theme.accentSoft
 
     readonly property var introRe: /(?:^|[\s,.;:!?])(?:[Hh]ier (?:ist|spricht)|[Mm]ein Name ist|[Ii]ch heiße|[Tt]his is|[Mm]y name is|[Ii]ch bin(?: der| die)?)\s+([A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?)/g

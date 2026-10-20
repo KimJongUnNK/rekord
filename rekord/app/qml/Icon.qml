@@ -11,6 +11,8 @@ Item {
     property bool filled: false
     implicitWidth: 20
     implicitHeight: 20
+    // without a graphics card Qt draws shapes past the edge of scrolled lists – as a tiny image they're cut off right
+    layer.enabled: GraphicsInfo.api === GraphicsInfo.Software
 
     readonly property var paths: ({
         "library": "M4 5h16M4 12h16M4 19h10",

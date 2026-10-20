@@ -20,10 +20,14 @@ ApplicationWindow {
     onEnrollModeChanged: rekord.setPref("enroll_mode", enrollMode)
     function enroll(opts, fn) { enrollDlg.start(opts, fn) }
     property bool whoOpen: false
+    property bool welcomeOpen: false
     property bool quitAfterSave: false
+    // the drive with the data is missing: only that message (and the settings) until it's back
+    readonly property string shownPage: rekord.status.storageMissing && page !== "settings" ? "missing" : page
     readonly property bool narrow: width < 980
 
     Binding { target: Theme; property: "mode"; value: rekord.theme }
+    Binding { target: Theme; property: "accent"; value: rekord.accent }
     // menus, tooltips, scroll bars, busy spinners follow REKORD's colors
     palette.window: Theme.card
     palette.windowText: Theme.fg
@@ -87,9 +91,13 @@ ApplicationWindow {
         who.openFresh()
     }
     function importFiles() { importDialog.open() }
+    function welcome(force) { welcomeWiz.start(force) }
+    function quitApp() { if (live.state !== "idle") quitDialog.open(); else rekord.quit() }
     function toast(msg) { toasts.show(msg) }
 
     onWhoOpenChanged: if (whoOpen && !who.opened) who.openFresh(); else if (!whoOpen && who.opened) who.close()
+    onWelcomeOpenChanged: if (welcomeOpen && !welcomeWiz.opened) welcomeWiz.start(true); else if (!welcomeOpen && welcomeWiz.opened) welcomeWiz.close()
+    Component.onCompleted: Qt.callLater(() => welcomeWiz.start(false))  // first start: the short guided setup
 
     onClosing: (close) => {
         if (live.state !== "idle") { close.accepted = false; quitDialog.open(); return }
@@ -108,7 +116,11 @@ ApplicationWindow {
         function onToast(msg) { win.toast(msg) }
     }
     Connections { target: library; function onToast(msg) { win.toast(msg) } }
-    Connections { target: rekord; function onToast(msg) { win.toast(msg) } }
+    Connections {
+        target: rekord
+        function onToast(msg) { win.toast(msg) }
+        function onNavigate(p, section) { win.go(p, section) }
+    }
 
     // ---- keyboard
     Shortcut { sequences: ["Ctrl+R", "Ctrl+N"]; onActivated: win.startRecording() }
@@ -116,6 +128,8 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+I"; onActivated: win.importFiles() }
     Shortcut { sequence: "Ctrl+1"; onActivated: win.go("library") }
     Shortcut { sequence: "Ctrl+2"; onActivated: win.go("live") }
+    Shortcut { sequence: "Ctrl+3"; onActivated: win.go("people") }
+    Shortcut { sequences: [StandardKey.Preferences, "Ctrl+,"]; onActivated: win.go("settings") }
     Shortcut {
         sequence: "Space"
         enabled: win.page === "live" && (live.state === "recording" || live.state === "paused") && !who.opened
@@ -140,14 +154,16 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            LibraryPage { id: libraryPage; app: win; anchors.fill: parent; shown: win.page === "library" }
-            DetailPage { id: detailPage; app: win; anchors.fill: parent; shown: win.page === "detail" }
-            LivePage { app: win; anchors.fill: parent; shown: win.page === "live" }
-            PeoplePage { app: win; anchors.fill: parent; shown: win.page === "people" }
+            LibraryPage { id: libraryPage; app: win; anchors.fill: parent; shown: win.shownPage === "library" }
+            DetailPage { id: detailPage; app: win; anchors.fill: parent; shown: win.shownPage === "detail" }
+            LivePage { app: win; anchors.fill: parent; shown: win.shownPage === "live" }
+            PeoplePage { app: win; anchors.fill: parent; shown: win.shownPage === "people" }
+            SettingsPage { app: win; anchors.fill: parent; shown: win.shownPage === "settings" }
+            MissingPage { app: win; anchors.fill: parent; shown: win.shownPage === "missing" }
             ClassicPage {
                 anchors.fill: parent
-                shown: ["ask", "templates", "settings"].indexOf(win.page) >= 0
-                which: shown ? win.page : which
+                shown: ["ask", "templates"].indexOf(win.shownPage) >= 0
+                which: shown ? win.shownPage : which
             }
         }
     }
@@ -194,6 +210,13 @@ ApplicationWindow {
         onOpened: win.whoOpen = true
         onClosed: win.whoOpen = false
         onStarted: win.page = "live"
+    }
+
+    WelcomeWizard {
+        id: welcomeWiz
+        app: win
+        onOpened: win.welcomeOpen = true
+        onClosed: win.welcomeOpen = false
     }
 
     ConfirmDialog { id: confirmDlg }
