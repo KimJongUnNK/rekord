@@ -19,7 +19,12 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
-### Neu in 1.3.0 – Einstellungen und Einführung im neuen Fenster
+### Neu in 1.3.0 – alles im REKORD-Fenster
+Ab jetzt ist REKORD am Computer komplett ein eigenes Programm – keine Seite öffnet mehr die bisherige Ansicht.
+- **Fragen** über alle Aufnahmen als Chat: Die Antwort nennt, wer es wann gesagt hat, ein Klick öffnet die Aufnahme genau an der Stelle.
+- **Vorlagen:** am ⠿-Griff ziehen oder mit ⤒ ↑ ↓ sortieren (die Liste rückt live mit), antippen zum Bearbeiten, eigene anlegen und löschen.
+- **Symbol in der Menüleiste / Taskleiste:** zeigt, ob aufgenommen wird, startet oder stoppt eine Aufnahme, holt das Fenster zurück, beendet REKORD. Läuft REKORD im Hintergrund (*Mit dem Computer starten*), ist es so jederzeit erreichbar.
+- **Mitteilung**, wenn eine Aufnahme fertig ausgewertet ist, während du in einem anderen Programm bist – antippen öffnet sie.
 - **Einstellungen** komplett im REKORD-Fenster: Darstellung, Mikrofon mit **Pegel testen**, KI (Claude, ChatGPT, lokal, kompatibel – mit Verbindungstest), Transkription, Sprecher-Erkennung, Modelle, iPhone, Claude Desktop, Speicher, Updates. Sprung-Knöpfe oben, ⓘ bei jedem Punkt.
 - **Akzentfarbe** wählen – das ganze Fenster färbt sich sofort um (Text auf hellen Farben wird automatisch dunkel).
 - **Lokale KI mit einem Klick** direkt im Fenster: Ollama installieren, bestes Modell für deinen Computer laden, Modelle verwenden oder löschen, Fortschritt live.
@@ -28,7 +33,7 @@ Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der 
 - **Einführung beim ersten Start** im Fenster: Speicherort → Aussehen → Sprache → Mikrofon (mit Pegel) → KI → deine Stimme → iPhone → **Erste Aufnahme**. Jeder Schritt überspringbar, später unter *Einstellungen → Hilfe* nochmal.
 - **Computer wach halten:** Während einer Aufnahme schläft der Computer nicht ein.
 - Ohne KI zeigt *Aufnahmen* eine Karte, um eine KI zu verbinden.
-- Neue Tastenkürzel: **Strg + 3** Personen, **Strg + ,** Einstellungen.
+- Tastenkürzel wie die Leiste links: **Strg + 1 … 5** Aufnahmen, Live, Fragen, Personen, Vorlagen · **Strg + ,** Einstellungen.
 - **Beenden ohne Absturzmeldung**, auch wenn im Hintergrund gerade eine Aufnahme ausgewertet wird – die Auswertung geht beim nächsten Start weiter.
 
 ### Neu in 1.2.0 – Aufnahmen und Personen komplett im neuen Fenster

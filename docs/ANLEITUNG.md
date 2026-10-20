@@ -193,9 +193,7 @@ Danach kannst du Claude direkt fragen: *„Was haben wir im letzten Meeting ents
 
 ## Das REKORD-Fenster
 
-Ab Version 1.1 ist REKORD am Computer ein **echtes Programm** – kein Browser, keine Webseite im Fenster. Es startet schneller, reagiert direkt und ist durchgehend animiert. Die iPhone-App ist ebenfalls eine echte App.
-
-**Schon im neuen Fenster:**
+REKORD ist am Computer ein **echtes Programm** – kein Browser, keine Webseite im Fenster. Es startet schnell, reagiert direkt und ist durchgehend animiert. Ab Version 1.3 ist **alles** im REKORD-Fenster. Die iPhone-App ist ebenfalls eine echte App.
 
 | Bereich | Was geht |
 |---|---|
@@ -203,12 +201,12 @@ Ab Version 1.1 ist REKORD am Computer ein **echtes Programm** – kein Browser, 
 | **Aufnahme ansehen** | **Player** mit Wellenform, farbiger Sprecher-Leiste und ★, **−15/+15**, Tempo **1×–2×** · **Titel** anklicken zum Umbenennen · **Sprecher** antippen: umbenennen, **Stimme merken**, zusammenführen · **Wer ist das?** für unbekannte Stimmen (anhören, Namen, **Merken**) · Reiter **Zusammenfassung** (Vorlage wählen, KI schreibt live mit, To-dos abhaken, Zeitstempel springen ins Audio, kopieren, bearbeiten, löschen), **Transkript** (Text direkt korrigieren, Namen antippen → **Wer sagt das?**, suchen, **Suchen & Ersetzen**, **Mitscrollen**), **Mind Map** (erstellen, als SVG/PNG speichern), **Fragen** (Chat nur über diese Aufnahme), **Notizen** und **Ordner**, **Export** (Markdown, Word, PDF, Text, SRT, WebVTT, JSON, Audio, Zwischenablage) · **•••**: neu verarbeiten, Personen neu erkennen, umbenennen, löschen |
 | **Live** | großer Aufnahmeknopf · **Mikrofon** wählen (darunter) · **Wer ist dabei?** mit **Vor Ort**, **Online** und **Vorlesung** · groß in der Farbe der Person, wer gerade spricht · Redeanteile · **Nicht erkannte Stimme** antippen → Namen eingeben → **Merken** · **Mitschrift** live · **Markieren**, **Pause**, **Stopp & speichern** |
 | **Personen** | alle bekannten Stimmen mit Aufnahmen und Stimmproben · **Person einsprechen** mit drei Wegen: **Text vorlesen** (eigener Text pro Name, **↻ Anderer Text**), **Einfach reden lassen** (**💬 Gesprächsidee**), **Aus Aufnahme lernen** (Aufnahme wählen, Stimme anhören ▶, auswählen, **Stimme lernen**) · Sekundenzähler zählt nur echte Sprache (mind. 25, ideal ~45 s) · **…oder eine Datei mit nur dieser Person** · Stift-Symbol: Name, Farbe, **Stimmabdruck löschen** · bei **Wer ist dabei?** gleich **Neue Person jetzt einsprechen** |
-
+| **Fragen** | ein Chat über **alle** Aufnahmen: „Was hat Lisa zum Budget gesagt?“ – die Antwort nennt, wer es wann gesagt hat, ein Klick auf die Zeit öffnet die Aufnahme genau dort · Vorschläge zum Antippen · **Verlauf leeren** · ohne KI zeigt die Seite, wie du eine verbindest |
+| **Vorlagen** | alle Formate für Zusammenfassungen · am **⠿-Griff ziehen** oder mit **⤒ ↑ ↓** sortieren – oben steht, was dir am wichtigsten ist, in dieser Reihenfolge erscheinen sie beim Zusammenfassen · **Reihenfolge zurücksetzen** · antippen → **bearbeiten** (eingebaute: Speichern legt eine eigene Kopie an) · **Eigene Vorlage** · eigene **Löschen** |
 | **Einstellungen** | alle Bereiche wie unten beschrieben, mit Sprung-Knöpfen oben · **Akzentfarbe** färbt sofort das ganze Fenster · **Pegel testen** fürs Mikrofon · lokale KI mit einem Klick, Modelle laden/löschen · **QR-Code** und **6-stelliger Code** fürs iPhone, läuft sichtbar ab und erneuert sich · Speicherort und KI-Modelle **umziehen** mit Fortschritt · **Updates** mit „Was ist neu“ · **REKORD beenden** |
 | **Einführung** | beim ersten Start, Schritt für Schritt (siehe [Erster Start](#erster-start-die-einführung)) – später unter *Einstellungen → Speicher & Datenschutz → Hilfe → Einführung starten* |
 | **Laufwerk fehlt** | Liegt der Speicherort auf einer Festplatte, die gerade nicht angeschlossen ist, zeigt REKORD genau das statt einer leeren Liste: **Nochmal prüfen** oder **Neu auf diesem Computer anfangen** |
-
-**Zieht als Nächstes um:** *Fragen* (über alle Aufnahmen) und *Vorlagen*. Diese beiden Seiten öffnen sich bis dahin in einem eigenen Fenster der bisherigen Ansicht – mit denselben Daten, alles bleibt synchron.
+| **Menüleiste / Taskleiste** | Solange REKORD läuft, sitzt sein Symbol oben in der Menüleiste (Mac) bzw. unten rechts im Infobereich (Windows, Linux): zeigt, ob gerade aufgenommen wird, **REKORD öffnen**, **Aufnehmen** bzw. **Aufnahme stoppen & speichern**, **REKORD beenden**. Ist eine Aufnahme fertig ausgewertet, während du in einem anderen Programm bist, kommt eine **Mitteilung** – antippen öffnet sie. |
 
 **Tastatur**
 
@@ -219,7 +217,7 @@ Ab Version 1.1 ist REKORD am Computer ein **echtes Programm** – kein Browser, 
 | **H** | Wichtigen Moment markieren (★) |
 | **Strg + F** (Mac: **⌘ F**) | Suchen |
 | **Strg + I** (Mac: **⌘ I**) | Importieren |
-| **Strg + 1** / **Strg + 2** / **Strg + 3** | Aufnahmen / Live / Personen |
+| **Strg + 1** … **Strg + 5** (Mac: **⌘ 1** … **⌘ 5**) | Aufnahmen / Live / Fragen / Personen / Vorlagen – wie links in der Leiste |
 | **Strg + ,** (Mac: **⌘ ,**) | Einstellungen |
 
 **Hell oder dunkel:** das kleine Symbol unten links schaltet um – *wie das System*, *hell*, *dunkel*.

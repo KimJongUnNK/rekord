@@ -92,7 +92,11 @@ def build(port: int, keep_running: bool | None = None) -> Window | None:
     from . import api as api_mod
     from . import bridge
 
-    app = QGuiApplication.instance() or QGuiApplication(sys.argv[:1])
+    try:  # with widgets REKORD also gets its icon in the menu bar / notification area (app.tray)
+        from PySide6.QtWidgets import QApplication as AppClass
+    except ImportError:
+        AppClass = QGuiApplication
+    app = QGuiApplication.instance() or AppClass(sys.argv[:1])
     app.setApplicationName("REKORD")
     app.setApplicationDisplayName("REKORD")
     app.setOrganizationName("REKORD")
@@ -119,6 +123,8 @@ def build(port: int, keep_running: bool | None = None) -> Window | None:
         return None
     win = engine.rootObjects()[0]
     state.attach(win)
+    from .tray import Tray
+    objects["tray"] = Tray(app, win, state, objects["live"], objects["api"], icon, parent=app)
     objects["library"].refresh()
     objects["people"].refresh()
     state.refresh()
@@ -174,7 +180,8 @@ def _selftest(app, win, out: Path, warnings: list[str]) -> None:
              ("who", lambda: win.setProperty("whoOpen", True)),
              ("people", lambda: (win.setProperty("whoOpen", False), win.setProperty("page", "people"))),
              ("settings", lambda: win.setProperty("page", "settings")),
-             ("classic", lambda: win.setProperty("page", "ask"))]
+             ("ask", lambda: win.setProperty("page", "ask")),
+             ("templates", lambda: win.setProperty("page", "templates"))]
 
     def shoot(i: int) -> None:
         try:

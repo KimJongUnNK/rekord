@@ -12,7 +12,6 @@ LivePage 1.0 LivePage.qml
 SpeakerOrb 1.0 SpeakerOrb.qml
 WhoDialog 1.0 WhoDialog.qml
 NameDialog 1.0 NameDialog.qml
-ClassicPage 1.0 ClassicPage.qml
 Sheet 1.0 Sheet.qml
 Toasts 1.0 Toasts.qml
 Input 1.0 Input.qml
@@ -56,3 +55,6 @@ SettingsPage 1.0 SettingsPage.qml
 AiChoice 1.0 AiChoice.qml
 WelcomeWizard 1.0 WelcomeWizard.qml
 MissingPage 1.0 MissingPage.qml
+AskPage 1.0 AskPage.qml
+TemplateDialog 1.0 TemplateDialog.qml
+TemplatesPage 1.0 TemplatesPage.qml

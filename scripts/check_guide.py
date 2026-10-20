@@ -66,6 +66,9 @@ groups["Fenster: Einstellungen – Felder"] = set(re.findall(r'^\s*label: "([^"]
 groups["Fenster: Einstellungen – Knöpfe"] = {"Pegel testen", "Testen", "Neuer Code", "Alle Geräte trennen", "Einführung starten", "REKORD beenden",
                                              "Lokal einrichten", "Verwenden", "Alle nicht verwendeten löschen", "Laden & verwenden", "Umziehen"}
 groups["Fenster: Einführung"] = set(re.findall(r'"Schritt " \+ \(w\.i \+ 1\) \+ " · ([^"]+)"', wizard_qml)) | {"Erste Aufnahme", "Zur App", "Überspringen"}
+groups["Fenster: Fragen & Vorlagen"] = {"Verlauf leeren", "Eigene Vorlage", "Reihenfolge zurücksetzen", "Löschen"}
+groups["Fenster: Menüleiste"] = set(re.findall(r'addAction\("([^"]+)"', (ROOT / "rekord/app/tray.py").read_text("utf-8"))) \
+    | {"Aufnahme stoppen & speichern"}
 groups["Fenster: Laufwerk fehlt"] = set(re.findall(r'text: "([^"]+)"; (?:enabled|iconName)', (QML / "MissingPage.qml").read_text("utf-8"))) \
     | set(re.findall(r'iconName: "\w+"; text: "([^"]+)"', (QML / "MissingPage.qml").read_text("utf-8")))
 

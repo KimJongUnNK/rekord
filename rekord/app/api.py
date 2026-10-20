@@ -35,6 +35,19 @@ def _detail(r: httpx.Response) -> str:
     return f"{r.status_code} {r.reason_phrase}"
 
 
+def plain(v):
+    """QML values → plain JSON data. Older Qt (6.9, the Linux build) hands nested JS arrays and objects over as
+    QJSValue – json can't write those. Must run on the window's thread, before work goes to a worker."""
+    from PySide6.QtQml import QJSValue
+    if isinstance(v, QJSValue):
+        v = v.toVariant()
+    if isinstance(v, dict):
+        return {str(k): plain(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [plain(x) for x in v]
+    return v
+
+
 class Api(QObject):
     reply = Signal(int, bool, int, "QVariant")  # id, ok, HTTP status, data (JSON) – or the error text
     chunk = Signal(int, str)                     # id, text so far (summaries, answers – while the AI writes)
@@ -60,7 +73,7 @@ class Api(QObject):
     @Slot(str, str, "QVariant", result=int)
     def request(self, method: str, path: str, body=None) -> int:
         rid = next(self._ids)
-        self._pool.submit(self._do, rid, method.upper(), path, body)
+        self._pool.submit(self._do, rid, method.upper(), path, plain(body))
         return rid
 
     def _do(self, rid: int, method: str, path: str, body) -> None:
@@ -82,7 +95,7 @@ class Api(QObject):
     def stream(self, path: str, body=None) -> int:
         """POST that answers with text as it's written (summaries, questions)."""
         rid = next(self._ids)
-        self._pool.submit(self._do_stream, rid, path, body)
+        self._pool.submit(self._do_stream, rid, path, plain(body))
         return rid
 
     @Slot(int)

@@ -252,6 +252,30 @@ def main(out: Path) -> int:
     shot("settings-accent")
     o["rekord"].setAccent("#FF5A1F")
 
+    # ---- Fragen (über alle Aufnahmen)
+    db.add_chat("global", "user", "Was hat Max zugesagt?")
+    db.add_chat("global", "assistant", f"**Max** schickt die Texte für die Landingpage bis Mittwoch [[{ids['rid']}@00:14]] und klärt "
+                                       f"die Freigabe bis Donnerstag [[{ids['rid']}@00:40]].")
+    win.setProperty("page", "ask")
+    shot("ask")
+
+    # ---- Vorlagen: list, move one to the top (saved as the new order), the editor
+    from rekord.llm import templates as tmod
+    win.setProperty("page", "templates")
+    tpl = win.findChild(QObject, "templatesPage")
+    shot("templates")
+    before = [t["id"] for t in tmod.all_templates()]
+    call(tpl, "move", 2, 0)
+    wait(1.2)
+    order = config.load().get("template_order") or []
+    if order[:3] != [before[2], before[0], before[1]]:
+        problems_extra.append(f"templates: the new order wasn't saved ({order[:3]})")
+    shot("templates-moved")
+    call(tpl, "openEditor", 0)
+    shot("template-editor")
+    call(win.findChild(QObject, "templateDialog"), "close")
+    config.save({"template_order": []})
+
     # ---- the first-start guide, step by step
     wiz = win.findChild(QObject, "welcomeWiz")
     win.setProperty("welcomeOpen", True)

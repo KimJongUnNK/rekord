@@ -140,6 +140,20 @@ def test_export_files_and_pdf(qt, tmp_path):
     assert "Hallo Welt." in a.exportText(rec["id"])
 
 
+def test_values_from_qml_become_plain_json(qt):
+    """Qt 6.9 (the Linux build) passes nested JS arrays/objects as QJSValue – the API must still send JSON."""
+    import json
+
+    from PySide6.QtQml import QJSEngine
+
+    from rekord.app.api import plain
+    e = QJSEngine()
+    v = e.evaluate('({template_order: ["meeting", "todo"], deep: [1, {b: [true, null, "x"]}], n: 2.5})')
+    out = plain(v)
+    assert json.loads(json.dumps(out)) == {"template_order": ["meeting", "todo"], "deep": [1, {"b": [True, None, "x"]}], "n": 2.5}
+    assert plain({"a": e.evaluate("[1, 2]")}) == {"a": [1, 2]} and plain("text") == "text" and plain(None) is None
+
+
 def test_markdown_for_the_window():
     h = md.render("# Titel\n## Aufgaben\n- [ ] **Max**: Texte [12:34]\n- [x] erledigt\n1. eins\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
                   "Quelle [[abcdef12@1:02]] und [Link](https://rekord.app) <script>")
@@ -150,6 +164,9 @@ def test_markdown_for_the_window():
     assert md.toggle_task("- [ ] a\n- [x] b", 0) == "- [x] a\n- [x] b"
     assert md.toggle_task("- [ ] a\n- [x] b", 1) == "- [ ] a\n- [ ] b"
     assert "seek:" not in md.render("Zeit [01:00]", links=False)
+    # in the window: links in the accent color (rich text doesn't follow the window's palette)
+    tinted = md.render("Zeit [01:00] · [x](https://rekord.app)\n- [ ] to-do", link_color="#2d7ff9")
+    assert tinted.count('style="color:#2d7ff9;text-decoration:none" href=') == 2 and "text-decoration:none;color:#2d7ff9" in tinted
 
 
 def test_mind_map_layout_and_svg():

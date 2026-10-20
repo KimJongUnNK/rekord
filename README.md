@@ -133,7 +133,7 @@ Ja, mit der **REKORD-App** fürs iPhone (eine echte App, keine Webseite – Inst
 Ja. Vor der Aufnahme **Vorlesung** wählen: Mitzählen musst du nicht. REKORD erkennt die vortragende Person und sammelt Fragen aus dem Hörsaal unter „Publikum“. Danach gibt es automatisch einen **Lernzettel** mit Kernaussagen, Definitionen und Prüfungsrelevantem. Die Stimme des Profs lernt REKORD, indem du ihn **einfach reden lässt** oder sie **aus einer Aufnahme** nimmst – vorlesen muss niemand etwas.
 
 **Ist das eine Web-App?**
-Nein. REKORD ist am Computer ein **echtes Programm** mit eigenem Fenster (Mac, Windows, Linux) und am iPhone eine echte App. Zwei Seiten (Fragen über alle Aufnahmen, Vorlagen) ziehen gerade noch ins neue Fenster um und öffnen sich bis dahin in der bisherigen Ansicht – mehr dazu in der [Anleitung](docs/ANLEITUNG.md#das-rekord-fenster).
+Nein. REKORD ist am Computer ein **echtes Programm** mit eigenem Fenster (Mac, Windows, Linux) – ab Version 1.3 komplett: Aufnahmen, Live, Fragen, Personen, Vorlagen, Einstellungen und die Einführung – und am iPhone eine echte App. Mehr dazu in der [Anleitung](docs/ANLEITUNG.md#das-rekord-fenster).
 
 **Welche Sprachen versteht REKORD?**
 Rund 99 Sprachen, auch gemischt im selben Gespräch. Am genauesten, wenn du die Sprache in den Einstellungen fest einstellst.

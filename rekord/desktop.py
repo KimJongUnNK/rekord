@@ -1,6 +1,6 @@
 """Desktop app for Windows/macOS/Linux: the hub runs in-process, the window is REKORD's native program
 (Qt Quick, rekord/app). Where that can't start, the previous interface opens instead: a webview window or,
-without a webview, the browser. Pages not ported yet open the previous interface on their own (--classic)."""
+without a webview, the browser."""
 from __future__ import annotations
 
 import json
@@ -152,12 +152,6 @@ def _end() -> None:
         except Exception:  # noqa: BLE001
             pass
     os._exit(0)
-
-
-def classic(url: str) -> None:
-    """--classic <url>: one page of the previous interface in its own window, next to the native one."""
-    from urllib.parse import urlparse
-    _window(url, own_hub=False, port=urlparse(url).port or 8765)
 
 
 def _take_over(port: int) -> bool:

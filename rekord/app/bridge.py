@@ -806,7 +806,7 @@ class VoiceRecorder(QObject):
 # ------------------------------------------------------------------ the app itself
 
 class AppState(QObject):
-    """Version, readiness, AI, updates, the window itself, and where pages that aren't native yet are opened."""
+    """Version, readiness, AI, updates, and the window itself."""
     changed = Signal()
     focusRequested = Signal()
     toast = Signal(str)
@@ -870,8 +870,9 @@ class AppState(QObject):
 
     @Slot(str, "QVariant")
     def setPref(self, key: str, value) -> None:  # noqa: N802 - QML API
+        from .api import plain
         try:
-            config.save({"desktop": {key: value}})
+            config.save({"desktop": {key: plain(value)}})
         except Exception as e:  # noqa: BLE001
             log.warning("pref %s: %s", key, e)
 
@@ -935,9 +936,10 @@ class AppState(QObject):
         return texts.tips().get(key, "")
 
     @Slot(str, result=str)
-    def markdown(self, src: str) -> str:
+    @Slot(str, str, result=str)
+    def markdown(self, src: str, link_color: str = "") -> str:
         from . import md
-        return md.render(src)
+        return md.render(src, link_color=link_color)
 
     @Slot(str, int, result=str)
     def toggleTask(self, src: str, line: int) -> str:  # noqa: N802 - QML API
@@ -985,16 +987,3 @@ class AppState(QObject):
     def quit(self) -> None:
         from PySide6.QtCore import QCoreApplication
         QCoreApplication.quit()
-
-    @Slot(str)
-    def openClassic(self, page: str = "") -> None:  # noqa: N802 - QML API
-        """Pages that aren't part of the new app yet open in the previous interface, in its own window."""
-        import subprocess
-
-        from .. import system
-        url = f"http://localhost:{self._port}/#/{page}" if page else f"http://localhost:{self._port}/"
-        try:
-            subprocess.Popen(system.app_command() + ["--classic", url], stdin=subprocess.DEVNULL,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **system.hidden())
-        except OSError as e:
-            self.toast.emit(f"Klassische Ansicht startet nicht: {e}")

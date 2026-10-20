@@ -8,7 +8,7 @@ TextEdit {
     signal seek(real sec)
     signal task(int line)
     signal openRecording(string rid, real sec)
-    text: rekord.markdown(source)
+    text: rekord.markdown(source, String(Theme.accent))
     textFormat: TextEdit.RichText
     readOnly: true
     selectByMouse: true

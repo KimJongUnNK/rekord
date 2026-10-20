@@ -20,15 +20,16 @@ a = Analysis([os.path.join(SPECPATH, "launch.py")], pathex=[ROOT], binaries=bina
              hiddenimports=hidden + ["rekord.server", "rekord.mcp_server", "rekord.integrations", "rekord.pairing", "rekord.llm.auto", "rekord.storage",
                                       "rekord.capture", "rekord.updater", "mcp.server.mcpserver", "mcp.server.fastmcp",
                                       "rekord.app", "rekord.app.bridge", "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtQuickControls2",
-                                      "PySide6.QtMultimedia"]
+                                      "PySide6.QtMultimedia", "PySide6.QtWidgets"]
                            + (["ScreenCaptureKit", "CoreMedia", "dispatch", "Foundation"] if sys.platform == "darwin" else ["soundcard", "cffi"]),
              excludes=["tkinter", "matplotlib", "torch", "PIL",  # PIL: only needed at build time for the icon
-                       # Qt parts REKORD doesn't use (the window needs Core, Gui, Qml, Quick, Controls, Multimedia)
+                       # Qt parts REKORD doesn't use (the window needs Core, Gui, Qml, Quick, Controls, Multimedia;
+                       # Widgets for the icon in the menu bar / notification area)
                        "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtWebEngineQuick", "PySide6.QtWebView",
                        "PySide6.Qt3DCore", "PySide6.QtQuick3D", "PySide6.QtCharts", "PySide6.QtDataVisualization", "PySide6.QtGraphs",
                        "PySide6.QtPdf", "PySide6.QtDesigner", "PySide6.QtLocation", "PySide6.QtSensors", "PySide6.QtTextToSpeech",
                        "PySide6.QtRemoteObjects", "PySide6.QtScxml", "PySide6.QtBluetooth", "PySide6.QtNfc", "PySide6.QtSerialPort",
-                       "PySide6.QtWidgets", "qtpy", "PyQt5", "PyQt6"])
+                       "qtpy", "PyQt5", "PyQt6"])
 
 # QML: only the modules the window imports (QtQuick, Controls.Basic, Layouts, Dialogs, Shapes, QtQml) – the rest of
 # Qt's QML library (3D, charts, maps, web …) would add hundreds of MB.

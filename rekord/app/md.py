@@ -21,7 +21,7 @@ def to_sec(ts: str) -> int:
     return v
 
 
-def _inline(s: str, links: bool) -> str:
+def _inline(s: str, links: bool, link_color: str = "") -> str:
     s = esc(s)
     s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
     if links:
@@ -32,10 +32,12 @@ def _inline(s: str, links: bool) -> str:
     s = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", s)
     s = re.sub(r"(^|[^*\w])\*([^*\n]+)\*(?!\w)", r"\1<i>\2</i>", s)
     s = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r'<a href="\2">\1</a>', s)
+    if link_color:  # rich text ignores the window's colors: links in the accent color, without underline
+        s = s.replace('<a href="', f'<a style="color:{link_color};text-decoration:none" href="')
     return s
 
 
-def render(src: str, links: bool = True) -> str:
+def render(src: str, links: bool = True, link_color: str = "") -> str:
     lines = str(src or "").replace("\r", "").split("\n")
     out: list[str] = []
     stack: list[str] = []
@@ -59,7 +61,7 @@ def render(src: str, links: bool = True) -> str:
             continue
         if re.match(r"^\s*\|.*\|\s*$", line) and i + 1 < len(lines) and re.match(r"^\s*\|?\s*:?-{2,}", lines[i + 1]):
             close()
-            cells = lambda l: [_inline(c.strip(), links) for c in l.strip().strip("|").split("|")]  # noqa: E731
+            cells = lambda l: [_inline(c.strip(), links, link_color) for c in l.strip().strip("|").split("|")]  # noqa: E731
             out.append('<table border="1" cellspacing="0" cellpadding="5"><tr>' + "".join(f"<th>{c}</th>" for c in cells(line)) + "</tr>")
             i += 2
             while i < len(lines) and re.match(r"^\s*\|.*\|\s*$", lines[i]):
@@ -71,7 +73,7 @@ def render(src: str, links: bool = True) -> str:
         if m:
             close()
             n = min(len(m[1]) + 1, 4)  # # → h2: the page title is already the biggest text
-            out.append(f"<h{n}>{_inline(m[2], links)}</h{n}>")
+            out.append(f"<h{n}>{_inline(m[2], links, link_color)}</h{n}>")
             i += 1
             continue
         if re.match(r"^\s*([-*_])\s*\1\s*\1[\s\-*_]*$", line):
@@ -82,7 +84,7 @@ def render(src: str, links: bool = True) -> str:
         m = re.match(r"^>\s?(.*)$", line)
         if m:
             close()
-            out.append(f"<blockquote><i>{_inline(m[1], links)}</i></blockquote>")
+            out.append(f"<blockquote><i>{_inline(m[1], links, link_color)}</i></blockquote>")
             i += 1
             continue
         m = re.match(r"^(\s*)([-*+]|\d+[.)])\s+(.*)$", line)
@@ -99,11 +101,12 @@ def render(src: str, links: bool = True) -> str:
             if t:
                 done = t[1] != " "
                 box = "☑" if done else "☐"
-                box = f'<a href="task:{i}" style="text-decoration:none">{box}</a>' if links else box
-                body = _inline(t[2], links)
+                tint = f";color:{link_color}" if link_color else ""
+                box = f'<a href="task:{i}" style="text-decoration:none{tint}">{box}</a>' if links else box
+                body = _inline(t[2], links, link_color)
                 out.append(f"<li>{box}&nbsp; {'<s>' + body + '</s>' if done else body}</li>")
             else:
-                out.append(f"<li>{_inline(m[3], links)}</li>")
+                out.append(f"<li>{_inline(m[3], links, link_color)}</li>")
             i += 1
             continue
         if not line.strip():
@@ -111,10 +114,10 @@ def render(src: str, links: bool = True) -> str:
             i += 1
             continue
         close()
-        para = [_inline(line, links)]
+        para = [_inline(line, links, link_color)]
         i += 1
         while i < len(lines) and lines[i].strip() and not re.match(r"^(#{1,4}\s|>|\s*([-*+]|\d+[.)])\s|```|\s*\|)", lines[i]):
-            para.append(_inline(lines[i].rstrip(), links))
+            para.append(_inline(lines[i].rstrip(), links, link_color))
             i += 1
         out.append("<p>" + "<br>".join(para) + "</p>")
     close()

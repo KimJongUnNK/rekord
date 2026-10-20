@@ -52,10 +52,6 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(probe())
     from .system import ensure_output
     ensure_output()  # started without a console (pythonw, windowed app): log to a file instead of crashing
-    if args[:1] == ["--classic"]:  # a page of the previous interface in its own window
-        from .desktop import classic
-        classic(args[1] if len(args) > 1 else "http://localhost:8765/")
-        return
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     p = argparse.ArgumentParser(prog="rekord", description="REKORD – lokaler KI-Notizrekorder")
     sub = p.add_subparsers(dest="cmd")

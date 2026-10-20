@@ -128,8 +128,10 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+I"; onActivated: win.importFiles() }
     Shortcut { sequence: "Ctrl+1"; onActivated: win.go("library") }
     Shortcut { sequence: "Ctrl+2"; onActivated: win.go("live") }
-    Shortcut { sequence: "Ctrl+3"; onActivated: win.go("people") }
-    Shortcut { sequences: [StandardKey.Preferences, "Ctrl+,"]; onActivated: win.go("settings") }
+    Shortcut { sequence: "Ctrl+3"; onActivated: win.go("ask") }
+    Shortcut { sequence: "Ctrl+4"; onActivated: win.go("people") }
+    Shortcut { sequence: "Ctrl+5"; onActivated: win.go("templates") }
+    Shortcut { sequence: "Ctrl+,"; onActivated: win.go("settings") }  // Mac: ⌘ ,
     Shortcut {
         sequence: "Space"
         enabled: win.page === "live" && (live.state === "recording" || live.state === "paused") && !who.opened
@@ -160,11 +162,8 @@ ApplicationWindow {
             PeoplePage { app: win; anchors.fill: parent; shown: win.shownPage === "people" }
             SettingsPage { app: win; anchors.fill: parent; shown: win.shownPage === "settings" }
             MissingPage { app: win; anchors.fill: parent; shown: win.shownPage === "missing" }
-            ClassicPage {
-                anchors.fill: parent
-                shown: ["ask", "templates"].indexOf(win.shownPage) >= 0
-                which: shown ? win.shownPage : which
-            }
+            AskPage { app: win; anchors.fill: parent; shown: win.shownPage === "ask" }
+            TemplatesPage { app: win; anchors.fill: parent; shown: win.shownPage === "templates" }
         }
     }
 

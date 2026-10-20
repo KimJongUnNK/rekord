@@ -240,8 +240,8 @@ def test_window_selftest_mode_quits_with_result(tmp_path):
     code = "import sys; from rekord import app; sys.exit(app.run(8765))"
     r = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=120, cwd=ROOT)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
-    assert "UI selftest: 7 pages, 0 QML warnings" in r.stdout
-    assert len(list((tmp_path / "shots").glob("*.png"))) == 7
+    assert "UI selftest: 8 pages, 0 QML warnings" in r.stdout
+    assert len(list((tmp_path / "shots").glob("*.png"))) == 8
 
 
 def test_usable_respects_classic_and_missing_display(qt, monkeypatch):
@@ -399,6 +399,94 @@ def test_keeping_the_computer_awake(monkeypatch):
     system.keep_awake(False)
     monkeypatch.setattr(system.shutil, "which", lambda name: None)
     assert system.keep_awake(True) is False  # nothing to keep it awake with: recording works anyway
+
+
+def test_tray_says_what_rekord_does():
+    from rekord.app import tray
+    assert tray.describe("recording", "12:34", False) == "REKORD – nimmt auf · 12:34"
+    assert tray.describe("paused", "0:05", True) == "REKORD – pausiert · 0:05"
+    assert tray.describe("idle", "0:00", True) == "REKORD – läuft im Hintergrund"
+    assert tray.describe("idle", "0:00", False) == "REKORD"
+
+
+def test_no_tray_without_widgets_or_system_tray(qt):
+    from PySide6.QtCore import QObject
+    from rekord.app import tray
+    t = tray.Tray(qt, QObject(), bridge.AppState(8765), QObject(), QObject())  # this test app has no widgets
+    assert not t.available
+    t.update()  # harmless without a tray
+
+
+TRAY_SCRIPT = r'''
+import os, sys, json
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+from PySide6.QtCore import QObject, Property, Signal, Slot, QCoreApplication
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon
+from PySide6.QtQml import QQmlApplicationEngine
+app = QApplication([])
+QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)  # offscreen has no tray: pretend
+from rekord.app import tray, bridge
+
+class FakeLive(QObject):
+    changed = Signal()
+    def __init__(self):
+        super().__init__(); self._s = "idle"; self.stopped = 0
+    @Property(str, notify=changed)
+    def state(self): return self._s
+    @Property(str, notify=changed)
+    def elapsedText(self): return "1:02"
+    @Slot()
+    def stop(self): self.stopped += 1
+
+class FakeApi(QObject):
+    event = Signal("QVariantMap")
+
+engine = QQmlApplicationEngine()
+engine.loadData(b"""import QtQuick
+Window { visible: false; property var calls: []
+  function startRecording() { calls = calls.concat(["record"]) }
+  function quitApp() { calls = calls.concat(["quit"]) }
+  function openRecording(rid, t) { calls = calls.concat(["open:" + rid]) } }""")
+win = engine.rootObjects()[0]
+state, live, api = bridge.AppState(8765), FakeLive(), FakeApi()
+shown = []
+state.focusRequested.connect(lambda: shown.append(1))
+t = tray.Tray(app, win, state, live, api)
+out = {"available": t.available, "tip_hidden": t._tray.toolTip(), "rec_text": t._rec.text()}
+t._record()                       # idle → window + "Wer ist dabei?"
+live._s = "recording"; live.changed.emit()
+out["tip_rec"] = t._tray.toolTip(); out["rec_text2"] = t._rec.text()
+t._record()                       # recording → stop & save
+t._quit()                         # while recording: window first, then the question
+messages = []
+t._tray.showMessage = lambda title, text: messages.append([title, text])
+from rekord import db
+rid = db.create_recording("Budgetrunde", "", status="done")["id"]
+api.event.emit({"type": "done", "id": rid})
+api.event.emit({"type": "progress", "id": rid})
+for _ in range(20): QCoreApplication.processEvents()
+t._message_clicked()
+for _ in range(20): QCoreApplication.processEvents()
+out.update(calls=win.property("calls").toVariant() if hasattr(win.property("calls"), "toVariant") else win.property("calls"),
+           shown=len(shown), stopped=live.stopped, messages=messages)
+print("RESULT" + json.dumps(out))
+sys.stdout.flush(); os._exit(0)
+'''
+
+
+def test_tray_menu_and_notification(tmp_path):
+    env = dict(os.environ, REKORD_HOME=str(tmp_path / "home"))
+    r = subprocess.run([sys.executable, "-c", TRAY_SCRIPT], env=env, capture_output=True, text=True, timeout=60, cwd=ROOT)
+    line = next((ln for ln in r.stdout.splitlines() if ln.startswith("RESULT")), None)
+    assert line, r.stdout[-2000:] + r.stderr[-2000:]
+    import json
+    out = json.loads(line[6:])
+    assert out["available"] and out["tip_hidden"] == "REKORD – läuft im Hintergrund" and out["rec_text"] == "Aufnehmen"
+    assert out["tip_rec"] == "REKORD – nimmt auf · 1:02" and out["rec_text2"] == "Aufnahme stoppen & speichern"
+    assert out["stopped"] == 1
+    assert out["calls"][:2] == ["record", "quit"] and out["calls"][2].startswith("open:")
+    assert out["messages"] == [["Fertig ausgewertet", "„Budgetrunde“ – Transkript und Sprecher sind da."]]  # only "done", not progress
+    assert out["shown"] >= 3  # record, quit while recording, the clicked message
 
 
 def test_quitting_ends_the_process_without_python_teardown(monkeypatch):
