@@ -14,14 +14,21 @@ from pathlib import Path
 
 QML_DIR = Path(__file__).with_name("qml")
 log = logging.getLogger("rekord.app")
+_why = ""  # why the native window can't start here (for rekord.log and the CI selftest)
+
+
+def why() -> str:
+    return _why
 
 
 def importable() -> bool:
-    try:
-        import PySide6.QtMultimedia  # noqa: F401
+    global _why
+    try:  # the microphone (Qt Multimedia) is optional: without it REKORD records through the system directly
         import PySide6.QtQuick  # noqa: F401
         return True
-    except Exception:  # noqa: BLE001 - not installed, or its libraries are missing
+    except Exception as e:  # noqa: BLE001 - not installed, or its libraries are missing
+        _why = f"Qt for Python lädt nicht: {e}"
+        log.warning(_why)
         return False
 
 
@@ -30,10 +37,15 @@ def usable() -> bool:
 
     On Linux a missing system library (e.g. libxcb-cursor0) makes Qt abort the whole process instead of raising,
     so a quick try runs in a child process first – then REKORD falls back to the previous interface."""
-    if os.environ.get("REKORD_CLASSIC") == "1" or not importable():
+    global _why
+    if os.environ.get("REKORD_CLASSIC") == "1":
+        _why = "REKORD_CLASSIC=1"
+        return False
+    if not importable():
         return False
     if sys.platform.startswith("linux") and not os.environ.get("QT_QPA_PLATFORM"):
         if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+            _why = "kein Bildschirm (DISPLAY/WAYLAND_DISPLAY fehlen)"
             return False
         return _probe_ok()
     return True
@@ -41,14 +53,17 @@ def usable() -> bool:
 
 @functools.lru_cache(maxsize=1)
 def _probe_ok() -> bool:
+    global _why
     from .. import system
     try:
         r = subprocess.run(system.app_command() + ["--qt-probe"], timeout=30, capture_output=True, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired) as e:
-        log.warning("qt probe: %s", e)
+        _why = f"Qt-Test startet nicht: {e}"
+        log.warning(_why)
         return False
     if r.returncode != 0:
-        log.warning("qt probe failed (%s): %s", r.returncode, (r.stderr or b"")[-600:].decode(errors="replace"))
+        _why = f"Qt kann hier kein Fenster öffnen ({r.returncode}): " + (r.stderr or b"")[-800:].decode(errors="replace")
+        log.warning(_why)
     return r.returncode == 0
 
 

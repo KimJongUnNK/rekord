@@ -59,15 +59,17 @@ jobs:
       - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
       - run: pip install -e ".[all]" pyinstaller pillow
+      - name: Linux – Qt's system libraries (they travel inside the app) + an X server for the window test
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q xvfb libpulse0 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libegl1 libgl1
       - name: build
         shell: bash
         run: |
           cd desktop
           pyinstaller rekord.spec --noconfirm > build.log 2>&1 || { echo "::error title=pyinstaller::$(tail -c 3000 build.log | tr '\n' ' ')"; exit 1; }
           du -sh dist/* | tr '\n' ' '
-      - name: Linux desktop for the window test (X server, xcb libraries)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -y -q xvfb libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libegl1
       - name: the packaged app opens its native window (double-click start, every page, screenshots)
         shell: bash
         run: |

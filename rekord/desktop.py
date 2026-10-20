@@ -129,7 +129,7 @@ def _ui(url: str, port: int, host: str, restarted: bool = False) -> None:
         return
     if os.environ.get("REKORD_SELFTEST_UI"):  # CI checks the native window: no fallback, a clear failure
         from pathlib import Path
-        msg = "the native window can't start here (usable=%s)" % app.usable()
+        msg = f"the native window can't start here: {app.why() or 'the interface did not load'}"
         try:
             Path(os.environ["REKORD_SELFTEST_UI"]).mkdir(parents=True, exist_ok=True)
             (Path(os.environ["REKORD_SELFTEST_UI"]) / "result.txt").write_text(msg, encoding="utf-8")

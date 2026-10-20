@@ -275,3 +275,29 @@ def test_usable_respects_classic_and_missing_display(qt, monkeypatch):
         monkeypatch.delenv("DISPLAY", raising=False)
         monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
         assert app.usable() is False  # no screen: the hub runs, the previous interface opens in the browser
+
+
+def test_microphone_without_qt_multimedia_records_through_the_system(pulse):
+    """Linux without libpulse for Qt (or a broken Qt Multimedia): the window still records – via soundcard."""
+    code = """
+import sys, time
+sys.modules["PySide6.QtMultimedia"] = None  # as if it couldn't load
+from PySide6.QtCore import QCoreApplication
+from PySide6.QtGui import QGuiApplication
+from rekord.app import bridge
+app = QGuiApplication(["t"])
+mic, got, errs = bridge.Mic(), [], []
+mic.chunk.connect(lambda d, r: got.append((len(d), r)))
+mic.failed.connect(errs.append)
+assert bridge.Mic.devices() == []
+assert mic.start(""), errs
+end = time.time() + 5
+while time.time() < end:
+    QCoreApplication.processEvents(); time.sleep(0.01)
+mic.stop()
+print("chunks", len(got), set(r for _, r in got), errs)
+sys.exit(0 if len(got) >= 5 and {r for _, r in got} == {16000} and not errs else 1)
+"""
+    env = dict(pulse, QT_QPA_PLATFORM="offscreen")
+    r = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=60, cwd=ROOT)
+    assert r.returncode == 0, r.stdout + r.stderr[-2000:]

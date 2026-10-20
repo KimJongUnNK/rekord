@@ -299,7 +299,8 @@ class People(QObject):
 # ------------------------------------------------------------------ microphone (native, Qt Multimedia)
 
 class Mic(QObject):
-    """The microphone through Qt Multimedia: 16-bit PCM chunks + a level for the meter."""
+    """The microphone through Qt Multimedia: 16-bit PCM chunks + a level for the meter. Where Qt Multimedia can't
+    load (e.g. Linux without libpulse), the system's sound library (soundcard) records instead."""
     chunk = Signal(bytes, int)  # pcm16 mono, sample rate
     failed = Signal(str)
 
@@ -308,16 +309,24 @@ class Mic(QObject):
         self._src = None
         self._io = None
         self._fmt = None
+        self._stop = None
 
     @staticmethod
     def devices() -> list[dict]:
-        from PySide6.QtMultimedia import QMediaDevices
+        try:
+            from PySide6.QtMultimedia import QMediaDevices
+        except ImportError:
+            return []  # fallback recorder: the system's default microphone
         default = QMediaDevices.defaultAudioInput()
         return [{"id": bytes(d.id()).decode(errors="replace"), "name": d.description(), "default": d == default}
                 for d in QMediaDevices.audioInputs()]
 
     def start(self, device_id: str = "") -> bool:
-        from PySide6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
+        try:
+            from PySide6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
+        except ImportError as e:
+            log.warning("Qt Multimedia unavailable (%s) – recording through soundcard", e)
+            return self._start_system()
         devs = QMediaDevices.audioInputs()
         dev = next((d for d in devs if bytes(d.id()).decode(errors="replace") == device_id), None) or QMediaDevices.defaultAudioInput()
         if dev.isNull():
@@ -337,6 +346,28 @@ class Mic(QObject):
             self.failed.emit("Mikrofon lässt sich nicht öffnen.")
             return False
         self._io.readyRead.connect(self._read)
+        return True
+
+    def _start_system(self) -> bool:
+        try:
+            from .. import capture
+            mic = capture._soundcard().default_microphone()
+        except Exception as e:  # noqa: BLE001
+            self.failed.emit(f"Kein Mikrofon gefunden ({e}).")
+            return False
+        stop = self._stop = threading.Event()
+
+        def run():
+            try:
+                with mic.recorder(samplerate=16000, channels=1, blocksize=1600) as rec:
+                    while not stop.is_set():
+                        x = rec.record(numframes=1600)
+                        x = x.mean(axis=1) if x.ndim > 1 else x
+                        self.chunk.emit((np.clip(x, -1, 1) * 32767).astype("<i2").tobytes(), 16000)
+            except Exception as e:  # noqa: BLE001
+                if not stop.is_set():
+                    self.failed.emit(f"Mikrofon: {e}")
+        threading.Thread(target=run, daemon=True, name="mic").start()
         return True
 
     def _read(self) -> None:
@@ -360,6 +391,9 @@ class Mic(QObject):
         self.chunk.emit((np.clip(x, -1, 1) * 32767).astype("<i2").tobytes(), f.sampleRate())
 
     def stop(self) -> None:
+        if self._stop is not None:
+            self._stop.set()
+            self._stop = None
         if self._src is not None:
             self._src.stop()
             self._src.deleteLater()
