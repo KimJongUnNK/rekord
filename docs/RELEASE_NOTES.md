@@ -19,7 +19,7 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
-### Neu in 1.2.0 – jede Aufnahme komplett im neuen Fenster
+### Neu in 1.2.0 – Aufnahmen und Personen komplett im neuen Fenster
 - **Player:** Wellenform, farbige Sprecher-Leiste mit ★-Momenten, ±15 s, Tempo bis 2× – klick irgendwo hin, und es spielt ab dort.
 - **Sprecher:** antippen → umbenennen, **Stimme merken** (künftig automatisch erkannt) oder doppelt erkannte zusammenführen.
 - **Wer ist das?** direkt unter dem Player: unbekannte Stimme anhören, Namen eingeben (REKORD schlägt vor, wenn sich jemand vorgestellt hat), **Merken**.
@@ -29,6 +29,9 @@ Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der 
 - **Fragen** zu dieser Aufnahme als Chat · **Notizen** mit automatischem Speichern · **Ordner** per Klick.
 - **Export:** Markdown, Word, **PDF**, Text, SRT, WebVTT, JSON, Original-Audio – mit „Speichern unter …“ – oder in die Zwischenablage.
 - **•••**: neu verarbeiten, Personen neu erkennen, umbenennen, löschen.
+- **Personen** im neuen Fenster: alle Stimmen mit Aufnahmen und Stimmproben, Name und Farbe ändern, Stimmabdruck löschen.
+- **Person einsprechen** – drei Wege, jetzt mit dem Mikrofon direkt im Programm: **Text vorlesen** (jeder Name bekommt seinen eigenen Text), **Einfach reden lassen** (mit 💬 Gesprächsidee) oder **Aus Aufnahme lernen** (Stimme anhören, auswählen). Der Zähler zählt nur Sekunden, in denen wirklich gesprochen wird. Oder eine Datei mit nur dieser Person.
+- **Vorstellungsrunde:** bei *Wer ist dabei?* neue Personen gleich einsprechen – danach zählen sie als bekannt.
 - Unter der Haube: das Fenster spricht mit derselben lokalen Schnittstelle wie die iPhone-App – eine Logik für beide, alles bleibt synchron.
 
 ### Neu in 1.1.0 – REKORD ist jetzt ein echtes Programm

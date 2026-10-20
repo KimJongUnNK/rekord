@@ -293,3 +293,58 @@ def test_native_window_live_recording(people, monkeypatch):
     assert rec["title"] == "Native" and rec["audio_path"].endswith(".m4a")
     assert abs(rec["duration"] - len(x) / 16000) < 0.5  # nothing lost while the models loaded
     assert rec["participants"]["ids"] == [ids["Emil"], ids["Lisa"], ids["Jake"]]
+
+
+def test_native_enrollment_from_the_window(hub, monkeypatch):
+    """Person einsprechen in the window: native recorder (48 kHz mic) → 16 kHz sample → upload → a real voiceprint
+    that recognizes the person in a meeting."""
+    pytest.importorskip("PySide6.QtQuick", exc_type=ImportError)
+    import json
+    import os
+    import time
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtGui import QGuiApplication
+
+    from rekord import audio, live
+    from rekord.app import api as api_mod
+    from rekord.app import bridge
+    QGuiApplication.instance() or QGuiApplication(["rekord-e2e"])
+    monkeypatch.setattr(bridge.Mic, "start", lambda self, device_id="": True)
+    monkeypatch.setattr(bridge.Mic, "stop", lambda self: None)
+
+    def pump(cond, timeout):
+        end = time.time() + timeout
+        while time.time() < end and not cond():
+            QCoreApplication.processEvents()
+            time.sleep(0.01)
+        return cond()
+
+    # Lisa's lines from meeting 1 – what she'd say into the microphone
+    x = audio.load(FIX / "meeting1.wav")
+    r = db.create_recording("Probe", str(FIX / "meeting1.wav"))
+    pipeline.process(r["id"])
+    first = db.list_segments(r["id"])
+    lisa_voice = first[1]["voice"]
+    lines = [s for s in first if s["voice"] == lisa_voice]
+    sample = np.concatenate([x[int(s["start"] * 16000):int(s["end"] * 16000)] for s in lines])
+    pcm = (np.clip(live.resample(sample, 16000, 48000), -1, 1) * 32767).astype("<i2").tobytes()
+
+    v = bridge.VoiceRecorder()
+    v.start(240)
+    for i in range(0, len(pcm), 9600):
+        v._on_chunk(pcm[i:i + 9600], 48000)
+    v.stop()
+    assert v.speech > 10 and v.path
+
+    a = api_mod.Api(hub)
+    got = {}
+    a.reply.connect(lambda i, ok, status, data: got.__setitem__(i, (ok, data)))
+    rid = a.upload("/api/profiles/enroll", v.path, json.dumps({"name": "Lisa Native", "mode": "free"}))
+    assert pump(lambda: rid in got, 120)
+    ok, prof = got[rid]
+    assert ok, prof
+    assert prof["name"] == "Lisa Native" and prof["quality"]["seconds"] > 5
+    v.discard()
+    assert not os.path.exists(v.path or "/nonexistent")

@@ -107,7 +107,8 @@ def build(port: int, keep_running: bool | None = None) -> Window | None:
     engine.warnings.connect(lambda ws: warnings.extend(w.toString() for w in ws))
     state = bridge.AppState(port, keep_running=_keep_running() if keep_running is None else keep_running)
     objects = {"rekord": state, "library": bridge.Library(), "people": bridge.People(), "live": bridge.Live(),
-               "api": api_mod.Api(port), "player": api_mod.Player()}
+               "api": api_mod.Api(port), "player": api_mod.Player(), "samplePlayer": api_mod.Player(),
+               "voice": bridge.VoiceRecorder()}
     for o in objects.values():
         o.setParent(app)
     for name, obj in objects.items():
@@ -170,7 +171,8 @@ def _selftest(app, win, out: Path, warnings: list[str]) -> None:
     steps = [("library", lambda: win.setProperty("page", "library")),
              ("live", lambda: win.setProperty("page", "live")),
              ("who", lambda: win.setProperty("whoOpen", True)),
-             ("classic", lambda: (win.setProperty("whoOpen", False), win.setProperty("page", "people")))]
+             ("people", lambda: (win.setProperty("whoOpen", False), win.setProperty("page", "people"))),
+             ("classic", lambda: win.setProperty("page", "settings"))]
 
     def shoot(i: int) -> None:
         try:

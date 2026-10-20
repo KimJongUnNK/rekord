@@ -16,6 +16,9 @@ ApplicationWindow {
 
     property string page: "library"
     property var namingLater: ({})  // "Wer ist das? → Später" per recording, until REKORD is closed
+    property string enrollMode: rekord.pref("enroll_mode") || "read"
+    onEnrollModeChanged: rekord.setPref("enroll_mode", enrollMode)
+    function enroll(opts, fn) { enrollDlg.start(opts, fn) }
     property bool whoOpen: false
     property bool quitAfterSave: false
     readonly property bool narrow: width < 980
@@ -140,9 +143,10 @@ ApplicationWindow {
             LibraryPage { id: libraryPage; app: win; anchors.fill: parent; shown: win.page === "library" }
             DetailPage { id: detailPage; app: win; anchors.fill: parent; shown: win.page === "detail" }
             LivePage { app: win; anchors.fill: parent; shown: win.page === "live" }
+            PeoplePage { app: win; anchors.fill: parent; shown: win.page === "people" }
             ClassicPage {
                 anchors.fill: parent
-                shown: ["ask", "people", "templates", "settings"].indexOf(win.page) >= 0
+                shown: ["ask", "templates", "settings"].indexOf(win.page) >= 0
                 which: shown ? win.page : which
             }
         }
@@ -182,8 +186,11 @@ ApplicationWindow {
         onAccepted: { library.importFiles(selectedFiles); win.go("library") }
     }
 
+    EnrollDialog { id: enrollDlg; objectName: "enrollDlg"; app: win }
+
     WhoDialog {
         id: who
+        app: win
         onOpened: win.whoOpen = true
         onClosed: win.whoOpen = false
         onStarted: win.page = "live"

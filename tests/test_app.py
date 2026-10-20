@@ -240,8 +240,8 @@ def test_window_selftest_mode_quits_with_result(tmp_path):
     code = "import sys; from rekord import app; sys.exit(app.run(8765))"
     r = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=120, cwd=ROOT)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
-    assert "UI selftest: 4 pages, 0 QML warnings" in r.stdout
-    assert len(list((tmp_path / "shots").glob("*.png"))) == 4
+    assert "UI selftest: 5 pages, 0 QML warnings" in r.stdout
+    assert len(list((tmp_path / "shots").glob("*.png"))) == 5
 
 
 def test_usable_respects_classic_and_missing_display(qt, monkeypatch):
@@ -280,3 +280,52 @@ sys.exit(0 if len(got) >= 5 and {r for _, r in got} == {16000} and not errs else
     env = dict(pulse, QT_QPA_PLATFORM="offscreen")
     r = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=60, cwd=ROOT)
     assert r.returncode == 0, r.stdout + r.stderr[-2000:]
+
+
+def test_voice_sample_counts_only_speech_and_writes_16k_wav(qt, monkeypatch):
+    import wave
+    monkeypatch.setattr(bridge.Mic, "start", lambda self, device_id="": True)
+    monkeypatch.setattr(bridge.Mic, "stop", lambda self: None)
+    v = bridge.VoiceRecorder()
+    done = []
+    v.finished.connect(done.append)
+    v.start(120)
+    assert v.recording
+    rate = 48000  # a typical microphone: converted to 16 kHz
+    tone = (np.sin(np.arange(rate // 10) / rate * 2 * np.pi * 180) * 8000).astype("<i2").tobytes()
+    quiet = np.zeros(rate // 10, dtype="<i2").tobytes()
+    for _ in range(50):           # 5 s silence first: background, doesn't count
+        v._on_chunk(quiet, rate)
+    for _ in range(300):          # 30 s of voice
+        v._on_chunk(tone, rate)
+    for _ in range(30):           # 3 s pause: only the short hangover counts
+        v._on_chunk(quiet, rate)
+    assert 29.5 <= v.speech <= 31.0, v.speech
+    assert 37.5 <= v.wall <= 38.5
+    v.stop()
+    assert not v.recording and done == [v.path]
+    with wave.open(v.path) as w:
+        assert w.getframerate() == 16000 and w.getnchannels() == 1
+        assert abs(w.getnframes() / 16000 - 38.0) < 0.2
+    path = v.path
+    v.discard()
+    assert v.path == "" and not Path(path).exists() and v.speech == 0
+
+
+def test_voice_sample_stops_by_itself(qt, monkeypatch):
+    monkeypatch.setattr(bridge.Mic, "start", lambda self, device_id="": True)
+    monkeypatch.setattr(bridge.Mic, "stop", lambda self: None)
+    v = bridge.VoiceRecorder()
+    v.start(2)  # e.g. 120 s for reading, 240 s for free talk
+    tone = (np.sin(np.arange(1600) / 16000 * 2 * np.pi * 200) * 8000).astype("<i2").tobytes()
+    for _ in range(40):
+        v._on_chunk(tone, 16000)
+    assert not v.recording and v.path and abs(v.wall - 2.0) < 0.05
+    v.discard()
+
+
+def test_preferences_of_the_window(qt):
+    st = bridge.AppState(8765)
+    st.setPref("enroll_mode", "free")
+    assert st.pref("enroll_mode") == "free" and config.load()["desktop"]["enroll_mode"] == "free"
+    assert st.pref("gibts_nicht") is None

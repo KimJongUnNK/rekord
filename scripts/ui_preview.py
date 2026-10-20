@@ -133,6 +133,7 @@ def main(out: Path) -> int:
         return 1
     win, o = w.win, w.objects
     out.mkdir(parents=True, exist_ok=True)
+    problems_extra: list[str] = []
 
     def wait(sec: float) -> None:
         end = time.time() + sec
@@ -166,6 +167,35 @@ def main(out: Path) -> int:
     win.findChild(QObject, "assignDlg").close()
     wait(0.4)
     assert rec is not None
+
+    # Personen + Einsprechen (all three ways)
+    win.setProperty("page", "people")
+    shot("people")
+    enroll = win.findChild(QObject, "enrollDlg")
+    call(win, "enroll", {"name": "Anna"}, None)
+    wait(0.5)
+    shot("enroll-read")
+    voice = o["voice"]
+    voice.start(120)
+    wait(0.2)
+    speech = (np.sin(np.arange(1600) / 16000 * 2 * np.pi * 180) * 7000).astype("<i2").tobytes()
+    for _ in range(300):  # 30 s of "talking"
+        voice._on_chunk(speech, 16000)
+    wait(0.2)
+    shot("enroll-recording")
+    voice.stop()
+    if not voice.property("path") or voice.property("speech") < 25:
+        problems_extra.append(f"voice sample: {voice.property('speech')} s, file {voice.property('path')!r}")
+    enroll.setProperty("mode", "free")
+    shot("enroll-free")
+    enroll.setProperty("mode", "recording")
+    wait(0.5)
+    call(enroll, "pickRecording", ids["rid"])
+    wait(0.8)
+    enroll.setProperty("picked", 0)
+    shot("enroll-recording-voices")
+    enroll.close()
+    wait(0.3)
     win.setProperty("page", "live")
     shot("live")
     win.setProperty("whoOpen", True)
@@ -210,7 +240,7 @@ def main(out: Path) -> int:
     shot("library-light")
     o["rekord"].setTheme("system")
 
-    problems = list(w.warnings)
+    problems = list(w.warnings) + problems_extra
     if sess is None or sess.fed == 0:
         problems.append("live: the microphone audio never reached the session")
     if not opened:

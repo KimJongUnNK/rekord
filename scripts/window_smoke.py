@@ -41,7 +41,7 @@ def main(binary: str, out: str) -> int:
     if "QML warnings" not in log:
         print("FAIL: the native window did not start (REKORD fell back to the previous interface or crashed)")
         return 1
-    if r.returncode != 0 or len(pngs) < 4:
+    if r.returncode != 0 or len(pngs) < 5:
         print("FAIL")
         return 1
     print("OK – native window shown, pages rendered")

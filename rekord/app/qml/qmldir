@@ -41,3 +41,6 @@ MindMapView 1.0 MindMapView.qml
 ChatView 1.0 ChatView.qml
 NotesView 1.0 NotesView.qml
 ExportView 1.0 ExportView.qml
+EnrollDialog 1.0 EnrollDialog.qml
+PersonDialog 1.0 PersonDialog.qml
+PeoplePage 1.0 PeoplePage.qml

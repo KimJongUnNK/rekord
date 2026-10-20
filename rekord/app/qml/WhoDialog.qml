@@ -6,6 +6,7 @@ import "."
 // "Wer ist dabei?" before every recording: where (room / online / lecture), how many, who is known.
 Sheet {
     id: dlg
+    required property var app
     signal started()
     property string meeting: "person"
     property var ids: []
@@ -188,10 +189,26 @@ Sheet {
                         return "<font color='" + Theme.accent + "'>Wähle oben, wie viele ihr seid.</font>"
                     const parts = [names.join(", "), dlg.fresh ? dlg.fresh + " neu" : ""].filter(x => x)
                     return "<b>" + dlg.total + (dlg.total === 1 ? " Person" : " Personen") + "</b>: " + parts.join(" + ")
-                        + (dlg.fresh ? "<br>Neue Stimmen landen unter „Nicht erkannte Stimme“ – antippen und benennen, dann erkennt REKORD sie ab sofort."
+                        + (dlg.fresh ? "<br>Neue Stimmen landen unter „Nicht erkannte Stimme“. Besser: jetzt kurz einsprechen lassen – dann erkennt REKORD sie mit Namen."
                                      : "<br>Geschlossene Runde: jede Stimme wird einer dieser Personen zugeordnet.")
                 }
             }
+        }
+        RowLayout {  // Vorstellungsrunde: each new person says ~45 s, then counts as known
+            visible: !dlg.lecture && dlg.fresh > 0
+            Btn {
+                small: true
+                iconName: "mic"
+                text: dlg.fresh === 1 ? "Neue Person jetzt einsprechen" : "Neue Personen jetzt einsprechen (" + dlg.fresh + ")"
+                onClicked: {
+                    const n = dlg.fresh
+                    dlg.app.enroll({ intro: true, step: n > 1 ? "1 von " + n : "" }, (prof) => {
+                        if (dlg.ids.indexOf(prof.id) < 0) dlg.ids = dlg.ids.concat([prof.id])
+                        dlg.total = Math.max(dlg.total, dlg.ids.length)
+                    })
+                }
+            }
+            Tip { key: "intro" }
         }
 
         RowLayout {

@@ -49,5 +49,31 @@ def pulse(tmp_path):
         subprocess.run(["pulseaudio", "--kill"], env=env, capture_output=True)
 
 
+@pytest.fixture(scope="session")
+def hub():
+    """The real REKORD hub on a free port – what the native window and the iPhone app talk to."""
+    import socket
+    import threading
+
+    import uvicorn
+
+    from rekord.server import app
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    app.state.port, app.state.lan, app.state.auto_download = port, False, False
+    srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    t = threading.Thread(target=srv.run, daemon=True)
+    t.start()
+    for _ in range(200):
+        with socket.socket() as s:
+            if s.connect_ex(("127.0.0.1", port)) == 0:
+                break
+        time.sleep(0.05)
+    yield port
+    srv.should_exit = True
+    t.join(5)
+
+
 def pytest_sessionfinish(session, exitstatus):
     shutil.rmtree(_HOME, ignore_errors=True)

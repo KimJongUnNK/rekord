@@ -9,8 +9,6 @@ Page {
     readonly property var info: ({
         "ask": { title: "Fragen", icon: "ask", route: "ask",
                  text: "Frag alle deine Aufnahmen auf einmal – z. B. „Was haben wir mit Anna zum Budget beschlossen?“ Die Antwort zeigt, wo es gesagt wurde." },
-        "people": { title: "Personen", icon: "people", route: "people",
-                    text: "Stimmen anlernen – Text vorlesen, einfach reden lassen oder aus einer Aufnahme lernen. Umbenennen, zusammenführen, löschen." },
         "templates": { title: "Vorlagen", icon: "templates", route: "templates",
                        text: "Formate für Zusammenfassungen: nach Wichtigkeit sortieren, eigene anlegen, Vorlesung, Meeting, Interview …" },
         "settings": { title: "Einstellungen", icon: "settings", route: "settings",

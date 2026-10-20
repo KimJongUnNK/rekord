@@ -208,7 +208,8 @@ class People(QObject):
     @Slot()
     def refresh(self) -> None:
         try:
-            self._items = [{"id": p["id"], "name": p["name"], "color": p["color"]} for p in db.list_profiles()]
+            self._items = [{"id": p["id"], "name": p["name"], "color": p["color"], "samples": p.get("samples", 1),
+                            "recordings": p.get("recordings", 0)} for p in db.list_profiles()]
         except Exception:  # noqa: BLE001
             self._items = []
         self.changed.emit()
@@ -323,6 +324,24 @@ class Mic(QObject):
 
 
 # ------------------------------------------------------------------ live recording
+
+def with_mic_permission(owner: QObject, then, fail) -> None:
+    """macOS asks once whether REKORD may use the microphone (Windows/Linux: always allowed here)."""
+    try:
+        from PySide6.QtCore import QCoreApplication, QMicrophonePermission
+        app, perm = QCoreApplication.instance(), QMicrophonePermission()
+        st = app.checkPermission(perm)
+    except Exception:  # noqa: BLE001 - Qt without the permission API
+        then()
+        return
+    if st == Qt.PermissionStatus.Granted:
+        then()
+    elif st == Qt.PermissionStatus.Denied:
+        fail("Mikrofon ist gesperrt – Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon → REKORD erlauben.")
+    else:
+        app.requestPermission(perm, owner, lambda *_: then() if app.checkPermission(perm) == Qt.PermissionStatus.Granted
+                              else fail("Ohne Mikrofon kann REKORD nicht aufnehmen."))
+
 
 MEETINGS = {"person": "person", "online": "online", "lecture": "lecture"}
 
@@ -481,21 +500,7 @@ class Live(QObject):
         self._with_mic_permission(lambda: self._begin(ids, guests))
 
     def _with_mic_permission(self, then) -> None:
-        """macOS asks once whether REKORD may use the microphone (Windows/Linux: always allowed here)."""
-        try:
-            from PySide6.QtCore import QCoreApplication, QMicrophonePermission
-            app, perm = QCoreApplication.instance(), QMicrophonePermission()
-            st = app.checkPermission(perm)
-        except Exception:  # noqa: BLE001 - Qt without the permission API
-            then()
-            return
-        if st == Qt.PermissionStatus.Granted:
-            then()
-        elif st == Qt.PermissionStatus.Denied:
-            self._fail("Mikrofon ist gesperrt – Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon → REKORD erlauben.")
-        else:
-            app.requestPermission(perm, self, lambda *_: then() if app.checkPermission(perm) == Qt.PermissionStatus.Granted
-                                  else self._fail("Ohne Mikrofon kann REKORD nicht aufnehmen."))
+        with_mic_permission(self, then, self._fail)
 
     def _fail(self, msg: str) -> None:
         self._mic.stop()
@@ -660,6 +665,137 @@ class Live(QObject):
         self.changed.emit()
 
 
+# ------------------------------------------------------------------ voice sample ("Person einsprechen")
+
+class VoiceRecorder(QObject):
+    """Records a voice sample (native microphone) and counts the seconds in which someone really speaks – pauses
+    don't count. The finished sample is a 16 kHz WAV file for the enrollment."""
+    changed = Signal()
+    levelChanged = Signal()
+    finished = Signal(str)  # the WAV file
+    failed = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._mic = Mic(self)
+        self._mic.chunk.connect(self._on_chunk)
+        self._mic.failed.connect(self._on_fail)
+        self._recording = False
+        self._parts: list[np.ndarray] = []
+        self._buf = np.zeros(0, dtype=np.float32)
+        self._floor, self._speech, self._wall, self._last_voice = 0.02, 0.0, 0.0, -1.0
+        self._level, self._talking = 0.0, False
+        self._max = 120.0
+        self._path = ""
+
+    @Property(bool, notify=changed)
+    def recording(self):
+        return self._recording
+
+    @Property(float, notify=changed)
+    def speech(self):
+        return self._speech
+
+    @Property(float, notify=changed)
+    def wall(self):
+        return self._wall
+
+    @Property(float, notify=levelChanged)
+    def level(self):
+        return self._level
+
+    @Property(bool, notify=changed)
+    def talking(self):
+        return self._talking
+
+    @Property(str, notify=changed)
+    def path(self):
+        return self._path
+
+    @Slot(float)
+    def start(self, max_seconds: float = 120.0) -> None:
+        if self._recording:
+            return
+        self.discard()
+        self._max = max_seconds
+        self._parts, self._buf = [], np.zeros(0, dtype=np.float32)
+        self._floor, self._speech, self._wall, self._last_voice = 0.02, 0.0, 0.0, -1.0
+
+        def go():
+            if self._mic.start(config.load()["desktop"]["mic"]):
+                self._recording = True
+                self.changed.emit()
+        with_mic_permission(self, go, self._on_fail)
+
+    @Slot()
+    def stop(self) -> None:
+        if not self._recording:
+            return
+        self._mic.stop()
+        self._recording = False
+        self._level = 0.0
+        self.levelChanged.emit()
+        audio = np.concatenate(self._parts) if self._parts else np.zeros(0, dtype=np.float32)
+        if len(audio) < live.SR // 2:
+            self.changed.emit()
+            return
+        import wave
+        path = config.HOME / f"enroll-{uuid.uuid4().hex[:8]}.wav"
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(live.SR)
+            w.writeframes((np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes())
+        self._path = str(path)
+        self.changed.emit()
+        self.finished.emit(self._path)
+
+    @Slot()
+    def discard(self) -> None:
+        """Forget the last sample (and its file)."""
+        if self._recording:
+            self._mic.stop()
+            self._recording = False
+        if self._path:
+            Path(self._path).unlink(missing_ok=True)
+            self._path = ""
+        self._speech = self._wall = 0.0
+        self.changed.emit()
+
+    @Slot(str)
+    def _on_fail(self, msg: str) -> None:
+        self._recording = False
+        self.changed.emit()
+        self.failed.emit(msg)
+
+    @Slot(bytes, int)
+    def _on_chunk(self, data: bytes, rate: int) -> None:
+        if not self._recording:
+            return
+        x = np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0
+        if rate != live.SR:
+            x = live.resample(x, rate, live.SR)
+        self._parts.append(x)
+        self._buf = np.concatenate([self._buf, x])
+        step = live.SR // 10  # judged every 0.1 s, like the previous interface
+        while len(self._buf) >= step:
+            block, self._buf = self._buf[:step], self._buf[step:]
+            rms = float(np.sqrt(np.mean(block ** 2)))
+            self._floor = rms if rms < self._floor else self._floor * 1.002  # background noise, follows slowly upwards
+            if rms > max(0.006, self._floor * 2):
+                self._last_voice = self._wall
+            self._talking = self._last_voice >= 0 and self._wall - self._last_voice <= 0.4  # short gaps between words count
+            if self._talking:
+                self._speech += 0.1
+            self._wall += 0.1
+            self._level = min(1.0, rms * 8)
+            self.levelChanged.emit()
+            self.changed.emit()
+            if self._wall >= self._max:
+                self.stop()
+                return
+
+
 # ------------------------------------------------------------------ the app itself
 
 class AppState(QObject):
@@ -707,6 +843,17 @@ class AppState(QObject):
         return self._keep
 
     themeChanged = Signal()
+
+    @Slot(str, result="QVariant")
+    def pref(self, key: str):
+        return config.load()["desktop"].get(key)
+
+    @Slot(str, "QVariant")
+    def setPref(self, key: str, value) -> None:  # noqa: N802 - QML API
+        try:
+            config.save({"desktop": {key: value}})
+        except Exception as e:  # noqa: BLE001
+            log.warning("pref %s: %s", key, e)
 
     @Property(str, notify=themeChanged)
     def theme(self):
