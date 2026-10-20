@@ -86,27 +86,6 @@ def test_import_copies_and_queues(qt, tmp_path, monkeypatch):
     assert toasts == ["1 Datei wird verarbeitet", "Nicht unterstützt: notizen.txt"]
 
 
-def test_detail_shows_speakers_summary_transcript_and_reloads(qt):
-    rec = db.create_recording("Planung", "", source="live", duration=60, status="done")
-    a = db.add_speaker(rec["id"], "Anna", "#3B82F6", None)
-    b = db.add_speaker(rec["id"], pipeline.UNKNOWN, pipeline.UNKNOWN_COLOR, None)
-    conn = db.connect()
-    conn.execute("INSERT INTO segments (recording_id, speaker_id, start, end, text) VALUES (?,?,?,?,?)", (rec["id"], a, 0, 30, "Wir starten im Mai."))
-    conn.execute("INSERT INTO segments (recording_id, speaker_id, start, end, text) VALUES (?,?,?,?,?)", (rec["id"], b, 30, 40, "Passt."))
-    conn.commit()
-    db.add_summary(rec["id"], "meeting", "Meeting-Protokoll", "## Entscheidungen\n- Start im Mai")
-    db.add_summary(rec["id"], "mindmap", "Mind Map", "{}")
-    d = bridge.Detail()
-    d.load(rec["id"])
-    assert d.title == "Planung" and d.status == "done"
-    assert [(s["name"], s["share"]) for s in d.speakers] == [("Anna", 0.75), (pipeline.UNKNOWN, 0.25)]
-    assert [s["title"] for s in d.summaries] == ["Meeting-Protokoll"]  # the mind map has its own view
-    assert [(x["time"], x["name"], x["text"]) for x in d.lines.items()] == [("0:00", "Anna", "Wir starten im Mai."), ("0:30", pipeline.UNKNOWN, "Passt.")]
-    db.add_summary(rec["id"], "tasks", "Aufgaben", "- Anna: Plan")
-    jobs.emit({"type": "summary_done", "id": rec["id"]})
-    assert pump(lambda: len(d.summaries) == 2)
-
-
 class FakeSession:
     made: list = []
 
@@ -291,8 +270,8 @@ mic.chunk.connect(lambda d, r: got.append((len(d), r)))
 mic.failed.connect(errs.append)
 assert bridge.Mic.devices() == []
 assert mic.start(""), errs
-end = time.time() + 5
-while time.time() < end:
+end = time.time() + 12  # the sound system needs a moment to start delivering
+while time.time() < end and len(got) < 5:
     QCoreApplication.processEvents(); time.sleep(0.01)
 mic.stop()
 print("chunks", len(got), set(r for _, r in got), errs)

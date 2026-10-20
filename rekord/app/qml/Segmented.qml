@@ -49,6 +49,8 @@ Rectangle {
                         Layout.preferredHeight: 18
                     }
                     Text {
+                        Layout.maximumWidth: seg.cell - (modelData.icon ? 40 : 14)
+                        elide: Text.ElideRight
                         text: modelData.label
                         font.family: Theme.text
                         font.pixelSize: 14

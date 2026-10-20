@@ -19,6 +19,18 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.2.0 – jede Aufnahme komplett im neuen Fenster
+- **Player:** Wellenform, farbige Sprecher-Leiste mit ★-Momenten, ±15 s, Tempo bis 2× – klick irgendwo hin, und es spielt ab dort.
+- **Sprecher:** antippen → umbenennen, **Stimme merken** (künftig automatisch erkannt) oder doppelt erkannte zusammenführen.
+- **Wer ist das?** direkt unter dem Player: unbekannte Stimme anhören, Namen eingeben (REKORD schlägt vor, wenn sich jemand vorgestellt hat), **Merken**.
+- **Zusammenfassung:** Vorlage wählen, die KI schreibt **live sichtbar** mit. To-dos abhaken, Zeitstempel springen ins Audio, kopieren, bearbeiten, löschen.
+- **Transkript:** Text direkt im Fenster korrigieren, Namen antippen → **Wer sagt das?** (ganze Stimme zuordnen, Stimme lernen), suchen, **Suchen & Ersetzen** (auch dauerhaft ins Vokabular), **Mitscrollen** beim Abspielen.
+- **Mind Map:** gezeichnet im Fenster, Unterpunkte jetzt richtig unter ihren Themen. Als SVG oder PNG speichern.
+- **Fragen** zu dieser Aufnahme als Chat · **Notizen** mit automatischem Speichern · **Ordner** per Klick.
+- **Export:** Markdown, Word, **PDF**, Text, SRT, WebVTT, JSON, Original-Audio – mit „Speichern unter …“ – oder in die Zwischenablage.
+- **•••**: neu verarbeiten, Personen neu erkennen, umbenennen, löschen.
+- Unter der Haube: das Fenster spricht mit derselben lokalen Schnittstelle wie die iPhone-App – eine Logik für beide, alles bleibt synchron.
+
 ### Neu in 1.1.0 – REKORD ist jetzt ein echtes Programm
 - **Eigenes Fenster statt Webseite:** REKORD läuft am Computer als natives Programm (Mac, Windows, Linux) – schneller, direkter, durchgehend animiert. Kein Browser, kein Web-Fenster.
 - **Aufnahmen:** neue Liste mit Sprecher-Punkten, Fortschritt der Auswertung direkt in der Zeile, Suche (auch im Gesagten), Ordner-Filter, **Importieren** oder Dateien einfach ins Fenster ziehen.

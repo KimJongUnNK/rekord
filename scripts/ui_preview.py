@@ -31,15 +31,29 @@ def seed() -> dict:
     sm = db.add_speaker(rec["id"], "Max", "#22C55E", max_)
     su = db.add_speaker(rec["id"], pipeline.UNKNOWN, pipeline.UNKNOWN_COLOR, None)
     conn = db.connect()
-    lines = [(sl, 0, 14, "Okay, dann fangen wir an. Wichtigster Punkt heute ist der Launch am Freitag."),
-             (sm, 14, 31, "Die Landingpage ist fertig, nur die Texte fehlen noch. Die schicke ich bis Mittwoch."),
-             (su, 31, 40, "Brauchen wir dafür noch ein Okay von der Rechtsabteilung?"),
-             (sl, 40, 62, "Ja, Max, kannst du das bis Donnerstag klären? Sonst verschieben wir auf Montag."),
-             (sm, 62, 70, "Mach ich.")]
-    for sid, a, b, text in lines:
-        conn.execute("INSERT INTO segments (recording_id, speaker_id, start, end, text) VALUES (?,?,?,?,?)",
-                     (rec["id"], sid, a, b, text))
+    lines = [(sl, 0, 14, "Okay, dann fangen wir an. Wichtigster Punkt heute ist der Launch am Freitag.", None),
+             (sm, 14, 31, "Die Landingpage ist fertig, nur die Texte fehlen noch. Die schicke ich bis Mittwoch.", None),
+             (su, 31, 40, "Hier ist Tom aus der Rechtsabteilung – brauchen wir dafür noch ein Okay?", 7),
+             (sl, 40, 62, "Ja, Max, kannst du das bis Donnerstag klären? Sonst verschieben wir auf Montag.", None),
+             (sm, 62, 70, "Mach ich.", None)]
+    for sid, a, b, text, voice in lines:
+        conn.execute("INSERT INTO segments (recording_id, speaker_id, start, end, text, voice) VALUES (?,?,?,?,?,?)",
+                     (rec["id"], sid, a, b, text, voice))
     conn.commit()
+    rng = np.random.default_rng(4)
+    import wave
+    wav = config.AUDIO_DIR / f"{rec['id']}.wav"
+    with wave.open(str(wav), "wb") as w:  # a quiet tone, so the player has something to play
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        w.writeframes((np.sin(np.arange(8000 * 70) / 8000 * 2 * np.pi * 220) * 800).astype("<i2").tobytes())
+    db.update_recording(rec["id"], audio_path=str(wav), duration=70, highlights=[22.0, 48.0], notes="Budget nochmal mit Anna klären.",
+                        peaks=[round(float(abs(np.sin(i / 7)) * 0.7 + rng.random() * 0.3), 3) for i in range(400)])
+    db.add_summary(rec["id"], "mindmap", "Mind Map", "# Launch\n- Termin\n  - Freitag\n  - Plan B: Montag\n- Landingpage\n  - Texte bis Mittwoch\n"
+                   "- Recht\n  - Freigabe bis Donnerstag\n  - Tom fragen")
+    db.add_chat(rec["id"], "user", "Wer kümmert sich um die Freigabe?")
+    db.add_chat(rec["id"], "assistant", "**Max** klärt die Freigabe mit der Rechtsabteilung bis Donnerstag [00:40].")
     db.add_summary(rec["id"], "meeting", "Meeting-Protokoll",
                    "## Entscheidungen\n- Launch bleibt am **Freitag**\n- Rechtliche Freigabe vorher einholen\n\n"
                    "## Aufgaben\n- **Max**: Texte für die Landingpage bis Mittwoch\n- **Max**: Freigabe der Rechtsabteilung bis Donnerstag\n\n"
@@ -79,16 +93,41 @@ class FakeSession:
         return self.rid
 
 
+def hub() -> int:
+    """The local hub the window talks to (like in the real app), on a free port."""
+    import socket
+    import threading
+
+    import uvicorn
+
+    from rekord import jobs
+    from rekord.server import app
+    jobs.start = lambda: None  # the demo recordings have no audio: nothing to process
+    with socket.socket() as so:
+        so.bind(("127.0.0.1", 0))
+        port = so.getsockname()[1]
+    app.state.port, app.state.lan, app.state.auto_download = port, False, False
+    srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    threading.Thread(target=srv.run, daemon=True).start()
+    for _ in range(200):
+        with socket.socket() as so:
+            if so.connect_ex(("127.0.0.1", port)) == 0:
+                return port
+        time.sleep(0.05)
+    raise RuntimeError("hub did not start")
+
+
 def main(out: Path) -> int:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtCore import QCoreApplication, QTimer
+    from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, QObject
 
     from rekord import app as rapp
     from rekord.app import bridge
     ids = seed()
     live.LiveSession = FakeSession
     bridge.Mic.start = lambda self, device_id="": True
-    w = rapp.build(8765, keep_running=False)
+    port = hub()
+    w = rapp.build(port, keep_running=False)
     if w is None:
         print("interface did not load")
         return 1
@@ -105,10 +144,28 @@ def main(out: Path) -> int:
         wait(0.9)
         win.grabWindow().save(str(out / f"{name}.png"))
 
+    def call(obj, fn, *args):
+        QMetaObject.invokeMethod(obj, fn, *[Q_ARG("QVariant", a) for a in args])
+
     shot("library")
-    win.setProperty("page", "detail")
-    o["detail"].load(ids["rid"])
-    shot("detail")
+    call(win, "openRecording", ids["rid"], 0)
+    wait(1.5)
+    detail = win.findChild(QObject, "detailPage")
+    for i, name in enumerate(["detail", "detail-transcript", "detail-mindmap", "detail-ask", "detail-notes", "detail-export"]):
+        detail.setProperty("tab", i)
+        shot(name)
+    detail.setProperty("tab", 1)
+    rec = db.get_recording(ids["rid"])
+    sp = {s["name"]: s["id"] for s in db.list_speakers(ids["rid"])}
+    call(detail, "editSpeaker", sp["Max"])
+    shot("detail-speaker")
+    win.findChild(QObject, "speakerDlg").close()
+    seg = next(x for x in db.list_segments(ids["rid"]) if x.get("voice") == 7)
+    call(detail, "assignLine", seg["id"])
+    shot("detail-assign")
+    win.findChild(QObject, "assignDlg").close()
+    wait(0.4)
+    assert rec is not None
     win.setProperty("page", "live")
     shot("live")
     win.setProperty("whoOpen", True)
@@ -148,7 +205,7 @@ def main(out: Path) -> int:
         if o["live"].state == "idle":
             break
     shot("after-stop")
-    opened = win.property("page") == "detail" and sess is not None and o["detail"].rid == sess.rid
+    opened = win.property("page") == "detail" and sess is not None and detail.property("rid") == sess.rid
     win.setProperty("page", "library")
     shot("library-light")
     o["rekord"].setTheme("system")

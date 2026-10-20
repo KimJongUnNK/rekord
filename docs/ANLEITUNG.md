@@ -200,10 +200,10 @@ Ab Version 1.1 ist REKORD am Computer ein **echtes Programm** – kein Browser, 
 | Bereich | Was geht |
 |---|---|
 | **Aufnahmen** | Liste mit Sprecher-Punkten und Fortschritt der Auswertung · **Suchen** (auch im Gesagten) · **Ordner** als Filter · **Importieren** oder Dateien einfach ins Fenster ziehen |
-| **Aufnahme ansehen** | Redeanteile jeder Person · Reiter **Zusammenfassung** und **Transkript** · aktualisiert sich von selbst, solange REKORD auswertet |
+| **Aufnahme ansehen** | **Player** mit Wellenform, farbiger Sprecher-Leiste und ★, **−15/+15**, Tempo **1×–2×** · **Titel** anklicken zum Umbenennen · **Sprecher** antippen: umbenennen, **Stimme merken**, zusammenführen · **Wer ist das?** für unbekannte Stimmen (anhören, Namen, **Merken**) · Reiter **Zusammenfassung** (Vorlage wählen, KI schreibt live mit, To-dos abhaken, Zeitstempel springen ins Audio, kopieren, bearbeiten, löschen), **Transkript** (Text direkt korrigieren, Namen antippen → **Wer sagt das?**, suchen, **Suchen & Ersetzen**, **Mitscrollen**), **Mind Map** (erstellen, als SVG/PNG speichern), **Fragen** (Chat nur über diese Aufnahme), **Notizen** und **Ordner**, **Export** (Markdown, Word, PDF, Text, SRT, WebVTT, JSON, Audio, Zwischenablage) · **•••**: neu verarbeiten, Personen neu erkennen, umbenennen, löschen |
 | **Live** | großer Aufnahmeknopf · **Mikrofon** wählen (darunter) · **Wer ist dabei?** mit **Vor Ort**, **Online** und **Vorlesung** · groß in der Farbe der Person, wer gerade spricht · Redeanteile · **Nicht erkannte Stimme** antippen → Namen eingeben → **Merken** · **Mitschrift** live · **Markieren**, **Pause**, **Stopp & speichern** |
 
-**Zieht als Nächstes um:** *Fragen*, *Personen* (Einsprechen), *Vorlagen*, *Einstellungen*, die Einführung beim ersten Start sowie Bearbeiten und Export einer Aufnahme (**Bearbeiten, Fragen, Export** oben rechts). Diese Seiten öffnen sich bis dahin in einem eigenen Fenster der bisherigen Ansicht – mit denselben Daten, alles bleibt synchron.
+**Zieht als Nächstes um:** *Fragen* (über alle Aufnahmen), *Personen* (Einsprechen), *Vorlagen*, *Einstellungen* und die Einführung beim ersten Start. Diese Seiten öffnen sich bis dahin in einem eigenen Fenster der bisherigen Ansicht – mit denselben Daten, alles bleibt synchron.
 
 **Tastatur**
 

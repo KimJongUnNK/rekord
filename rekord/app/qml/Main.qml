@@ -15,14 +15,70 @@ ApplicationWindow {
     title: live.state === "recording" ? "● " + live.elapsedText + " – REKORD" : live.state === "paused" ? "Pausiert – REKORD" : "REKORD"
 
     property string page: "library"
+    property var namingLater: ({})  // "Wer ist das? → Später" per recording, until REKORD is closed
     property bool whoOpen: false
     property bool quitAfterSave: false
     readonly property bool narrow: width < 980
 
     Binding { target: Theme; property: "mode"; value: rekord.theme }
+    // menus, tooltips, scroll bars, busy spinners follow REKORD's colors
+    palette.window: Theme.card
+    palette.windowText: Theme.fg
+    palette.base: Theme.bg
+    palette.alternateBase: Theme.card2
+    palette.text: Theme.fg
+    palette.button: Theme.card
+    palette.buttonText: Theme.fg
+    palette.brightText: Theme.fg
+    palette.highlight: Theme.accent
+    palette.highlightedText: Theme.onAccent
+    palette.toolTipBase: Theme.fg
+    palette.toolTipText: Theme.bg
+    palette.light: Theme.card2
+    palette.midlight: Theme.line
+    palette.mid: Theme.line2
+    palette.dark: Theme.fg3
+    palette.shadow: "#000000"
+    palette.placeholderText: Theme.fg3
+    palette.link: Theme.accent
+    palette.linkVisited: Theme.accent
 
-    function go(p) { page = p; if (p === "library") library.refresh() }
-    function openRecording(rid) { detail.load(rid); page = "detail" }
+    property string settingsSection: ""
+    function go(p, section) { page = p; settingsSection = section || ""; if (p === "library") library.refresh() }
+    function openRecording(rid, t) { detailPage.open(rid, t || 0); page = "detail" }
+
+    // ---- the local API (same one the iPhone app uses): answers arrive as callbacks
+    property var _cb: ({})
+    function call(method, path, body, ok, fail) {
+        const id = api.request(method, path, body === undefined ? null : body)
+        _cb[id] = { ok: ok, fail: fail }
+        return id
+    }
+    function stream(path, body, onChunk, ok, fail) {
+        const id = api.stream(path, body || {})
+        _cb[id] = { ok: ok, fail: fail, chunk: onChunk }
+        return id
+    }
+    function upload(path, file, fields, ok, fail) {
+        const id = api.upload(path, file, JSON.stringify(fields || {}))
+        _cb[id] = { ok: ok, fail: fail }
+        return id
+    }
+    function confirm(title, text, okLabel, fn, danger) { confirmDlg.ask(title, text, okLabel, fn, danger) }
+    function prompt(title, value, fn) { promptDlg.ask(title, value, fn) }
+    Connections {
+        target: api
+        function onReply(id, ok, status, data) {
+            const cb = win._cb[id]
+            delete win._cb[id]
+            if (!cb) return
+            if (ok) { if (cb.ok) cb.ok(data) }
+            else if (cb.fail) cb.fail(String(data), status)
+            else win.toast(String(data))
+        }
+        function onChunk(id, text) { const cb = win._cb[id]; if (cb && cb.chunk) cb.chunk(text) }
+        function onSaved(ok, msg) { win.toast(msg) }
+    }
     function startRecording() {
         if (live.state !== "idle") { page = "live"; return }
         who.openFresh()
@@ -82,7 +138,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             clip: true
             LibraryPage { id: libraryPage; app: win; anchors.fill: parent; shown: win.page === "library" }
-            DetailPage { app: win; anchors.fill: parent; shown: win.page === "detail" }
+            DetailPage { id: detailPage; app: win; anchors.fill: parent; shown: win.page === "detail" }
             LivePage { app: win; anchors.fill: parent; shown: win.page === "live" }
             ClassicPage {
                 anchors.fill: parent
@@ -132,6 +188,9 @@ ApplicationWindow {
         onClosed: win.whoOpen = false
         onStarted: win.page = "live"
     }
+
+    ConfirmDialog { id: confirmDlg }
+    PromptDialog { id: promptDlg }
 
     Sheet {  // closing while recording
         id: quitDialog

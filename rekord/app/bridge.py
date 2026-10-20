@@ -1,6 +1,6 @@
 """The bridge between REKORD's engine and the Qt Quick interface – in the same process, no web server, no browser.
 
-QML sees: `rekord` (app state), `library` (recordings), `detail` (one recording), `people`, `live`. Engine events
+QML sees: `rekord` (app state), `library` (recordings), `people`, `live` (+ `api`, `player` from api.py). Engine events
 arrive on worker threads and are handed to the UI thread through queued Qt signals."""
 from __future__ import annotations
 
@@ -194,84 +194,6 @@ class Library(QObject):
                                                           "progress": float(ev.get("progress") or 0)}):
                 return
         self.refresh()
-
-
-# ------------------------------------------------------------------ one recording (read-only in Etappe 1)
-
-class Detail(QObject):
-    changed = Signal()
-    _job = Signal(object)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._job.connect(self._apply_job, Qt.QueuedConnection)
-        jobs.subscribe(self._job.emit)
-        self._reload = QTimer(self, singleShot=True, interval=400)
-        self._reload.timeout.connect(lambda: self.load(self.rid) if self.rid else None)
-        self._rec: dict = {}
-        self._lines = ListModel(["time", "name", "color", "text"], self)
-        self._speakers: list[dict] = []
-        self._summaries: list[dict] = []
-
-    @Slot(str)
-    def load(self, rid: str) -> None:
-        rec = db.get_recording(rid) or {}
-        self._rec = rec
-        speakers = {s["id"]: s for s in db.list_speakers(rid)} if rec else {}
-        segs = db.list_segments(rid) if rec else []
-        talk: dict = {}
-        for s in segs:
-            talk[s["speaker_id"]] = talk.get(s["speaker_id"], 0) + (s["end"] - s["start"])
-        total = sum(talk.values()) or 1
-        self._speakers = [{"name": sp["name"], "color": sp["color"], "share": round(talk.get(sid, 0) / total, 3)}
-                          for sid, sp in speakers.items()]
-        self._speakers.sort(key=lambda x: -x["share"])
-        self._lines.set_items([{"time": fmt_dur(s["start"]), "name": speakers.get(s["speaker_id"], {}).get("name", ""),
-                                "color": speakers.get(s["speaker_id"], {}).get("color", "#8A877F"), "text": s["text"]}
-                               for s in segs])
-        self._summaries = [{"title": x["title"], "content": x["content"]} for x in (db.list_summaries(rid) if rec else [])
-                           if x.get("template_id") != "mindmap"]
-        self.changed.emit()
-
-    @Slot(object)
-    def _apply_job(self, ev: dict) -> None:
-        """The open recording is being processed or summarized: show the new state (at most every 0.4 s)."""
-        if ev.get("id") and ev.get("id") == self.rid and not self._reload.isActive():
-            self._reload.start()
-
-    @Property(str, notify=changed)
-    def rid(self):
-        return self._rec.get("id", "")
-
-    @Property(str, notify=changed)
-    def title(self):
-        return self._rec.get("title", "")
-
-    @Property(str, notify=changed)
-    def meta(self):
-        r = self._rec
-        if not r:
-            return ""
-        bits = [fmt_date(r.get("created_at")), fmt_dur(r.get("duration"))]
-        if r.get("status") in ("queued", "processing"):
-            bits.append(f"{r.get('stage') or 'wird verarbeitet'} {round(float(r.get('progress') or 0) * 100)} %")
-        return " · ".join(b for b in bits if b)
-
-    @Property(str, notify=changed)
-    def status(self):
-        return self._rec.get("status", "")
-
-    @Property("QVariantList", notify=changed)
-    def speakers(self):
-        return self._speakers
-
-    @Property("QVariantList", notify=changed)
-    def summaries(self):
-        return self._summaries
-
-    @Property(QObject, constant=True)
-    def lines(self):
-        return self._lines
 
 
 # ------------------------------------------------------------------ people (for "Wer ist dabei?")
@@ -839,6 +761,58 @@ class AppState(QObject):
         threading.Thread(target=go, daemon=True, name="update").start()
         self.toast.emit("Update wird geladen – REKORD startet danach neu.")
         QTimer.singleShot(300, self.refresh)
+
+    @Slot(str, result=str)
+    def tip(self, key: str) -> str:
+        from . import texts
+        return texts.tips().get(key, "")
+
+    @Slot(str, result=str)
+    def markdown(self, src: str) -> str:
+        from . import md
+        return md.render(src)
+
+    @Slot(str, int, result=str)
+    def toggleTask(self, src: str, line: int) -> str:  # noqa: N802 - QML API
+        from . import md
+        return md.toggle_task(src, line)
+
+    @Slot(str, result="QVariantMap")
+    def mindmap(self, src: str) -> dict:
+        from . import md
+        return md.mindmap(src)
+
+    @Slot(str, str, str, str, str, result=bool)
+    def saveMindmapSvg(self, src: str, url: str, fg: str, fg2: str, bg: str) -> bool:  # noqa: N802 - QML API
+        from . import md
+        try:
+            Path(QUrl(url).toLocalFile() if "://" in url else url).write_text(md.mindmap_svg(src, fg, fg2, bg), "utf-8")
+            return True
+        except OSError as e:
+            self.toast.emit(f"Speichern fehlgeschlagen: {e}")
+            return False
+
+    @Slot(str, int, str, result=str)
+    def readingText(self, name: str, variant: int, lang: str) -> str:  # noqa: N802 - QML API
+        from . import texts
+        return texts.reading_text(name, variant, lang)
+
+    @Slot(str, str, result=str)
+    def talkIdea(self, lang: str, previous: str) -> str:  # noqa: N802 - QML API
+        from . import texts
+        return texts.talk_idea(lang, previous)
+
+    @Slot(str, result=str)
+    def localPath(self, url: str) -> str:  # noqa: N802 - QML API
+        return QUrl(url).toLocalFile() if "://" in url else url
+
+    @Slot(str, result=str)
+    def fileUrl(self, path: str) -> str:  # noqa: N802 - QML API
+        return QUrl.fromLocalFile(path).toString() if path else ""
+
+    @Slot(str, result=str)
+    def safeName(self, title: str) -> str:  # noqa: N802 - QML API
+        return "".join(c for c in title if c.isalnum() or c in " -_.").strip() or "REKORD"
 
     @Slot()
     def quit(self) -> None:

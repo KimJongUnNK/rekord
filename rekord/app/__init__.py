@@ -89,6 +89,7 @@ def build(port: int, keep_running: bool | None = None) -> Window | None:
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuick import QQuickWindow  # noqa: F401 - the root object then is a QQuickWindow (grabWindow)
 
+    from . import api as api_mod
     from . import bridge
 
     app = QGuiApplication.instance() or QGuiApplication(sys.argv[:1])
@@ -105,8 +106,8 @@ def build(port: int, keep_running: bool | None = None) -> Window | None:
     engine = QQmlApplicationEngine(app)  # first: it's also torn down first, before the objects its pages show
     engine.warnings.connect(lambda ws: warnings.extend(w.toString() for w in ws))
     state = bridge.AppState(port, keep_running=_keep_running() if keep_running is None else keep_running)
-    objects = {"rekord": state, "library": bridge.Library(), "detail": bridge.Detail(), "people": bridge.People(),
-               "live": bridge.Live()}
+    objects = {"rekord": state, "library": bridge.Library(), "people": bridge.People(), "live": bridge.Live(),
+               "api": api_mod.Api(port), "player": api_mod.Player()}
     for o in objects.values():
         o.setParent(app)
     for name, obj in objects.items():
