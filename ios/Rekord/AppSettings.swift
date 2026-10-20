@@ -20,7 +20,8 @@ final class AppSettings: ObservableObject {
     @AppStorage("hapticOnSpeaker") var hapticOnSpeaker: Bool = true { willSet { objectWillChange.send() } }
     @AppStorage("participantsCSV") var participantsCSV: String = "" { willSet { objectWillChange.send() } }
     @AppStorage("guests") var guests: Int = 0 { willSet { objectWillChange.send() } }
-    @AppStorage("whoTotal") var whoTotal: Int = 0 { willSet { objectWillChange.send() } }  // "Wer ist dabei?": people talking
+    @AppStorage("whoTotal") var whoTotal: Int = 0 { willSet { objectWillChange.send() } }
+    @AppStorage("lecture") var lecture: Bool = false { willSet { objectWillChange.send() } }  // „Vorlesung“: no headcount, audience collected  // "Wer ist dabei?": people talking
     @Published var selectedTab: Tab = .live
 
     static let accents: [(String, String)] = [("#FF5A1F", "Voltage"), ("#2D7FF9", "Electric"), ("#C6F432", "Acid"), ("#E11D74", "Magenta"),

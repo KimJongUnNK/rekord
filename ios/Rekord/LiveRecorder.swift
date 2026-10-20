@@ -173,7 +173,8 @@ final class LiveRecorder: ObservableObject {
         task.resume()
         let settings = AppSettings.shared
         let start: [String: Any] = ["type": "start", "sample_rate": 16000, "title": title, "source": "ios",
-                                    "participants": settings.participants, "guests": settings.guests]
+                                    "participants": settings.participants, "guests": settings.lecture ? 0 : settings.guests,
+                                    "meeting": settings.lecture ? "lecture" : "person"]
         sendJSON(start)
         receive()
     }

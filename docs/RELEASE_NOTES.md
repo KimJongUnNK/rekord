@@ -12,12 +12,18 @@
 | `REKORD-<ver>-Linux-x86_64.tar.gz` | Linux ohne root: entpacken, `./install.sh` |
 | `PKGBUILD` | Arch/AUR (`rekord-bin`): `makepkg -si` |
 | `install.sh` / `install.ps1` | Installation in einer Zeile (siehe oben) |
-| `REKORD-iOS-unsigned.ipa` | iPhone – per [Sideloadly](https://sideloadly.io) oder AltStore mit deiner Apple-ID installieren |
+| `REKORD-iOS-unsigned.ipa` | iPhone-App – mit Xcode, [Sideloadly](https://sideloadly.io) oder AltStore und deiner Apple-ID installieren |
 
 **Am schnellsten:** Mac/Linux `curl -fsSL https://github.com/KimJongUnNK/rekord/releases/latest/download/install.sh | sh` · Windows (PowerShell) `irm https://github.com/KimJongUnNK/rekord/releases/latest/download/install.ps1 | iex`
 
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
+
+### Neu in 1.0.9 – Uni-Modus, Stimmen frei lernen, einfache Kopplung
+- **Stimme lernen – drei Wege:** **Text vorlesen** (wie bisher), **Einfach reden lassen** (die Person redet über irgendwas – oder du lässt jemanden reden, der sowieso spricht, z. B. den Prof; kurze Zwischenrufe anderer lässt REKORD weg) oder **Aus Aufnahme lernen** (Stimme aus einer fertigen Aufnahme anhören und auswählen). Gezählt werden nur Sekunden, in denen wirklich gesprochen wird. Überall: Einführung, Personen, „Wer ist dabei?“, iPhone-App.
+- **Vorlesung** als dritte Meeting-Art (Computer und iPhone): Mitzählen entfällt. REKORD erkennt die vortragende Person (bekannt mit Namen, sonst „Vortragende Person“) und sammelt alle anderen unter „Publikum“. Danach automatisch ein **Lernzettel**: Kernaussagen, Definitionen, Prüfungsrelevantes, Fragen aus dem Hörsaal, Prüfungsfragen.
+- **Koppeln mit 6 Ziffern** (z. B. `482 913`) statt langem Code: gilt 10 Minuten, das iPhone bekommt dabei einen eigenen Schlüssel. 5 falsche Versuche → 1 Minute Pause. Geräte einzeln trennen oder **Alle Geräte trennen**. Der QR-Code geht weiter.
+- **iPhone nur noch als App:** Die Web-Version fürs Handy (Browser, Zertifikat, Einrichtungsseite) ist raus. Im WLAN spricht nur die gekoppelte iPhone-App mit REKORD – die Oberfläche gibt es nur am Computer. Dadurch auch kein zweiter Port (8766) mehr.
 
 ### Neu in 1.0.8 – Online-Meetings und echte Updates
 - **Vor Ort oder Online:** Vor jeder Aufnahme fragt *„Wer ist dabei?“* auch, wo das Meeting stattfindet. **Online** (Teams, Zoom, Meet …) nimmt am Computer zusätzlich den **Ton des Calls** auf – also die Stimmen der anderen, direkt aus dem Lautsprecher-Signal, auch wenn Teams oder Zoom als App läuft und du Kopfhörer trägst. Nur Ton, kein Bild. Windows und Linux ohne Rückfrage; am Mac fragt macOS einmal nach *Bildschirm- & Systemaudioaufnahme* (macOS 13+). Klappt der Call-Ton nicht, läuft die Aufnahme mit dem Mikrofon weiter und REKORD sagt warum.

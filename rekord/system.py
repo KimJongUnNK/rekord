@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-PORTS = (8765, 8766)  # http (desktop, iPhone app) + https (phone browser)
+PORTS = (8765,)  # the iPhone app talks to REKORD on this port
 
 
 def frozen() -> bool:

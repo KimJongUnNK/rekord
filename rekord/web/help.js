@@ -10,7 +10,8 @@ const TIPS = {
   // ---------------------------------------------------------------- Audio
   mic: "Welches Mikrofon dieses Gerät für Aufnahmen nutzt. <b>Systemstandard</b> ist das, was im Betriebssystem eingestellt ist. Die Namen der Mikrofone erscheinen erst, wenn du den Mikrofon-Zugriff einmal erlaubt hast.",
   mictest: "Zeigt live, wie laut das Mikrofon dich hört. Beim normalen Sprechen sollte der Balken etwa bis zur Mitte gehen. Bleibt er leer: anderes Mikrofon wählen oder den Zugriff erlauben.",
-  meeting: "<b>Vor Ort</b>: alle sitzen im Raum, das Mikrofon reicht. <b>Online</b>: Teams, Zoom, Meet … – REKORD nimmt zusätzlich den Ton des Calls direkt am Computer auf, also die Stimmen der anderen. Das geht auch, wenn der Call in der Teams- oder Zoom-App läuft. Nur Ton, kein Bild. Am Mac fragt macOS beim ersten Mal nach „Bildschirm- & Systemaudioaufnahme“ – das ist für den Ton nötig. Mit Kopfhörern ist der Ton am saubersten.",
+  meeting: "<b>Vor Ort</b>: alle sitzen im Raum, das Mikrofon reicht. <b>Online</b>: Teams, Zoom, Meet … – REKORD nimmt zusätzlich den Ton des Calls direkt am Computer auf, also die Stimmen der anderen. Das geht auch, wenn der Call in der Teams- oder Zoom-App läuft. Nur Ton, kein Bild. Am Mac fragt macOS beim ersten Mal nach „Bildschirm- & Systemaudioaufnahme“ – das ist für den Ton nötig. Mit Kopfhörern ist der Ton am saubersten. <b>Vorlesung</b>: eine Person trägt vor (z. B. an der Uni), Fragen aus dem Hörsaal werden als „Publikum“ gesammelt – ohne Mitzählen.",
+  lecture: "REKORD erkennt die vortragende Person an der Stimme – ist sie schon bekannt, steht ihr Name da, sonst „Vortragende Person“ (danach mit „Wer ist das?“ benennen). Alle anderen Stimmen landen gesammelt unter „Publikum“. Das Protokoll wird automatisch ein Lernzettel: Kernaussagen, Definitionen, Prüfungsrelevantes, Fragen aus dem Hörsaal.",
   processing: "Filter, die das Gerät auf das Mikrofon anwendet, bevor REKORD es hört. Für Besprechungen im Raum meist alles an lassen.",
   noiseSuppression: "Filtert gleichmäßige Geräusche wie Lüfter, Klimaanlage oder Straßenlärm heraus. Bei Musik oder sehr leisen Stimmen eher aus.",
   echoCancellation: "Entfernt den Ton deiner eigenen Lautsprecher aus dem Mikrofon – wichtig, wenn ein Call laut über Boxen läuft. Mit Kopfhörern unnötig.",
@@ -45,10 +46,11 @@ const TIPS = {
   // ---------------------------------------------------------------- Modelle
   models: "Die Programme, mit denen REKORD hört – alle laufen auf diesem Computer. <b>Spracherkennung</b> schreibt den Text, <b>Sprecherwechsel</b> merkt, wann jemand anderes redet, <b>Stimmabdruck</b> erkennt Personen wieder, <b>Sprach-Erkennung</b> trennt Sprechen von Stille. Fehlende lädt REKORD beim Start selbst.",
   // ---------------------------------------------------------------- iPhone & Geräte
-  qr: "<b>Links</b>: für die REKORD-App auf dem iPhone (Sperrbildschirm-Widget, Aufnahme bei gesperrtem Bildschirm). <b>Rechts</b>: für jedes Handy im Browser – die Seite richtet alles in 2 Minuten ein, danach nimmst du auch dort auf.",
+  qr: "Für die REKORD-App am iPhone (Aufnahme auch bei gesperrtem Bildschirm, Sperrbildschirm-Widget). Eine Web-Version fürs Handy gibt es nicht – im WLAN spricht nur die App mit REKORD.",
   address: "Unter dieser Adresse ist REKORD im WLAN erreichbar. Handy und Computer müssen im selben WLAN sein – Gäste-WLANs trennen Geräte voneinander.",
-  paircode: "Ein geheimer Code, damit nur deine Geräte auf REKORD zugreifen. Er steckt im QR-Code. <b>Neu erzeugen</b> sperrt alle bisher gekoppelten Geräte aus – z. B. wenn ein Handy verloren ging.",
-  firewall: "Die Firewall dieses Linux-Computers blockiert Verbindungen vom iPhone. Der Knopf gibt genau die beiden REKORD-Ports frei (8765 und 8766) und fragt dafür nach deinem Passwort.",
+  paircode: "6 Ziffern zum Eintippen am Handy – statt QR-Code. Der Code gilt 10 Minuten und nur zum Koppeln: Das Handy bekommt dabei einen eigenen, langen Schlüssel. Nach 5 falschen Versuchen ist 1 Minute Pause. <b>Neuer Code</b> macht sofort einen neuen.",
+  devices: "Alle Handys und Geräte, die mit dem Code gekoppelt wurden. <b>Trennen</b> sperrt ein einzelnes Gerät aus (z. B. ein altes Handy). <b>Alle Geräte trennen</b> sperrt alle aus – auch die per QR-Code gekoppelten.",
+  firewall: "Die Firewall dieses Linux-Computers blockiert Verbindungen vom iPhone. Der Knopf gibt genau den REKORD-Port frei (8765) und fragt dafür nach deinem Passwort.",
   // ---------------------------------------------------------------- Claude
   claudedesktop: "Verbindet die Claude-App mit deiner REKORD-Bibliothek (über MCP, einen offenen Standard). Claude kann dann deine Transkripte durchsuchen und lesen und Zusammenfassungen zurückspeichern – mit deinem normalen Claude-Abo, ohne API-Key. Danach Claude einmal neu starten.",
   claudecode: "Dasselbe für Claude Code, die Terminal-Version von Claude. Nur nötig, wenn du Claude Code nutzt.",
@@ -69,7 +71,8 @@ const TIPS = {
   total: "Alle, die in diesem Meeting reden – dich mitgezählt.",
   known: "Leute, deren Stimme REKORD schon kennt. Antippen, wer dabei ist. Alle anderen zählen als neu.",
   newpeople: "Stimmen, die REKORD noch nicht kennt. Sie landen gesammelt unter „Nicht erkannte Stimme“ – transkribiert wird trotzdem alles. Am besten jetzt kurz einsprechen lassen (jede Person bekommt ihren eigenen Text), sonst nach der Aufnahme bei „Wer ist das?“ benennen – ab dann werden sie automatisch erkannt.",
-  intro: "Jede neue Person spricht 10–15 Sekunden (Name, Rolle, irgendwas). Danach erkennt REKORD sie mit Namen – in diesem und in allen künftigen Meetings.",
+  intro: "Jede neue Person spricht ca. 45 Sekunden – Text vorlesen oder einfach reden. Danach erkennt REKORD sie mit Namen, in diesem und in allen künftigen Meetings.",
+  enrollmode: "<b>Text vorlesen</b>: Die Person liest ihren eigenen Text – am genauesten. <b>Einfach reden lassen</b>: Die Person redet über irgendwas, oder du lässt jemanden reden, der sowieso spricht (z. B. den Prof in der Vorlesung) – kurze Zwischenrufe anderer lässt REKORD weg. <b>Aus Aufnahme lernen</b>: Die Stimme aus einer fertigen Aufnahme nehmen. Gezählt werden nur Sekunden, in denen wirklich gesprochen wird.",
   room: "Alle Stimmen dieser Aufnahme mit ihrem Redeanteil. Eine unbekannte Stimme antippen und Namen eingeben – ab sofort wird sie erkannt.",
   remember: "Speichert den Stimmabdruck dieser Person. In künftigen Aufnahmen erkennt REKORD sie automatisch mit Namen. Jede Bestätigung macht die Erkennung besser.",
   naming: "Hier stehen Stimmen, die REKORD noch nicht kennt. Anhören, Namen eingeben, <b>Merken</b> – ab der nächsten Aufnahme werden sie automatisch erkannt. Hat sich jemand vorgestellt („Hier ist Emil“), schlägt REKORD den Namen vor.",

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 import io
 import json
 import logging
@@ -190,7 +189,8 @@ def _is_local(host: str | None) -> bool:
 
 
 def _token_ok(req_token: str | None) -> bool:
-    return bool(req_token) and hmac.compare_digest(req_token.encode(), config.load()["pair_token"].encode())
+    from . import pairing
+    return pairing.token_ok(req_token)
 
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -207,25 +207,25 @@ def _color(value):
 
 @app.middleware("http")
 async def auth(request: Request, call_next):
+    """This computer: everything. In the Wi-Fi: only the iPhone app (its key) – and only the API, never the
+    interface: on the phone REKORD is the app, not a web page."""
     host = request.client.host if request.client else None
+    if _is_local(host):
+        return await call_next(request)
     path = request.url.path
-    open_paths = (path in ("/manifest.webmanifest", "/sw.js", "/pair", "/rekord.mobileconfig", "/rekord-ca.crt")
-                  or path.startswith("/static/") or path.startswith("/icons/"))
-    tok = request.headers.get("x-rekord-token") or request.query_params.get("token") or request.cookies.get("rekord_token")
-    if not _is_local(host) and not open_paths and not _token_ok(tok):
-        if path == "/" or not path.startswith("/api"):
-            return FileResponse(WEB / "pair.html")
-        return JSONResponse({"detail": "Pairing-Token fehlt"}, status_code=401)
-    resp = await call_next(request)
-    if request.query_params.get("token") and _token_ok(request.query_params.get("token")):
-        resp.set_cookie("rekord_token", request.query_params["token"], max_age=3600 * 24 * 365, httponly=True, samesite="lax")
-    return resp
+    if path == "/api/pair/claim":  # the app trades the 6-digit code for its key
+        return await call_next(request)
+    if not (path.startswith("/api/") or path.startswith("/ws/")):
+        return FileResponse(WEB / "pair.html", status_code=403)
+    tok = request.headers.get("x-rekord-token") or request.query_params.get("token")
+    if not _token_ok(tok):
+        return JSONResponse({"detail": "Nicht gekoppelt – in der REKORD-App mit dem Code vom Computer koppeln"}, status_code=401)
+    return await call_next(request)
 
 
 def _ws_ok(ws: WebSocket) -> bool:
     host = ws.client.host if ws.client else None
-    return _is_local(host) or _token_ok(ws.query_params.get("token") or ws.headers.get("x-rekord-token")
-                                        or ws.cookies.get("rekord_token"))
+    return _is_local(host) or _token_ok(ws.query_params.get("token") or ws.headers.get("x-rekord-token"))
 
 
 # ------------------------------------------------------------------ static / PWA
@@ -239,64 +239,8 @@ def index():
 
 
 @app.get("/manifest.webmanifest")
-def manifest(request: Request):
-    """Home-screen apps on iOS start without Safari's storage: carry the pairing token in the start URL."""
-    m = json.loads((WEB / "manifest.webmanifest").read_text("utf-8"))
-    tok = request.cookies.get("rekord_token")
-    if not _is_local(request.client.host if request.client else None) and _token_ok(tok):
-        m["start_url"] = f"/?token={tok}"
-    return JSONResponse(m, media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
-
-
-# ------------------------------------------------------------------ HTTPS for phone browsers (see tls.py)
-
-def _refresh_tls() -> None:
-    """New Wi-Fi / new IP → re-issue the server certificate and hot-swap it (new connections use it)."""
-    cfg = getattr(app.state, "https_config", None)
-    if cfg is None:
-        return
-    from . import tls
-    ips = lan_ips()
-    if tls.needs_renewal(ips):
-        crt, key = tls.ensure(ips)
-        if getattr(cfg, "ssl", None) is not None:
-            cfg.ssl.load_cert_chain(crt, key)
-
-
-def _https_url(request: Request, path: str = "/") -> str:
-    port = getattr(app.state, "https_port", None)
-    if not port:
-        return ""
-    host = request.url.hostname or "localhost"
-    host = f"[{host}]" if ":" in host else host
-    return f"https://{host}:{port}{path}"
-
-
-@app.get("/rekord.mobileconfig")
-def mobileconfig():
-    from . import tls
-    return Response(tls.mobileconfig(), media_type="application/x-apple-aspen-config",
-                    headers={"Content-Disposition": 'attachment; filename="REKORD.mobileconfig"'})
-
-
-@app.get("/rekord-ca.crt")
-def ca_cert():
-    from . import tls
-    return Response(tls.ca_pem(), media_type="application/x-x509-ca-cert",
-                    headers={"Content-Disposition": 'attachment; filename="REKORD-Heimnetz.crt"'})
-
-
-@app.get("/setup")
-def phone_setup(request: Request):
-    """Guided phone setup: install the certificate, then continue on HTTPS (microphone in the browser)."""
-    _refresh_tls()
-    tok = config.load()["pair_token"]
-    url = _https_url(request)
-    html = (WEB / "setup.html").read_text("utf-8")
-    js = lambda v: json.dumps(v).replace("</", "<\\/")  # noqa: E731 - safe inside <script>
-    html = html.replace("{{HTTPS_URL}}", js(f"{url}?token={tok}" if url else "")).replace(
-        "{{CHECK_URL}}", js(_https_url(request, "/icons/icon-192.png")))
-    return Response(html, media_type="text/html; charset=utf-8", headers={"Cache-Control": "no-store"})
+def manifest():
+    return FileResponse(WEB / "manifest.webmanifest", media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/sw.js")
@@ -352,7 +296,6 @@ def status():
         "home": str(config.HOME),
         "inbox": str(config.INBOX_DIR),
         "python": sys.executable,
-        "https_port": getattr(app.state, "https_port", None),
         "capture": _capture_caps(),
         "window": _desktop_window(),
         "exe": sys.executable if getattr(sys, "frozen", False) else "",
@@ -396,6 +339,7 @@ def get_settings():
 async def put_settings(request: Request):
     patch = await request.json()
     patch.pop("pair_token", None)
+    patch.pop("devices", None)
     for p in ("anthropic", "openai", "compatible"):
         k = patch.get("llm", {}).get(p, {})
         if isinstance(k.get("api_key"), str) and k["api_key"].startswith("••••"):
@@ -458,9 +402,40 @@ def update_install(request: Request):
 
 
 @app.post("/api/settings/rotate-token")
-def rotate_token():
-    import secrets
-    config.save({"pair_token": secrets.token_urlsafe(18)})
+def rotate_token(request: Request):
+    """„Alle Geräte trennen“: every paired device has to pair again."""
+    from . import pairing
+    _local_only(request)
+    pairing.disconnect_all()
+    return {"ok": True}
+
+
+@app.post("/api/pair/claim")
+async def pair_claim(request: Request):
+    """A device enters the 6-digit code → it gets its own key (open endpoint, rate limited)."""
+    from . import pairing
+    b = await request.json()
+    try:
+        token = pairing.claim(str(b.get("code", "")), request.client.host if request.client else "?",
+                              b.get("name") or pairing.device_name(request.headers.get("user-agent", "")))
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
+    return {"token": token}
+
+
+@app.post("/api/pair/code")
+def pair_new_code(request: Request):
+    from . import pairing
+    _local_only(request)
+    return pairing.new_code()
+
+
+@app.delete("/api/pair/devices/{device_id}")
+def pair_remove(device_id: str, request: Request):
+    from . import pairing
+    _local_only(request)
+    if not pairing.remove(device_id):
+        raise HTTPException(404)
     return {"ok": True}
 
 
@@ -711,30 +686,20 @@ async def storage_missing(request: Request):
 
 @app.get("/api/pair")
 def pair(request: Request):
+    """For "iPhone & Geräte": the QR code for the iPhone app, the 6-digit code, the paired devices."""
     import qrcode
     import qrcode.image.svg
+
+    from . import pairing
     s = config.load()
-    scheme = request.url.scheme
-    port = request.url.port or (443 if scheme == "https" else 80)
-    urls = [f"{scheme}://{ip}:{port}" for ip in lan_ips()]
-    payload = json.dumps({"rekord": 1, "urls": urls, "token": s["pair_token"]})
-    img = qrcode.make(payload, image_factory=qrcode.image.svg.SvgPathImage, box_size=8)
+    port = getattr(app.state, "port", None) or request.url.port or 8765
+    urls = [f"http://{ip}:{port}" for ip in lan_ips()]
+    img = qrcode.make(json.dumps({"rekord": 1, "urls": urls, "token": s["pair_token"]}),
+                      image_factory=qrcode.image.svg.SvgPathImage, box_size=8)
     buf = io.BytesIO()
     img.save(buf)
-    _refresh_tls()
-    ips, hub_port, https_port = lan_ips(), getattr(app.state, "port", port), getattr(app.state, "https_port", None)
-    if not ips:
-        web_url = ""
-    elif https_port and https_port == hub_port:  # `rekord serve --https`: one HTTPS server, no setup page
-        web_url = f"https://{ips[0]}:{https_port}/?token={s['pair_token']}"
-    else:  # phone setup page over plain HTTP (no warning), it installs the certificate and continues on HTTPS
-        web_url = f"http://{ips[0]}:{hub_port}/setup?token={s['pair_token']}"
-    img2 = qrcode.make(web_url or "about:blank", image_factory=qrcode.image.svg.SvgPathImage, box_size=8)
-    buf2 = io.BytesIO()
-    img2.save(buf2)
-    return {"urls": urls, "token": s["pair_token"], "qr_app": buf.getvalue().decode(), "qr_web": buf2.getvalue().decode(),
-            "web_url": web_url, "lan": bool(getattr(app.state, "lan", False)),
-            "https": bool(getattr(app.state, "https_port", None))}
+    return {"urls": urls, "qr_app": buf.getvalue().decode(), "code": pairing.current_code(), "devices": pairing.devices(),
+            "lan": bool(getattr(app.state, "lan", False))}
 
 
 # ------------------------------------------------------------------ recordings
@@ -922,16 +887,39 @@ def delete_profile(pid: int):
 
 
 @app.post("/api/profiles/enroll")
-async def enroll(name: str = Form(...), file: UploadFile = File(...)):
+async def enroll(name: str = Form(...), file: UploadFile = File(...), mode: str = Form("read")):
+    """mode "read" = the person read their text, "free" = someone just talked (other voices in between are left out)."""
     ext = Path(file.filename or "a.webm").suffix or ".webm"
     tmp = config.HOME / f"enroll-{uuid.uuid4().hex[:6]}{ext}"
     tmp.write_bytes(await file.read())
     try:
-        prof = await asyncio.to_thread(pipeline.enroll_from_audio, name.strip(), str(tmp))
+        prof = await asyncio.to_thread(pipeline.enroll_from_audio, name.strip(), str(tmp), "free" if mode == "free" else "read")
     except ValueError as e:
         raise HTTPException(400, str(e))
     finally:
         tmp.unlink(missing_ok=True)
+    return prof
+
+
+@app.get("/api/recordings/{rid}/voices")
+def recording_voices(rid: str):
+    """Every voice of a recording – "Aus einer Aufnahme lernen" picks one of them."""
+    if db.get_recording(rid) is None:
+        raise HTTPException(404)
+    return {"items": pipeline.recording_voices(rid)}
+
+
+@app.post("/api/profiles/learn")
+async def learn_voice(request: Request):
+    """Learn a voice from a recording as a person: {recording_id, speaker_id, voice, name}."""
+    b = await request.json()
+    try:
+        prof = await asyncio.to_thread(pipeline.learn_voice, str(b["recording_id"]), int(b["speaker_id"]),
+                                       None if b.get("voice") is None else int(b["voice"]), str(b.get("name", "")))
+    except (KeyError, StopIteration) as e:
+        raise HTTPException(404, "Stimme nicht gefunden") from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
     return prof
 
 

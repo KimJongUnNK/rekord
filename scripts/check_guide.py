@@ -31,7 +31,7 @@ groups["Einstellungen: Bereiche"] = set(re.findall(r'\["\w+", "([^"]+)"\]', app.
 groups["Aufnahme: Reiter"] = set(re.findall(r'<button data-tab="\w+"[^>]*>([^<]+)</button>', app))
 groups["Aufnahme: … Menü"] = {m.split(" (")[0] for m in re.findall(r'<button class="btn(?: danger)?" value="(?:reprocess|reid|title|delete)">([^<]+)</button>', app)}
 groups["Einstellungen: Felder"] = {re.split(r"<span class=\"hint\">", m)[0] for m in re.findall(r'class="field"><(?:div class="lbl"|label[^>]*)>(.*?)</(?:div|label)>', app)}
-groups["Einstellungen: Auswahl"] = set(re.findall(r'\["(?:system|light|dark|comfortable|compact|mic|mic\+system)", "([^"]+)"[,\]]', app))
+groups["Einstellungen: Auswahl"] = set(re.findall(r'\["(?:system|light|dark|comfortable|compact|mic|mic\+system|lecture)", "([^"]+)"[,\]]', app))
 groups["KI-Anbieter"] = set(re.findall(r'\["(?:anthropic|openai|ollama|compatible|none)", "([^"]+)", "', app))
 groups["Live"] = {"Wer ist dabei?", "Gäste", "Vorstellungsrunde", "Im Raum", "Mitschrift", "Pause"} \
     | set(re.findall(r'<button data-m="[^"]+"[^>]*>([^<]+)</button>', app))
@@ -43,19 +43,16 @@ pc = app[app.index("const provCfg = () => {"):app.index('$$("#prov .prov")')]
 groups["KI: Felder je Anbieter"] = set(re.findall(r'<label for="\w+">([^<]+)<span', pc)) | set(re.findall(r'keyField\("([^"]+)"', pc)) \
     | set(re.findall(r'class="lbl">([^<]+)<', pc))
 
-groups["Erster Start"] = set(re.findall(r'data-ob="\w+"><b>([^<]+)</b>', app)) | set(re.findall(r'data-ob="none"[^>]*>([^<]+)<', app)) \
-    | set(re.findall(r'href="/setup">([^<]+)<', app))
-setup = (ROOT / "rekord/web/setup.html").read_text("utf-8")
-ios = re.sub(r'<p class="android.*?</p>', "", setup, flags=re.S)  # the guide describes the iPhone way
-groups["Handy-Einrichtung"] = set(re.findall(r'<h2>([^<]+)</h2>', ios)) | set(re.findall(r'class="path">([^<]+)<', ios)) \
-    | set(re.findall(r'<summary>([^<]+)</summary>', ios))
-
+groups["Erster Start"] = set(re.findall(r'data-ob="\w+"><b>([^<]+)</b>', app)) | set(re.findall(r'data-ob="none"[^>]*>([^<]+)<', app))
 welcome_js = (ROOT / "rekord/web/welcome.js").read_text("utf-8")
 groups["Einführung (erster Start)"] = set(re.findall(r'Schritt \$\{i \+ 1\} · ([^<]+)</div>', welcome_js)) | {"Erste Aufnahme", "Zur App", "Überspringen"}
 groups["Wer ist dabei? / Wer ist das?"] = {"Wie viele sprechen?", "Wer davon ist bekannt?", "Aufnahme starten", "Wer ist das?", "Merken",
                                           "Wer sagt das?", "Zuordnen", "Nicht erkannte Stimme", "Anderer Text", "Stimme speichern"} \
     | set(re.findall(r'data-v="[^"]+">([^<]+)</button>', re.search(r'id="w-meet".*?</div>', app, re.S)[0])) \
     | {"Wo findet das Meeting statt?"}
+groups["Einsprechen"] = set(re.findall(r'<button type="button" data-m="\w+">([^<]+)</button>', app.split("async function enrollDialog")[1])) \
+    | {"Anderer Text", "Gesprächsidee", "Stimme lernen", "Stimme speichern"}
+groups["Koppeln"] = {"Kopplungs-Code", "Neuer Code", "Gekoppelte Geräte", "Trennen", "Alle Geräte trennen", "QR-Code scannen"}
 groups["Speicherort"] = {"Speicherort", "KI-Modelle", "Laufwerk fehlt", "Nochmal prüfen", "Neu auf diesem Computer anfangen", "Umziehen"}
 
 missing = 0

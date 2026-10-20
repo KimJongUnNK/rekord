@@ -241,6 +241,17 @@ struct WhoSheet: View {
         NavigationStack {
             Form {
                 Section {
+                    Picker("Art", selection: $settings.lecture) {
+                        Text("Gespräch").tag(false)
+                        Text("Vorlesung").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                } footer: {
+                    if settings.lecture {
+                        Text("Eine Person trägt vor, Fragen aus dem Hörsaal sammelt REKORD unter „Publikum“. Mitzählen musst du nicht – Handy Richtung Vortrag legen.")
+                    }
+                }
+                if !settings.lecture { Section {
                     Stepper(value: $total, in: max(1, chosen.count)...30) {
                         HStack { Text("Wie viele sprechen?"); Spacer(); Text(total > 0 ? "\(total)" : "–").font(.title2.weight(.black)).monospacedDigit() }
                     }
@@ -250,9 +261,9 @@ struct WhoSheet: View {
                                 .buttonStyle(.bordered).tint(total == n ? .accentColor : .secondary)
                         } }
                     }
-                } footer: { Text("Dich mitgezählt. Damit weiß REKORD, wie viele Stimmen es trennen muss.") }
+                } footer: { Text("Dich mitgezählt. Damit weiß REKORD, wie viele Stimmen es trennen muss.") } }
                 if !people.isEmpty {
-                    Section("Wer davon ist bekannt?") {
+                    Section(settings.lecture ? "Vortragende Person schon bekannt?" : "Wer davon ist bekannt?") {
                         ForEach(people) { p in
                             Button {
                                 if chosen.contains(p.id) { chosen.remove(p.id) } else { chosen.insert(p.id); total = max(total, chosen.count) }
@@ -267,7 +278,7 @@ struct WhoSheet: View {
                         }
                     }
                 }
-                if total > 0 {
+                if total > 0 && !settings.lecture {
                     let fresh = total - chosen.count
                     Section {
                         Text(fresh == 0 ? "Geschlossene Runde: jede Stimme wird einer dieser Personen zugeordnet."
@@ -291,7 +302,7 @@ struct WhoSheet: View {
                         settings.guests = max(0, total - chosen.count)
                         settings.whoTotal = total
                         done(true)
-                    }.disabled(total == 0).fontWeight(.bold)
+                    }.disabled(total == 0 && !settings.lecture).fontWeight(.bold)
                 }
             }
             .sheet(isPresented: $enrolling) {

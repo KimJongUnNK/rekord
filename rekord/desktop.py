@@ -128,7 +128,7 @@ def _start_hub(host: str, port: int) -> None:
     from .__main__ import serve
     updater.remember_install()
     system.ensure_start_menu()
-    threading.Thread(target=serve, args=(host, port, False, False), daemon=True).start()
+    threading.Thread(target=serve, args=(host, port, False), daemon=True).start()
     _wait(port)
 
 

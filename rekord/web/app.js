@@ -12,7 +12,9 @@ const IS_LOCAL = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)
 const IS_MOBILE = /iPhone|iPad|Android/i.test(navigator.userAgent);
 const gbFmt = (n) => (n || 0).toLocaleString("de-AT", { maximumFractionDigits: 1 }) + " GB";
 const UNKNOWN = "Nicht erkannte Stimme", UNKNOWN_COLOR_JS = "#8A877F";  // all voices REKORD doesn't know – one entry, never "Sprecher 1, 2, 3"
-const initials = (n) => n === UNKNOWN ? "?" : (n || "?").replace(/^Sprecher\s*/, "S").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+const LECTURER = "Vortragende Person", AUDIENCE = "Publikum";  // „Vorlesung“: the main voice and everyone else
+const unnamed = (n) => n === UNKNOWN || n === LECTURER || n === AUDIENCE || /^Sprecher \d+$/.test(n || "");  // voices still to be named
+const initials = (n) => n === UNKNOWN || n === AUDIENCE ? "?" : (n || "?").replace(/^Sprecher\s*/, "S").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
 function fmtTime(t) {
   t = Math.max(0, Math.floor(t || 0));
@@ -463,15 +465,11 @@ async function listMics() {
 let liveSession = null; // survives navigation; recording keeps running in the background
 
 function viewLive() {
-  const secure = window.isSecureContext;
   view.innerHTML = `<div class="page">
     <div class="row"><span class="eyebrow">Live · Sprecher-Erkennung in Echtzeit</span><span class="spacer"></span>
-      <div class="seg" id="mode"><button data-m="mic" title="Alle sitzen im Raum – das Mikrofon reicht">Vor Ort</button><button data-m="mic+system" title="Teams, Zoom, Meet … – der Ton des Calls wird mit aufgenommen">Online</button></div>${tip("meeting")}</div>
+      <div class="seg" id="mode"><button data-m="mic" title="Alle sitzen im Raum – das Mikrofon reicht">Vor Ort</button><button data-m="mic+system" title="Teams, Zoom, Meet … – der Ton des Calls wird mit aufgenommen">Online</button><button data-m="lecture" title="Eine Person trägt vor, Fragen aus dem Hörsaal werden gesammelt">Vorlesung</button></div>${tip("meeting")}</div>
     <h1 class="big" style="margin-bottom:16px"><input id="title" class="det-title" style="background:none;border:0;width:100%;padding:0;font:inherit;letter-spacing:inherit"
       placeholder="Meeting ${new Date().toLocaleDateString("de-AT")}"></h1>
-    ${secure ? "" : `<div class="card" style="border-color:var(--accent);margin-bottom:14px"><b>Für Aufnahmen im Handy-Browser fehlt noch ein Schritt.</b>
-      <span class="muted">Browser geben das Mikrofon nur über eine sichere Verbindung frei. Einmal einrichten, dauert 1 Minute.</span>
-      <div style="margin-top:10px"><a class="btn primary" href="/setup">Jetzt einrichten</a></div></div>`}
     <div class="live">
       <section class="stage">
         <div class="stage-top"><span class="rec-pill" id="pill"><i></i>BEREIT</span><span class="spacer"></span><span class="timer" id="timer">00:00</span></div>
@@ -577,8 +575,7 @@ function callHint() {
   if (callNative()) return `<span style="color:#22C55E">✓</span> REKORD nimmt den Ton des Calls direkt am Computer auf – auch wenn Teams oder Zoom als App läuft. Mit Kopfhörern am saubersten.`
     + (/Mac/.test(navigator.platform) ? " Beim ersten Mal fragt macOS nach „Bildschirm- & Systemaudioaufnahme“ – erlauben." : "");
   if (callBrowser()) return "Beim Start fragt der Browser, was geteilt wird: den Tab mit dem Call wählen und <b>Audio teilen</b> anhaken.";
-  return IS_MOBILE ? "Am Handy: Handy neben den Lautsprecher des Computers legen – REKORD hört über das Mikrofon mit."
-    : esc((state.status && state.status.capture && state.status.capture.reason) || "Call-Ton geht hier nicht – nur Mikrofon.");
+  return esc((state.status && state.status.capture && state.status.capture.reason) || "Call-Ton geht hier nicht – nur Mikrofon.");
 }
 
 async function beginRecording(title) {
@@ -591,14 +588,15 @@ async function askParticipants() {
   try { people = (await api("/api/profiles")).items; } catch (e) {}
   const ids = new Set(prefs.participants.filter((id) => people.some((p) => p.id === id)));
   let total = prefs.whoTotal ? Math.max(prefs.whoTotal, ids.size) : 0;  // 0 = not answered yet
-  let meeting = prefs.inputMode === "mic+system" ? "mic+system" : "mic";
+  let meeting = prefs.inputMode === "mic+system" || prefs.inputMode === "lecture" ? prefs.inputMode : "mic";
+  const lecture = () => meeting === "lecture";
   for (;;) {
     const r = await dialog(`<h2>Wer ist dabei?${tip("who")}</h2>
       <div><b>Wo findet das Meeting statt?</b>${tip("meeting")}</div>
-      <div class="seg" id="w-meet" style="align-self:flex-start"><button type="button" data-v="mic">Vor Ort</button><button type="button" data-v="mic+system">Online (Teams, Zoom, Meet …)</button></div>
+      <div class="seg" id="w-meet" style="align-self:flex-start;flex-wrap:wrap"><button type="button" data-v="mic">Vor Ort</button><button type="button" data-v="mic+system">Online (Teams, Zoom, Meet …)</button><button type="button" data-v="lecture">Vorlesung</button></div>
       <div id="w-meet-hint" class="muted" style="font-size:13px;margin-top:-4px"></div>
-      <p class="muted" style="margin:0">Damit REKORD weiß, wie viele Stimmen es trennen muss – und wen es schon kennt.</p>
-      <div class="who-q"><div><b>Wie viele sprechen?</b>${tip("total")}<div class="muted" style="font-size:13px">dich mitgezählt</div></div>
+      <p class="muted" style="margin:0" id="w-why">Damit REKORD weiß, wie viele Stimmen es trennen muss – und wen es schon kennt.</p>
+      <div class="who-q" id="w-count"><div><b>Wie viele sprechen?</b>${tip("total")}<div class="muted" style="font-size:13px">dich mitgezählt</div></div>
         <div class="stepper"><button type="button" class="btn icon" id="w-minus" aria-label="weniger">−</button><b id="w-total">–</b>
         <button type="button" class="btn icon" id="w-plus" aria-label="mehr">+</button></div></div>
       <div class="row" id="w-quick" style="gap:6px">${[1, 2, 3, 4, 5, 6, 8].map((n) => `<button type="button" class="btn sm" data-n="${n}">${n}</button>`).join("")}</div>
@@ -610,7 +608,10 @@ async function askParticipants() {
     (b) => {
       const draw = () => {
         $$("#w-meet button", b).forEach((x) => x.classList.toggle("on", x.dataset.v === meeting));
-        $("#w-meet-hint", b).innerHTML = meeting === "mic" ? "Alle im Raum – das Mikrofon reicht." : callHint();
+        $("#w-meet-hint", b).innerHTML = meeting === "mic" ? "Alle im Raum – das Mikrofon reicht."
+          : lecture() ? `Eine Person trägt vor, Fragen aus dem Hörsaal sammelt REKORD unter „Publikum“. Mitzählen musst du nicht. Mikro Richtung Vortrag.${tip("lecture")}` : callHint();
+        $("#w-count", b).style.display = $("#w-quick", b).style.display = lecture() ? "none" : "";
+        $("#w-why", b).textContent = lecture() ? "Ist die vortragende Person schon bekannt? Dann antippen – sonst einfach starten." : "Damit REKORD weiß, wie viele Stimmen es trennen muss – und wen es schon kennt.";
         $("#w-total", b).textContent = total || "–";
         $$("#w-quick [data-n]", b).forEach((x) => x.classList.toggle("primary", Number(x.dataset.n) === total));
         $$("#w-ppl [data-id]", b).forEach((x) => {
@@ -619,12 +620,13 @@ async function askParticipants() {
         });
         const fresh = total - ids.size;
         const names = people.filter((p) => ids.has(p.id)).map((p) => esc(p.name));
-        $("#w-sum", b).innerHTML = !total ? `<span style="color:var(--accent)">Wähle oben, wie viele ihr seid.</span>`
+        $("#w-sum", b).innerHTML = lecture() ? (names.length ? `<b>Vortrag</b>: ${names.join(", ")} · alle anderen: Publikum` : `<b>Vortrag</b>: wird an der Stimme erkannt · alle anderen: Publikum`)
+          : !total ? `<span style="color:var(--accent)">Wähle oben, wie viele ihr seid.</span>`
           : `<b>${total} ${total === 1 ? "Person" : "Personen"}</b>: ${[names.join(", "), fresh ? `${fresh} neu${tip("newpeople")}` : ""].filter(Boolean).join(" + ")}
              ${fresh ? `<div class="muted" style="font-size:13px;margin-top:4px">Neue Stimmen landen unter „${UNKNOWN}“. Besser: jetzt kurz einsprechen lassen – dann erkennt REKORD sie mit Namen.</div>
              <button type="button" class="btn sm" id="w-intro" style="margin-top:8px">🎙 ${fresh === 1 ? "Neue Person" : `${fresh} neue Personen`} jetzt einsprechen</button>${tip("intro")}`
              : `<div class="muted" style="font-size:13px;margin-top:4px">Geschlossene Runde: jede Stimme wird einer dieser Personen zugeordnet.</div>`}`;
-        $("#w-ok", b).disabled = !total;
+        $("#w-ok", b).disabled = !total && !lecture();
         const intro = $("#w-intro", b);
         if (intro) intro.onclick = () => { b.closest("dialog").close("intro"); };
       };
@@ -637,7 +639,7 @@ async function askParticipants() {
         if (ids.has(pid)) ids.delete(pid); else { ids.add(pid); total = Math.max(total, ids.size); }
         draw();
       });
-      b.addEventListener("keydown", (e) => { if (e.key === "Enter" && total) { e.preventDefault(); b.closest("dialog").close("ok"); } });
+      b.addEventListener("keydown", (e) => { if (e.key === "Enter" && (total || lecture())) { e.preventDefault(); b.closest("dialog").close("ok"); } });
       draw();
     });
     if (r === "intro") {  // each new person reads their own text, then counts as known
@@ -650,11 +652,13 @@ async function askParticipants() {
       }
       continue;
     }
-    if (r !== "ok" || !total) return false;
+    if (r !== "ok" || (!total && !lecture())) return false;
     setPref("participants", [...ids]);
     setPref("inputMode", meeting);
-    setPref("guests", Math.max(0, total - ids.size));
-    setPref("whoTotal", total);
+    if (!lecture()) {
+      setPref("guests", Math.max(0, total - ids.size));
+      setPref("whoTotal", total);
+    }
     return true;
   }
 }
@@ -708,7 +712,7 @@ async function startLive(title) {
   s.ws = new WebSocket(wsUrl("/ws/live"));
   s.ws.binaryType = "arraybuffer";
   s.ws.onopen = () => s.ws.send(JSON.stringify({ type: "start", sample_rate: 16000, title: s.title, participants: s.participants, guests: s.guests,
-    meeting: s.online ? "online" : "person", call_audio: !!s.native }));
+    meeting: s.online ? "online" : prefs.inputMode === "lecture" ? "lecture" : "person", call_audio: !!s.native }));
   s.ws.onerror = () => { if (!s.started) { toast("Hub nicht erreichbar – nehme offline auf."); goOffline(); } };
   setTimeout(() => {  // hub too slow to answer: keep recording, evaluate afterwards
     if (liveSession === s && !s.started && !s.offline && !s.stopping) { toast("Live-Erkennung startet nicht – nehme trotzdem auf, Auswertung danach.", 5000); goOffline(); try { s.ws.close(); } catch (e) {} }
@@ -763,7 +767,8 @@ async function stopLive() {
     fd.append("title", s.title);
     fd.append("source", "record");
     fd.append("highlights", JSON.stringify(s.highlights));
-    if (s.participants.length) fd.append("participants", JSON.stringify({ ids: s.participants, guests: s.guests }));
+    if (s.participants.length || prefs.inputMode === "lecture") fd.append("participants", JSON.stringify({ ids: s.participants, guests: s.guests,
+      meeting: prefs.inputMode === "lecture" ? "lecture" : s.online ? "online" : "person" }));
     try { const r = await api("/api/recordings", { method: "POST", body: fd }); s.savedId = r.items[0].id; }
     catch (e) { downloadBlob(wav, `${s.title}.wav`); toast("Hub nicht erreichbar – WAV wurde heruntergeladen.", 6000); }
   } else if (s.ws && s.ws.readyState === 1) {
@@ -893,7 +898,7 @@ async function viewDetail(id) {
   };
   async function renderNaming() {
     const box = $("#naming"); if (!box) return;
-    const unknown = rec.status === "done" ? rec.speakers.filter((x) => !x.profile_id && (x.name === UNKNOWN || /^Sprecher \d+$/.test(x.name))) : [];
+    const unknown = rec.status === "done" ? rec.speakers.filter((x) => !x.profile_id && unnamed(x.name)) : [];
     let later = false; try { later = sessionStorage.getItem("rekord.namelater." + id) === "1"; } catch (e) {}
     if (!unknown.length || later) { box.innerHTML = ""; return; }
     if (!knownNames.length) { try { knownNames = (await api("/api/profiles")).items.map((x) => x.name); } catch (e) {} }
@@ -965,11 +970,11 @@ async function viewDetail(id) {
     const r = await dialog(`<h2>Sprecher</h2>
       <label class="muted">Name</label><input type="text" id="sp-name" value="${esc(s.name)}">
       ${s.voices > 1 ? `<p class="muted" style="margin:0">Hier stecken ${s.voices} verschiedene Stimmen. Zum Lernen im Transkript einzelne Sätze antippen und zuordnen.</p>`
-        : `<label class="row"><input type="checkbox" id="sp-rem" ${s.profile_id || s.name === UNKNOWN || /^Sprecher \d+$/.test(s.name) ? "checked" : ""}> Stimme merken – in Zukunft automatisch erkennen${tip("remember")}</label>`}
+        : `<label class="row"><input type="checkbox" id="sp-rem" ${s.profile_id || unnamed(s.name) ? "checked" : ""}> Stimme merken – in Zukunft automatisch erkennen${tip("remember")}</label>`}
       ${others.length ? `<label class="muted">Oder zusammenführen mit (falls doppelt erkannt)</label>
         <select id="sp-merge"><option value="">—</option>${others.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>` : ""}
       <div class="row"><span class="spacer"></span><button class="btn" value="cancel">Abbrechen</button><button class="btn primary" value="ok">Speichern</button></div>`,
-    (b) => { $("#sp-name", b).select(); if (s.name === UNKNOWN) $("#sp-name", b).value = ""; });
+    (b) => { $("#sp-name", b).select(); if (unnamed(s.name)) $("#sp-name", b).value = ""; });
     if (r !== "ok") return;
     const merge = $("#sp-merge") && $("#sp-merge").value;
     if (merge) {
@@ -1411,63 +1416,185 @@ function readingTextFrom(POOL, name, variant, open, close) {
   return [open((name || "").trim() || "…"), ...pool.slice(0, 7), close].join(" ");
 }
 
-const ENROLL_TARGET = 45, ENROLL_MIN = 25;  // seconds of reading
+const ENROLL_TARGET = 45, ENROLL_MIN = 25;  // seconds of speech
+// "Einfach reden lassen": ideas if the person doesn't know what to say (only shown on request)
+const TALK_IDEAS = {
+  de: ["Erzähl, was du heute schon gemacht hast.", "Was ist dein Lieblingsessen – und wie kocht man es?", "Beschreib den Weg von dir zuhause zur Arbeit oder Uni.",
+    "Was war dein letzter Urlaub – wo, mit wem, was war das Beste?", "Woran arbeitest du gerade, und was ist dabei schwierig?", "Erklär einem Kind, was du beruflich machst oder studierst.",
+    "Welches Buch, welche Serie oder welcher Film hat dich zuletzt beeindruckt?", "Was würdest du mit einem freien Tag machen?", "Erzähl von einem Konzert oder Event, das du nie vergisst."],
+  en: ["Tell what you have done today so far.", "What is your favourite food – and how do you cook it?", "Describe your way from home to work or university.",
+    "Where did you go on your last holiday, and what was the best part?", "What are you working on right now, and what is hard about it?", "Explain to a child what you do or study.",
+    "Which book, series or film impressed you lately?", "What would you do with a free day?", "Tell about a concert or event you will never forget."],
+};
+
+// counts the seconds in which someone really speaks (pauses don't count), from the microphone level
+function speechMeter(stream, onTick) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});  // browsers start audio only after a click – this is one
+  const an = ctx.createAnalyser(); an.fftSize = 1024;
+  ctx.createMediaStreamSource(stream).connect(an);
+  const buf = new Float32Array(an.fftSize);
+  let floor = 0.02, speech = 0, wall = 0, lastVoice = -1;
+  const t = setInterval(() => {
+    an.getFloatTimeDomainData(buf);
+    let sum = 0; for (const v of buf) sum += v * v;
+    const rms = Math.sqrt(sum / buf.length);
+    floor = rms < floor ? rms : floor * 1.002;  // background noise level, follows slowly upwards
+    if (rms > Math.max(0.006, floor * 2)) lastVoice = wall;
+    const talking = lastVoice >= 0 && wall - lastVoice <= 0.4;  // short gaps between words still count as talking
+    if (talking) speech += 0.1;
+    wall += 0.1;
+    onTick({ speech, wall, level: Math.min(1, rms * 8), talking });
+  }, 100);
+  return () => { clearInterval(t); ctx.close().catch(() => {}); };
+}
+
 async function enrollDialog(opts = {}) {
-  let rec, chunks = [], timer, secs = 0, stream, variant = 0;
+  let rec, chunks = [], stopMeter = null, secs = 0, stream, variant = 0, mode = prefs.enrollMode || "read", idea = -1;
+  let recordings = [], voices = [], pickedVoice = null, player = null, playUntil = 0;
   try { state.language = (await api("/api/settings")).language; } catch (e) {}
+  const lang = state.language === "en" ? "en" : "de";
   const title = opts.intro ? `Vorstellungsrunde${opts.step ? " · " + opts.step : ""}` : "Person einsprechen";
   const r = await dialog(`<h2>${title}${tip("intro")}</h2>
     <input type="text" id="en-name" placeholder="Name der Person" value="${esc(opts.name || "")}" autocomplete="off">
-    <p class="muted" style="margin:0">${opts.intro ? "Mikro zur Person. Sie liest ihren eigenen Text vor" : "Lies diesen Text vor"} – ganz normal, wie im Meeting (ca. ${ENROLL_TARGET} Sekunden):</p>
-    <blockquote id="en-text" class="read-text"></blockquote>
-    <div class="row"><button type="button" class="btn ghost sm" id="en-other">↻ Anderer Text</button></div>
-    <div class="row"><button type="button" class="btn primary" id="en-rec">● Aufnahme starten</button><span class="timer" id="en-t">0 s</span></div>
-    <div class="progress" style="width:100%"><i id="en-bar" style="width:0%"></i></div>
-    <div class="muted" id="en-hint" style="font-size:13px">Mindestens ${ENROLL_MIN} Sekunden – je länger, desto sicherer die Erkennung.</div>
-    <details><summary class="muted" style="cursor:pointer">…oder eine Datei mit nur dieser Person</summary><input type="file" id="en-file" accept="audio/*,video/*"></details>
+    <div><b>Wie soll REKORD die Stimme lernen?</b>${tip("enrollmode")}</div>
+    <div class="seg" id="en-mode" style="align-self:flex-start;flex-wrap:wrap">
+      <button type="button" data-m="read">Text vorlesen</button><button type="button" data-m="free">Einfach reden lassen</button><button type="button" data-m="recording">Aus Aufnahme lernen</button></div>
+    <div id="en-live">
+      <div id="en-read"><p class="muted" style="margin:0 0 6px">${opts.intro ? "Mikro zur Person. Sie liest ihren eigenen Text vor" : "Lies diesen Text vor"} – ganz normal, wie im Meeting (ca. ${ENROLL_TARGET} Sekunden):</p>
+        <blockquote id="en-text" class="read-text"></blockquote>
+        <div class="row"><button type="button" class="btn ghost sm" id="en-other">↻ Anderer Text</button></div></div>
+      <div id="en-free"><p class="muted" style="margin:0 0 6px">Die Person redet einfach – über irgendwas, so lange sie will. Kein Text, nichts vorlesen.
+        Passt auch, wenn jemand gerade sowieso redet, z. B. der Prof am Anfang der Vorlesung: Mikro in seine Richtung, Aufnahme starten.
+        Kurze Zwischenrufe anderer lässt REKORD weg.</p>
+        <div class="row"><button type="button" class="btn ghost sm" id="en-idea">💬 Gesprächsidee</button></div>
+        <blockquote id="en-idea-text" class="read-text" style="display:none"></blockquote></div>
+      <div class="row" style="margin-top:8px"><button type="button" class="btn primary" id="en-rec">● Aufnahme starten</button><span class="timer" id="en-t">0 s</span>
+        <span class="lvl" style="flex:1;max-width:160px;height:8px;border-radius:4px;background:var(--line,#ddd);overflow:hidden"><i id="en-lvl" style="display:block;height:100%;width:0%;background:var(--accent)"></i></span></div>
+      <div class="progress" style="width:100%"><i id="en-bar" style="width:0%"></i></div>
+      <div class="muted" id="en-hint" style="font-size:13px">Gezählt wird nur, wenn wirklich gesprochen wird. Mindestens ${ENROLL_MIN} Sekunden – je länger, desto sicherer.</div>
+      <details><summary class="muted" style="cursor:pointer">…oder eine Datei mit nur dieser Person</summary><input type="file" id="en-file" accept="audio/*,video/*"></details>
+    </div>
+    <div id="en-recording">
+      <p class="muted" style="margin:0 0 6px">Die Stimme aus einer fertigen Aufnahme nehmen – z. B. den Prof aus der Vorlesung. Aufnahme wählen, Stimme anhören, auswählen.</p>
+      <select id="en-recsel"><option value="">Aufnahme wählen …</option></select>
+      <div id="en-voices" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
+      <audio id="en-audio" preload="none"></audio>
+    </div>
     <div class="row"><span class="spacer"></span><button class="btn" value="cancel">Abbrechen</button><button class="btn primary" value="ok" id="en-ok" disabled>Stimme speichern</button></div>`,
   (b) => {
     const text = () => { $("#en-text", b).textContent = readingText($("#en-name", b).value, variant); };
-    const ready = () => { $("#en-ok", b).disabled = !$("#en-name", b).value.trim() || !(secs >= ENROLL_MIN || $("#en-file", b).files.length); };
-    text(); ready();
+    const ready = () => {
+      const named = !!$("#en-name", b).value.trim();
+      $("#en-ok", b).disabled = !named || (mode === "recording" ? pickedVoice === null : !(secs >= ENROLL_MIN || $("#en-file", b).files.length));
+    };
+    const stopRec = () => { if (rec && rec.state === "recording") rec.stop(); };
+    const drawVoices = () => {
+      $("#en-voices", b).innerHTML = voices.length ? voices.map((v, k) => `<label class="nm-row" style="--c:${esc(v.color)};cursor:pointer">
+          <input type="radio" name="en-v" value="${k}" ${pickedVoice === k ? "checked" : ""}>
+          <button type="button" class="btn sm icon" data-play="${k}" title="Anhören">▶</button>
+          <span class="nm-who"><b>${esc(v.known ? v.name : v.name === UNKNOWN || v.name === AUDIENCE ? `Stimme ab ${fmtTime(v.first)}` : v.name)} · ${Math.round(v.seconds)} s</b>
+          <small>„${esc(v.text)}“</small></span></label>`).join("")
+        : `<span class="muted">${$("#en-recsel", b).value ? "Keine Stimmen in dieser Aufnahme." : ""}</span>`;
+      $$("#en-voices [data-play]", b).forEach((x) => x.onclick = (e) => {
+        e.preventDefault();
+        const v = voices[Number(x.dataset.play)], [a, z] = v.samples[0];
+        player.currentTime = a; playUntil = Math.min(z, a + 8); player.play().catch(() => {});
+      });
+      $$("#en-voices input[name=en-v]", b).forEach((x) => x.onchange = () => {
+        pickedVoice = Number(x.value);
+        const v = voices[pickedVoice];
+        if (!$("#en-name", b).value.trim() && v.known) $("#en-name", b).value = v.name;
+        ready();
+      });
+    };
+    const setMode = async (m) => {
+      stopRec();
+      mode = m; setPref("enrollMode", m);
+      $$("#en-mode button", b).forEach((x) => x.classList.toggle("on", x.dataset.m === m));
+      $("#en-live", b).style.display = m === "recording" ? "none" : "";
+      $("#en-read", b).style.display = m === "read" ? "" : "none";
+      $("#en-free", b).style.display = m === "free" ? "" : "none";
+      $("#en-recording", b).style.display = m === "recording" ? "" : "none";
+      $("#en-ok", b).textContent = m === "recording" ? "Stimme lernen" : "Stimme speichern";
+      if (m === "recording" && !recordings.length) {
+        try { recordings = (await api("/api/recordings")).items.filter((x) => x.status === "done"); } catch (e) {}
+        $("#en-recsel", b).innerHTML = `<option value="">${recordings.length ? "Aufnahme wählen …" : "Noch keine fertige Aufnahme"}</option>`
+          + recordings.map((x) => `<option value="${x.id}">${esc(x.title)} · ${fmtDate(x.created_at)}</option>`).join("");
+      }
+      ready();
+    };
+    player = $("#en-audio", b);
+    player.ontimeupdate = () => { if (playUntil && player.currentTime >= playUntil) { player.pause(); playUntil = 0; } };
+    text(); setMode(mode);
+    $$("#en-mode button", b).forEach((x) => x.onclick = () => setMode(x.dataset.m));
     $("#en-name", b).addEventListener("input", () => { text(); ready(); });
     $("#en-other", b).onclick = () => { variant++; text(); };
+    $("#en-idea", b).onclick = () => {
+      const pool = TALK_IDEAS[lang]; idea = (idea + 1 + Math.floor(Math.random() * (pool.length - 1))) % pool.length;
+      $("#en-idea-text", b).style.display = ""; $("#en-idea-text", b).textContent = pool[idea];
+    };
     $("#en-file", b).onchange = ready;
+    $("#en-recsel", b).onchange = async (e) => {
+      voices = []; pickedVoice = null; drawVoices(); ready();
+      if (!e.target.value) return;
+      player.src = `/api/recordings/${e.target.value}/audio`;
+      try { voices = (await api(`/api/recordings/${e.target.value}/voices`)).items; } catch (err) { toast(err.message); }
+      drawVoices();
+    };
     $("#en-rec", b).onclick = async () => {
       if (rec && rec.state === "recording") { rec.stop(); return; }
-      if (!$("#en-name", b).value.trim()) { toast("Zuerst den Namen eingeben – der Text wird für die Person erstellt."); $("#en-name", b).focus(); return; }
+      if (!$("#en-name", b).value.trim()) { toast(mode === "read" ? "Zuerst den Namen eingeben – der Text wird für die Person erstellt." : "Zuerst den Namen eingeben."); $("#en-name", b).focus(); return; }
       try { stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: prefs.micId ? { ideal: prefs.micId } : undefined,
         echoCancellation: prefs.echoCancellation, noiseSuppression: prefs.noiseSuppression, autoGainControl: prefs.autoGainControl } }); }
       catch (e) { toast("Mikrofon nicht verfügbar: " + e.message, 5000); return; }
       rec = new MediaRecorder(stream); chunks = []; secs = 0; ready();
       rec.ondataavailable = (e) => chunks.push(e.data);
-      rec.onstop = () => { clearInterval(timer); stream.getTracks().forEach((t) => t.stop()); $("#en-rec").textContent = "↺ Neu aufnehmen"; ready(); };
+      rec.onstop = () => {
+        if (stopMeter) { stopMeter(); stopMeter = null; }
+        stream.getTracks().forEach((t) => t.stop());
+        $("#en-rec").textContent = "↺ Neu aufnehmen"; $("#en-lvl").style.width = "0%"; ready();
+      };
       rec.start(1000);
       $("#en-rec").textContent = "■ Fertig";
-      timer = setInterval(() => {
-        secs++;
+      const keepGoing = mode === "read" ? "Weiterlesen" : "Weiterreden lassen";
+      stopMeter = speechMeter(stream, ({ speech, wall, level }) => {
+        secs = Math.floor(speech);
         $("#en-t").textContent = secs + " s";
-        $("#en-bar").style.width = Math.min(100, (secs / ENROLL_TARGET) * 100) + "%";
-        $("#en-hint").innerHTML = secs < ENROLL_MIN ? `Weiterlesen … noch ${ENROLL_MIN - secs} s bis zum Minimum.`
-          : secs < ENROLL_TARGET ? `<span style="color:#22C55E">✓ Reicht.</span> Bis zum Ende lesen macht die Erkennung noch sicherer.`
+        $("#en-lvl").style.width = Math.round(level * 100) + "%";
+        $("#en-bar").style.width = Math.min(100, (speech / ENROLL_TARGET) * 100) + "%";
+        $("#en-hint").innerHTML = secs < ENROLL_MIN ? `${keepGoing} … noch ${ENROLL_MIN - secs} s Sprache bis zum Minimum.`
+          : secs < ENROLL_TARGET ? `<span style="color:#22C55E">✓ Reicht.</span> ${mode === "read" ? "Bis zum Ende lesen" : "Noch etwas länger"} macht die Erkennung noch sicherer.`
           : `<span style="color:#22C55E">✓ Perfekt.</span> Du kannst auf „Fertig“ drücken.`;
-        if (secs >= 120) rec.stop();
-      }, 1000);
+        ready();
+        if (wall >= (mode === "free" ? 240 : 120)) rec.stop();
+      });
     };
   });
   if (rec && rec.state === "recording") rec.stop();
+  if (player) player.pause();
   await sleep(250);
   if (r !== "ok") return null;
   const name = $("#en-name").value.trim();
+  if (mode === "recording") {
+    const v = voices[pickedVoice], rid = $("#en-recsel").value;
+    if (!name || !v) { toast("Name und Stimme wählen"); return null; }
+    try {
+      const prof = await api("/api/profiles/learn", { method: "POST", json: { recording_id: rid, speaker_id: v.speaker_id, voice: v.voice, name } });
+      toast(`${name}: Stimme aus der Aufnahme gelernt ✓ (${Math.round(v.seconds)} s)`, 5000);
+      return prof;
+    } catch (e) { toast(e.message, 7000); return null; }
+  }
   const file = $("#en-file").files[0] || (chunks.length ? new File(chunks, "probe.webm", { type: chunks[0].type || "audio/webm" }) : null);
   if (!name || !file) { toast("Name und Sprachprobe nötig"); return null; }
-  const fd = new FormData(); fd.append("name", name); fd.append("file", file);
+  const fd = new FormData(); fd.append("name", name); fd.append("file", file); fd.append("mode", mode);
   toast("Stimmabdruck wird berechnet …", 8000);
   try {
     const prof = await api("/api/profiles/enroll", { method: "POST", body: fd });
     const q = prof.quality || {};
     const grade = q.consistency >= 0.85 ? "sehr gut" : q.consistency >= 0.75 ? "gut" : "ok – nochmal einsprechen macht sie sicherer";
-    toast(`${name}: Stimme gespeichert ✓ · ${Math.round(q.seconds || 0)} s Sprache · Qualität ${grade}`, 5000);
+    toast(`${name}: Stimme gespeichert ✓ · ${Math.round(q.seconds || 0)} s Sprache · Qualität ${grade}`
+      + (q.left_out >= 3 ? ` · ${Math.round(q.left_out)} s andere Stimmen weggelassen` : ""), 6000);
     return prof;
   } catch (e) { toast(e.message, 7000); return null; }
 }
@@ -1757,7 +1884,7 @@ async function viewSettings() {
         <div><select id="mic"><option value="">Systemstandard</option></select><div class="row" style="margin-top:8px"><button class="btn sm" id="mic-test">Pegel testen</button>${tip("mictest")}
         <div class="level" style="flex:1"><i id="mic-lvl"></i></div></div></div></div>
       <div class="field"><div class="lbl">Meeting-Art${tip("meeting")}<span class="hint">Vorauswahl – wird vor jeder Aufnahme bei „Wer ist dabei?“ bestätigt.</span></div>
-        <div><div class="seg" id="imode">${[["mic", "Vor Ort", "Alle im Raum – das Mikrofon reicht"], ["mic+system", "Online", "Teams, Zoom, Meet … – der Ton des Calls wird mit aufgenommen"]].map(([k, n, t]) => `<button data-v="${k}" title="${t}" class="${prefs.inputMode === k ? "on" : ""}">${n}</button>`).join("")}</div>
+        <div><div class="seg" id="imode">${[["mic", "Vor Ort", "Alle im Raum – das Mikrofon reicht"], ["mic+system", "Online", "Teams, Zoom, Meet … – der Ton des Calls wird mit aufgenommen"], ["lecture", "Vorlesung", "Eine Person trägt vor, Fragen aus dem Hörsaal werden gesammelt"]].map(([k, n, t]) => `<button data-v="${k}" title="${t}" class="${prefs.inputMode === k ? "on" : ""}">${n}</button>`).join("")}</div>
         <div class="hint" id="call-hint" style="margin-top:6px"></div></div></div>
       <div class="field"><div class="lbl">Audio-Verarbeitung${tip("processing")}<span class="hint">Für Raum-Meetings meist alles an. Für Musik/Interviews mit gutem Mikro: aus.</span></div><div>
         ${[["noiseSuppression", "Rauschunterdrückung"], ["echoCancellation", "Echo-Unterdrückung"], ["autoGainControl", "Automatische Lautstärke"]].map(([k, n]) =>
@@ -1985,15 +2112,34 @@ async function viewSettings() {
       ${p.lan ? "" : `<p style="margin-top:0"><b>REKORD ist gerade nur auf diesem Computer erreichbar.</b> Starte REKORD über die App (Mac/Windows/Linux),
         dann ist es automatisch im WLAN sichtbar. Im Terminal: <span class="kbd">rekord serve --host 0.0.0.0</span></p>`}
       <div class="row" style="align-items:flex-start;gap:28px">
-        <div><div class="qr">${p.qr_app}</div><p style="max-width:220px"><b>REKORD iOS-App</b><br><span class="muted">Aufnehmen am iPhone, live sehen wer spricht, Sperrbildschirm-Widget. In der App „QR-Code scannen“.</span></p></div>
-        <div><div class="qr">${p.qr_web}</div><p style="max-width:240px"><b>Im Browser (jedes Handy)</b><br><span class="muted">Kamera auf den Code → Link öffnen.
-          Die Seite führt dich in 1 Minute durch alles. Danach nimmst du auch im Browser auf, mit Live-Erkennung.</span></p></div>
+        <div><div class="qr">${p.qr_app}</div><p style="max-width:260px"><b>REKORD-App am iPhone</b><br><span class="muted">In der App „Koppeln“ → QR-Code scannen
+          – oder den 6-stelligen Code unten eintippen. Danach nimmst du am iPhone auf und siehst live, wer spricht.</span></p></div>
       </div>
       <div id="fw"></div>
       <div class="field"><div class="lbl">Adresse${tip("address")}<span class="hint">Handy und Computer im selben WLAN.</span></div><div>${p.urls.map((u) => `<span class="kbd">${esc(u)}</span>`).join(" ") || "–"}</div></div>
-      <div class="field"><div class="lbl">Kopplungs-Code${tip("paircode")}<span class="hint">Neu erzeugen trennt alle gekoppelten Geräte.</span></div>
-        <div class="row"><span class="kbd" id="tok" style="filter:blur(4px);cursor:pointer" title="anzeigen">${esc(p.token)}</span><button class="btn sm" id="rot">Neu erzeugen</button></div></div>`;
-    $("#tok").onclick = (e) => (e.target.style.filter = "none");
+      <div class="field"><div class="lbl">Kopplungs-Code${tip("paircode")}<span class="hint">In der REKORD-App am iPhone eintippen. Gilt 10 Minuten.</span></div>
+        <div><div class="row" style="align-items:center"><b id="pcode" style="font-size:34px;letter-spacing:.12em;font-variant-numeric:tabular-nums">${esc(p.code.code.slice(0, 3) + " " + p.code.code.slice(3))}</b>
+          <span class="muted" id="pcode-left"></span>${IS_LOCAL ? `<button class="btn sm" id="pcode-new">Neuer Code</button>` : ""}</div></div></div>
+      <div class="field"><div class="lbl">Gekoppelte Geräte${tip("devices")}<span class="hint">Jedes Gerät mit Code hat einen eigenen Schlüssel.</span></div>
+        <div>${p.devices.length ? p.devices.map((d) => `<div class="row" style="margin-bottom:6px"><span>📱 <b>${esc(d.name)}</b> <span class="muted">· seit ${fmtDate(d.created)}</span></span>
+            ${IS_LOCAL ? `<button class="btn ghost sm" data-unpair="${esc(d.id)}">Trennen</button>` : ""}</div>`).join("") : `<span class="muted">Noch keins – oder per QR-Code gekoppelt.</span>`}
+          ${IS_LOCAL ? `<div class="row" style="margin-top:6px"><button class="btn danger sm" id="rot">Alle Geräte trennen</button></div>` : ""}</div></div>`;
+    let codeExp = p.code.expires;
+    const tick = () => {
+      const left = Math.max(0, Math.round(codeExp - Date.now() / 1000)), el = $("#pcode-left");
+      if (!el) return clearInterval(codeTimer);
+      if (left <= 0) { api("/api/pair").then((q) => { codeExp = q.code.expires; $("#pcode").textContent = q.code.code.slice(0, 3) + " " + q.code.code.slice(3); }).catch(() => {}); }
+      el.textContent = `noch ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+    };
+    const codeTimer = setInterval(tick, 1000); tick();
+    disposers.push(() => clearInterval(codeTimer));
+    $("#pcode-new") && ($("#pcode-new").onclick = async () => {
+      const c = await api("/api/pair/code", { method: "POST" }); codeExp = c.expires; $("#pcode").textContent = c.code.slice(0, 3) + " " + c.code.slice(3); tick();
+    });
+    $$("[data-unpair]").forEach((b) => b.onclick = async () => {
+      if (!(await confirmBox("Gerät trennen?", "Es muss danach neu gekoppelt werden.", "Trennen"))) return;
+      await api(`/api/pair/devices/${b.dataset.unpair}`, { method: "DELETE" }); viewSettings();
+    });
     if (IS_LOCAL) integrations().then((it) => {
       const fw = it.firewall, box = $("#fw");
       if (!box || !fw.tool || fw.open === true) return;
@@ -2005,7 +2151,7 @@ async function viewSettings() {
         catch (err) { $("#fw-res").innerHTML = `<span style="color:#EF4444">✗ ${esc(err.message)}</span>`; e.target.disabled = false; }
       };
     });
-    $("#rot").onclick = async () => { if (await confirmBox("Code neu erzeugen?", "Alle gekoppelten Geräte müssen neu koppeln.", "Neu erzeugen")) { await api("/api/settings/rotate-token", { method: "POST" }); viewSettings(); } };
+    $("#rot") && ($("#rot").onclick = async () => { if (await confirmBox("Alle Geräte trennen?", "Alle gekoppelten Handys – auch die per QR-Code – müssen neu koppeln. Gut, wenn ein Handy verloren ging.", "Alle trennen")) { await api("/api/settings/rotate-token", { method: "POST" }); viewSettings(); } });
   } catch (e) { $("#pair").textContent = e.message; }
 
   // MCP

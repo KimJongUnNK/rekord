@@ -24,7 +24,7 @@ Stell dir vor, neben dir sitzt jemand, der in jedem Meeting mitschreibt – und 
    - eine **Zusammenfassung**: Was wurde besprochen? Was wurde entschieden? Wer muss bis wann was erledigen?
 4. **Später fragst du einfach nach**, z. B. *„Was hat Lisa letzte Woche zum Budget gesagt?“* – REKORD sucht in allen deinen Aufnahmen und zeigt dir die Stelle.
 
-REKORD lernt Stimmen: Wer einmal ca. 45 Sekunden einen Text vorgelesen hat, wird ab dann in jedem Meeting mit Namen erkannt.
+REKORD lernt Stimmen: Wer einmal ca. 45 Sekunden gesprochen hat – einen Text vorgelesen oder einfach drauflos geredet –, wird ab dann in jedem Meeting mit Namen erkannt.
 
 ---
 
@@ -127,7 +127,10 @@ Eine Art Passwort, mit dem REKORD die KI von Claude oder ChatGPT benutzen darf. 
 Ja. Vor der Aufnahme **Online** wählen. Am Mac fragt macOS beim ersten Mal nach *„Bildschirm- & Systemaudioaufnahme“* – erlauben. Es wird nur der Ton aufgenommen, kein Bild.
 
 **Kann ich mit dem iPhone aufnehmen?**
-Ja. In REKORD am Computer: *Einstellungen → iPhone & Geräte* → QR-Code mit dem iPhone scannen. Das iPhone und der Computer müssen im selben WLAN sein.
+Ja, mit der **REKORD-App** fürs iPhone (eine echte App, keine Webseite – Installation siehe [Anleitung](docs/ANLEITUNG.md#3-iphone-optional)). Koppeln: In REKORD am Computer *Einstellungen → iPhone & Geräte* → in der App den QR-Code scannen oder den **6-stelligen Code** eintippen. iPhone und Computer müssen im selben WLAN sein.
+
+**Geht das auch in der Uni?**
+Ja. Vor der Aufnahme **Vorlesung** wählen: Mitzählen musst du nicht. REKORD erkennt die vortragende Person und sammelt Fragen aus dem Hörsaal unter „Publikum“. Danach gibt es automatisch einen **Lernzettel** mit Kernaussagen, Definitionen und Prüfungsrelevantem. Die Stimme des Profs lernt REKORD, indem du ihn **einfach reden lässt** oder sie **aus einer Aufnahme** nimmst – vorlesen muss niemand etwas.
 
 **Welche Sprachen versteht REKORD?**
 Rund 99 Sprachen, auch gemischt im selben Gespräch. Am genauesten, wenn du die Sprache in den Einstellungen fest einstellst.
@@ -184,13 +187,13 @@ Alles ab hier brauchst du zum Benutzen **nicht**.
 ## Architektur
 
 ```
- iPhone (native App / PWA)          Mac / Windows / Linux  – „Hub"
+ iPhone (native App)                Mac / Windows / Linux  – „Hub"
  ┌──────────────────────┐   WLAN   ┌───────────────────────────────────────────────┐
  │ Mikro → 16 kHz PCM   │ ───────► │ Live:  VAD → Stimmabdruck → Person? → Whisper │
  │ Live Activity        │ ◄─────── │        („Lisa spricht", Mitschrift)            │
  │ Widgets · Siri       │  Events  │ Danach: pyannote-Segmentierung → Feintrennung │
  └──────────────────────┘          │        → Personen-Abgleich → Whisper → KI     │
- Browser (PWA) ───────────────────►│ SQLite + FTS5 · Audio · Modelle · ~/Rekord    │
+ Oberfläche am Computer ──────────►│ SQLite + FTS5 · Audio · Modelle · ~/Rekord    │
  Claude Desktop ── MCP ───────────►│                                               │
                                    └──────────────┬────────────────────────────────┘
                                                   │ nur Text
@@ -206,7 +209,9 @@ Optional: `faster-whisper` für NVIDIA-GPUs.
 ## Personen erkennen: so wird's präzise
 1. **Einmal anlernen.** Dafür gibt's drei Wege:
    - *Personen → Person einsprechen*: den eigenen Text vorlesen (~45 s, mindestens 25 s).
-   - *Live → Vorstellungsrunde*: Handy reihum, jede Person stellt sich kurz vor.
+   - *Live → Vorstellungsrunde*: Mikro reihum, jede Person liest ihren Text oder redet einfach.
+   - *Einfach reden lassen*: z. B. den Prof in der Vorlesung – kurze Zwischenrufe anderer lässt REKORD weg.
+   - *Aus Aufnahme lernen*: eine Stimme aus einer fertigen Aufnahme auswählen.
    - Im Meeting die **Nicht erkannte Stimme** antippen und den Namen eingeben. Ab diesem Satz wird die Person erkannt.
    - Oder nach dem Meeting bei **„Wer ist das?"** anhören, Namen eingeben, *Merken*.
 2. **Vor jeder Aufnahme fragt „Wer ist dabei?"**: wie viele sprechen und wer schon bekannt ist. REKORD trennt dann genau so viele Stimmen und vergleicht nur mit diesen Leuten. Sind alle bekannt, ist es eine *geschlossene Runde*, und jede Stimme geht an die ähnlichste anwesende Person.

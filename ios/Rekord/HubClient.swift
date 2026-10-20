@@ -226,10 +226,25 @@ final class HubClient: ObservableObject {
         return false
     }
 
+    /// Manual pairing: the hub's address plus the 6-digit code shown on the computer (a long key still works).
+    /// The code is traded for this iPhone's own key.
     func pair(url: String, token: String) async -> Bool {
         let clean = url.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let withScheme = clean.hasPrefix("http") ? clean : "http://\(clean)"
-        return await pair(with: PairPayload(rekord: 1, urls: [withScheme], token: token))
+        let digits = token.filter(\.isNumber)
+        guard digits.count == 6, digits.count == token.filter({ !$0.isWhitespace && $0 != "-" }).count else {
+            return await pair(with: PairPayload(rekord: 1, urls: [withScheme], token: token.trimmingCharacters(in: .whitespaces)))
+        }
+        guard let claimURL = URL(string: withScheme + "/api/pair/claim") else { return false }
+        var r = URLRequest(url: claimURL)
+        r.httpMethod = "POST"
+        r.timeoutInterval = 6
+        r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        r.httpBody = try? JSONSerialization.data(withJSONObject: ["code": digits, "name": "iPhone-App"])
+        guard let (data, resp) = try? await URLSession.shared.data(for: r), (resp as? HTTPURLResponse)?.statusCode == 200,
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let key = obj["token"] as? String
+        else { return false }
+        return await pair(with: PairPayload(rekord: 1, urls: [withScheme], token: key))
     }
 
     // MARK: Bonjour discovery (_rekord._tcp)

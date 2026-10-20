@@ -10,7 +10,7 @@ Das **iPhone ist optional**: Es verbindet sich übers WLAN mit dem Computer.
 >
 > **Was REKORD selbst erledigt:** Sprachmodelle laden · lokale KI (Ollama) installieren und das passende Modell wählen ·
 > vorhandene KI erkennen (Ollama, LM Studio) · Modell für ChatGPT wählen · Claude Desktop/Claude Code verbinden ·
-> Startmenü-Eintrag (Windows) · Firewall freigeben (Linux) · Zertifikat fürs Aufnehmen im Handy-Browser.
+> Startmenü-Eintrag (Windows) · Firewall freigeben (Linux).
 > **Was nur du machen kannst:** einen API-Key kopieren (nur für Claude/ChatGPT) und Apple/Windows einmal sagen, dass du REKORD öffnen willst.
 
 | | |
@@ -91,41 +91,18 @@ Die Sprachmodelle werden geladen. Steht unten links **„Bereit · lokal“**, i
 
 ## 3. iPhone (optional)
 
+Am iPhone gibt es REKORD als **echte App**, eine Web-Version im Browser gibt es nicht. Mit der App nimmst du am iPhone auf und siehst live, wer spricht – auch bei gesperrtem Bildschirm, mit Sperrbildschirm-Widget und Dynamic Island. Alles landet am Computer.
+
 > **Voraussetzung:** REKORD ist am Computer offen und beide sind im **selben WLAN**.
 
-**Welcher Weg?**
+### App aufs iPhone bringen
 
-| | **A · Web-App** | **B · iPhone-App** |
-|---|:---:|:---:|
-| Einrichten | 2 Minuten | ca. 15 Minuten |
-| Aufnahmen ansehen, anhören, Fragen stellen | ✓ | ✓ |
-| **Mit dem iPhone aufnehmen** + live sehen, wer spricht | ✓ | ✓ |
-| Aufnahme läuft bei gesperrtem Bildschirm weiter | – | ✓ |
-| Sperrbildschirm-Widget, Dynamic Island | – | ✓ |
-| Du brauchst | nichts | Kabel + Computer + Apple-ID |
+**Mit Xcode (Mac):** `brew install xcodegen && cd ios && xcodegen generate && open Rekord.xcodeproj` → bei *Signing & Capabilities* dein Team wählen → iPhone anschließen → **Run**.
 
-### Weg A · Web-App
-
-1. Am Computer in REKORD: **Einstellungen** → **iPhone & Geräte**.
-2. iPhone-Kamera auf den **rechten** QR-Code („Im Browser“) halten → Link öffnen.
-3. Die Seite **„REKORD aufs Handy“** führt dich durch drei kurze Schritte – fürs Aufnehmen braucht Safari eine sichere Verbindung:
-   - **Zertifikat laden** → **Erlauben**
-   - App **Einstellungen** → ganz oben **Profil geladen** → **Installieren**
-   - **Einstellungen** → **Allgemein** → **Info** → ganz unten **Zertifikatsvertrauenseinstellungen** → **REKORD Heimnetz** einschalten
-4. Zurück in Safari wird Schritt 4 grün → **REKORD öffnen** → **Teilen** → **Zum Home-Bildschirm** → **Hinzufügen**.
-
-**Warum ein Zertifikat?** Browser geben das Mikrofon nur über verschlüsselte Verbindungen frei. Das Zertifikat erzeugt REKORD auf deinem Computer; es gilt nur für Adressen im eigenen Netz und kann keine echten Websites betreffen. Nur ansehen ohne Aufnahme geht auch ohne: auf der Seite **„Ohne Zertifikat“** antippen.
-Bildschirm beim Aufnehmen anlassen (REKORD hält ihn wach) – für Aufnahmen mit gesperrtem iPhone ist Weg B da.
-
-### Weg B · iPhone-App *(Beta)*
-
-**Einmalig am Computer vorbereiten**
+**Oder mit Sideloadly (Mac oder Windows):**
 1. **Sideloadly** installieren: [sideloadly.io](https://sideloadly.io)
    *Windows:* zusätzlich **iTunes** und **iCloud** von apple.com installieren, nicht aus dem Microsoft Store.
 2. [**REKORD-iOS-unsigned.ipa**](https://github.com/KimJongUnNK/rekord/releases/latest/download/REKORD-iOS-unsigned.ipa) laden.
-
-**App aufs iPhone bringen**
-
 3. iPhone per Kabel anschließen → am iPhone **„Diesem Computer vertrauen“**.
 4. Sideloadly öffnen → die **.ipa** ins Fenster ziehen → deine **Apple-ID** eingeben → **Start**.
 
@@ -134,16 +111,21 @@ Bildschirm beim Aufnehmen anlassen (REKORD hält ihn wach) – für Aufnahmen mi
 5. **Einstellungen** → **Datenschutz & Sicherheit** → **Entwicklermodus** → an. Das iPhone startet neu, danach **Aktivieren** tippen.
 6. **Einstellungen** → **Allgemein** → **VPN & Geräteverwaltung** → deine Apple-ID → **Vertrauen**.
 
-**Verbinden**
+> Mit einer **kostenlosen Apple-ID** läuft die App 7 Tage. Danach einfach nochmal installieren. Deine Daten bleiben erhalten.
 
-7. REKORD am iPhone öffnen → **QR-Code scannen**. Am Computer: *Einstellungen → iPhone & Geräte*, **linker** Code.
+### Koppeln
+
+Am Computer: *Einstellungen → iPhone & Geräte*. Dort stehen ein **QR-Code** und ein **6-stelliger Code** (z. B. `482 913`).
+
+- REKORD am iPhone öffnen → **QR-Code scannen** – fertig.
+- Oder: Computer unter *Im WLAN gefunden* antippen (oder die Adresse eintippen) → den **6-stelligen Code** eingeben → **Koppeln**.
+
+Der Code gilt 10 Minuten und nur zum Koppeln: Das iPhone bekommt dabei einen eigenen Schlüssel. Nach 5 falschen Versuchen ist 1 Minute Pause. Unter **Gekoppelte Geräte** trennst du einzelne iPhones, **Alle Geräte trennen** sperrt alle aus (z. B. wenn ein Handy verloren ging).
 
 **Extras**
 - **Sperrbildschirm:** lange drücken → *Anpassen* → *Sperrbildschirm* → Widgets → **REKORD**
 - **Kontrollzentrum:** öffnen → **+** oben links → *Steuerelement hinzufügen* → **REKORD**
 - **Action Button:** *Einstellungen → Action Button → Kurzbefehl* → **REKORD Aufnahme starten**
-
-> Mit einer **kostenlosen Apple-ID** läuft die App 7 Tage. Danach in Sideloadly einfach nochmal **Start** drücken. Deine Daten bleiben erhalten.
 
 ---
 
@@ -161,12 +143,18 @@ Beim ersten Öffnen erscheint die Einführung. Jeder Schritt lässt sich **Über
 | **Mikrofon** | Mikrofon wählen, etwas sagen – der Balken muss ausschlagen. |
 | **KI** | **Lokal · gratis** (ein Klick, läuft im Hintergrund weiter), **Claude** oder **ChatGPT** (Key einfügen, wird sofort getestet) oder *Erstmal ohne*. |
 | **Deine Stimme** | Namen eingeben → **Jetzt einsprechen** → deinen Text vorlesen (siehe unten). Ab dann steht in jedem Meeting dein Name. |
-| **iPhone** | QR-Code mit dem iPhone scannen (siehe [Weg A](#weg-a--web-app)). |
+| **iPhone** | Mit der REKORD-App am iPhone den QR-Code scannen oder den 6-stelligen Code eingeben (siehe [Koppeln](#koppeln)). |
 | **Fertig** | Übersicht, was eingerichtet ist · **Erste Aufnahme** oder **Zur App**. |
 
-**Einsprechen – jede Person liest ihren eigenen Text.** REKORD erstellt für jeden Namen einen eigenen Text (ca. 45 Sekunden, mit Zahlen, Fragen,
-unterschiedlichen Lauten). Mindestens 25 Sekunden, bis zum Ende ist besser. *Anderer Text* tauscht ihn aus. Danach **Stimme speichern**:
-REKORD prüft, ob wirklich nur eine Stimme zu hören war, und zeigt die Qualität an. Klingt die Probe nach mehreren Leuten oder viel Lärm, bittet es um eine neue.
+**Einsprechen – drei Wege.** Oben im Fenster wählst du, wie REKORD die Stimme lernen soll:
+
+| Weg | So geht's |
+|---|---|
+| **Text vorlesen** | REKORD erstellt für jeden Namen einen eigenen Text (ca. 45 Sekunden, mit Zahlen, Fragen, unterschiedlichen Lauten). *Anderer Text* tauscht ihn aus. Am genauesten. |
+| **Einfach reden lassen** | Kein Text: Die Person redet über irgendwas – oder du lässt jemanden reden, der sowieso spricht, z. B. den Prof am Anfang der Vorlesung (Mikro in seine Richtung). *💬 Gesprächsidee* gibt ein Thema, wenn nichts einfällt. Kurze Zwischenrufe anderer lässt REKORD weg. |
+| **Aus Aufnahme lernen** | Aufnahme wählen → Stimme anhören (▶) → auswählen → **Stimme lernen**. Gut für Leute, die man nicht bitten kann, etwas einzusprechen. |
+
+Gezählt werden nur Sekunden, in denen wirklich gesprochen wird: mindestens 25, ideal ~45. Danach **Stimme speichern** – REKORD prüft, ob es wirklich eine Stimme war, und zeigt die Qualität an.
 
 ---
 
@@ -190,9 +178,9 @@ Danach kannst du Claude direkt fragen: *„Was haben wir im letzten Meeting ents
 
 ## 5. Erste Aufnahme
 
-1. **Leute einmal anlernen:** *Personen* → **Person einsprechen** → den eigenen Text vorlesen (ca. 45 s). Ab dann erkennt REKORD die Person mit Namen.
+1. **Leute einmal anlernen:** *Personen* → **Person einsprechen** → Text vorlesen, einfach reden lassen oder aus einer Aufnahme lernen (siehe [Einsprechen](#erster-start-die-einführung)). Ab dann erkennt REKORD die Person mit Namen.
 2. **Roter Knopf** → REKORD fragt **„Wer ist dabei?“** – das ist Pflicht, sonst startet keine Aufnahme:
-   - **Wo findet das Meeting statt?** – **Vor Ort** oder **Online (Teams, Zoom, Meet …)**. Bei Online nimmt REKORD den Ton des Calls mit auf.
+   - **Wo findet das Meeting statt?** – **Vor Ort**, **Online (Teams, Zoom, Meet …)** oder **Vorlesung**. Bei Online nimmt REKORD den Ton des Calls mit auf. Bei Vorlesung musst du nicht mitzählen (siehe unten).
    - **Wie viele sprechen?** – dich mitgezählt (Zahl antippen oder **−/+**).
    - **Wer davon ist bekannt?** – die Leute antippen, die REKORD schon kennt.
    - Alle anderen zählen als neu. Am besten gleich **„… jetzt einsprechen“** – jede neue Person liest ihren Text, dann ist sie ab sofort bekannt.
@@ -242,10 +230,10 @@ Der **rote Knopf** unten rechts (in Aufnahmen, Fragen, Personen und Vorlagen) sp
   - **„…“ oben rechts:** *Neu verarbeiten* (z. B. nach Modellwechsel) · *Personen neu erkennen* (nach dem Anlernen neuer Leute) · *Umbenennen* · *Löschen*
 
 ### Live
-- Am Handy im Browser steht beim ersten Mal **„Für Aufnahmen im Handy-Browser fehlt noch ein Schritt“** → **Jetzt einrichten** (siehe [Weg A](#weg-a--web-app)).
-- Oben: **Vor Ort** oder **Online**.
+- Oben: **Vor Ort**, **Online** oder **Vorlesung**.
   - **Vor Ort** – alle sitzen im Raum, das Mikrofon reicht.
-  - **Online** – Teams, Zoom, Meet …: REKORD nimmt am Computer zusätzlich den **Ton des Calls** auf, also die anderen Teilnehmer, direkt aus dem Lautsprecher-Signal. Kopfhörer sind kein Problem. Nur Ton, kein Bild. Am Mac fragt macOS beim ersten Mal nach **Bildschirm- & Systemaudioaufnahme** → REKORD erlauben (macOS 13 oder neuer). Am Handy geht das nicht – dort das Handy neben den Lautsprecher legen.
+  - **Online** – Teams, Zoom, Meet …: REKORD nimmt am Computer zusätzlich den **Ton des Calls** auf, also die anderen Teilnehmer, direkt aus dem Lautsprecher-Signal. Kopfhörer sind kein Problem. Nur Ton, kein Bild. Am Mac fragt macOS beim ersten Mal nach **Bildschirm- & Systemaudioaufnahme** → REKORD erlauben (macOS 13 oder neuer). Am iPhone geht das nicht – dort das iPhone neben den Lautsprecher legen.
+  - **Vorlesung** – eine Person trägt vor (Uni, Schulung, Vortrag). Mitzählen musst du nicht: REKORD erkennt die vortragende Person an der Stimme – bekannt mit Namen, sonst **„Vortragende Person“** – und sammelt alle anderen Stimmen unter **„Publikum“**. Danach wird automatisch ein **Lernzettel** geschrieben: Kernaussagen, Definitionen, Prüfungsrelevantes, Fragen aus dem Hörsaal. Mit **„Wer ist das?“** gibst du der vortragenden Person einen Namen.
 - **Titel** eingeben (optional).
 - **Wer ist dabei?** Die Karte zeigt, wer angekündigt ist; **Festlegen** ändert es. **Vorstellungsrunde** lässt eine neue Person ihren Text einsprechen.
 - **Roter Knopf** (oder **Leertaste**) → zuerst **Wer ist dabei?** (Anzahl + Bekannte, siehe [Erste Aufnahme](#5-erste-aufnahme)), dann läuft die Aufnahme. Nochmal drücken stoppt · **★** (oder Taste **H**) markiert einen wichtigen Moment · **Pause**.
@@ -257,7 +245,7 @@ Der **rote Knopf** unten rechts (in Aufnahmen, Fragen, Personen und Vorlagen) sp
 Ein Chat über **alle** Aufnahmen: *„Was hat Lisa letzte Woche zum Budget gesagt?“* Die Antworten haben anklickbare Quellen, die direkt an die Stelle in der Aufnahme springen. **Verlauf leeren** oben rechts.
 
 ### Personen
-- **Person einsprechen:** Namen eingeben → REKORD zeigt den Text für diese Person (*Anderer Text* tauscht ihn) → **Aufnahme starten** → vorlesen (mind. 25 s, ideal ~45 s) → **Stimme speichern**. Oder eine Datei mit nur dieser Person wählen.
+- **Person einsprechen:** Namen eingeben → Weg wählen: **Text vorlesen**, **Einfach reden lassen** oder **Aus Aufnahme lernen** → **Aufnahme starten** (mind. 25 s Sprache, ideal ~45 s) → **Stimme speichern**. Oder eine Datei mit nur dieser Person wählen.
 - **Stift-Symbol:** Namen oder Farbe ändern, oder **Stimmabdruck löschen**.
 - Jede Bestätigung („Stimme merken“) verbessert den Stimmabdruck.
 
@@ -272,16 +260,16 @@ Oben gibt's Sprung-Knöpfe zu den Bereichen. *Darstellung* und *Audio & Mikrofon
 | Bereich | Felder (so heißen sie in der App) |
 |---|---|
 | **Darstellung** | **Erscheinungsbild** System / Hell / Dunkel · **Akzentfarbe** (9 fertige oder eigene) · **Dichte** Luftig / Kompakt |
-| **Audio & Mikrofon** | **Mikrofon** wählen + *Pegel testen* · **Meeting-Art** Vor Ort oder Online (Vorauswahl, wird vor jeder Aufnahme bestätigt) · **Audio-Verarbeitung**: Rauschunterdrückung, Echo-Unterdrückung, automatische Lautstärke · **Live-Erkennung** an/aus (aus spart Akku) · **Bildschirm wach halten** |
+| **Audio & Mikrofon** | **Mikrofon** wählen + *Pegel testen* · **Meeting-Art** Vor Ort, Online oder Vorlesung (Vorauswahl, wird vor jeder Aufnahme bestätigt) · **Audio-Verarbeitung**: Rauschunterdrückung, Echo-Unterdrückung, automatische Lautstärke · **Live-Erkennung** an/aus (aus spart Akku) · **Bildschirm wach halten** |
 | **KI** | Anbieter wählen: Claude, ChatGPT, Lokal, Kompatibel, Aus · Lokal: **Lokales Modell** – **Lokal einrichten** (installiert alles), danach Modelle per *Laden* holen, deine Modelle antippen zum Verwenden, **Löschen** entfernt ein geladenes Modell (war es aktiv, springt REKORD auf ein anderes) · Claude/ChatGPT: **Key erstellen ↗** · **API-Key** · **Modell** (*Laden* holt die Liste) · Claude: **Denkaufwand**, **Ausweichmodell** · Lokal/Kompatibel: **Ollama-Adresse** bzw. **Server-Adresse**, **Kontextlänge** · **Verbindung** → *Testen* · **Sprache der Zusammenfassungen** · **Automatisch zusammenfassen** + Standard-Vorlage |
 | **Transkription** | **Sprache** (fest eingestellt = genauer, *Automatisch* für gemischte Meetings) · **Engine** · **Modell** (*small* = Standard, *turbo* = beste Qualität) · **CPU-Threads** · **Vokabular** für Namen, die falsch erkannt werden |
 | **Sprecher-Erkennung** | **Personen-Erkennung (Aufnahmen)** und **Personen-Erkennung (live)**: wie streng (höher = weniger Verwechslungen) · **Sprecher trennen**: erscheint eine Person doppelt, runterdrehen · **Anzahl Sprecher**: wenn bekannt, fest einstellen · **Stimmabdruck-Modell** |
 | **Modelle** | Sprachmodelle *Laden* oder *Entfernen* |
-| **iPhone & Geräte** | **QR-Codes** (links iPhone-App, rechts Browser) · **Adresse** · **Kopplungs-Code** *Neu erzeugen* (trennt alle gekoppelten Geräte) · Linux: **Firewall** → *Für iPhone freigeben*, falls sie das iPhone blockiert |
+| **iPhone & Geräte** | **QR-Code** für die iPhone-App · **Adresse** · **Kopplungs-Code** (6 Ziffern, 10 Minuten gültig, *Neuer Code*) · **Gekoppelte Geräte** (*Trennen* je Gerät, **Alle Geräte trennen**) · Linux: **Firewall** → *Für iPhone freigeben*, falls sie das iPhone blockiert |
 | **Claude Desktop (MCP)** | **Claude Desktop**: *Mit Claude Desktop verbinden*, danach *Claude neu starten* · **Claude Code**: *Mit Claude Code verbinden* · *Von Hand eintragen*: Konfiguration zum **Kopieren** |
 | **Speicher & Datenschutz** | **Speicherort**: wo Aufnahmen, Datenbank und Stimmabdrücke liegen – *Ändern …* → Laufwerk wählen (eingebaut, extern, NVMe, NAS) → **Umziehen**; REKORD kopiert alles, startet neu, der alte Ordner bleibt als Sicherheitskopie · **KI-Modelle**: wo Sprachmodelle und lokale KI liegen – eigenes Laufwerk möglich, *Ändern …* nimmt vorhandene Modelle mit · **Eingangsordner**: Dateien, die hier landen, werden automatisch verarbeitet · **Was verlässt das Gerät?** · **Mit dem Computer starten**: REKORD läuft ab dem Einschalten im Hintergrund, das iPhone kann sich jederzeit verbinden · **Hilfe**: *Einführung starten*, *Anleitung ↗* · **Version & Updates**: *Nach Updates suchen*, **Jetzt auf … aktualisieren**, *Automatisch nach Updates suchen* (siehe [Updates](#updates)) · **Beenden** → *REKORD beenden* |
 
-**In der iPhone-App** gibt's die Reiter *Live*, *Aufnahmen*, *Personen* und *Einstellungen* (Theme, Akzentfarbe, Mikrofon, KI, Hub). *Fragen über alle* und *Vorlagen* laufen über die Web-App oder den Computer.
+**In der iPhone-App** gibt's die Reiter *Live*, *Aufnahmen*, *Personen* und *Einstellungen* (Theme, Akzentfarbe, Mikrofon, KI, Hub). *Fragen über alle* und *Vorlagen* gibt's am Computer.
 Auch dort fragt der rote Knopf zuerst **Wer ist dabei?**. Starts über Sperrbildschirm-Widget, Kontrollzentrum oder Action Button nehmen die zuletzt bestätigte Runde.
 
 ---
@@ -316,7 +304,6 @@ Die Installations-Zeile von oben funktioniert weiterhin auch als Update.
 | **Mac:** *„REKORD ist beschädigt“* | Terminal öffnen, `xattr -dr com.apple.quarantine /Applications/REKORD.app` eingeben, REKORD nochmal öffnen |
 | **Kein Mikrofon im App-Fenster** | Im Browser **http://localhost:8765** öffnen, dort geht's immer. Mac: *Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon* → REKORD an |
 | **iPhone findet den Computer nicht** | Gleiches WLAN? (Gäste-WLANs trennen Geräte.) Ist REKORD am Computer offen? (Tipp: *Speicher & Datenschutz* → **Mit dem Computer starten**.) Windows: Firewall „Private Netzwerke“ erlaubt? Linux: *iPhone & Geräte* → **Für iPhone freigeben** |
-| **Im Handy-Browser geht Aufnehmen nicht** | Schritt 3 vergessen? *Einstellungen → Allgemein → Info → Zertifikatsvertrauenseinstellungen* → **REKORD Heimnetz** an. Neues WLAN am Computer? Einfach den rechten QR-Code nochmal scannen. |
 | **Lokal einrichten hängt oder bricht ab** | Internet prüfen, nochmal **Lokal einrichten** – fertige Teile werden nicht neu geladen. |
 | **„Modelle werden geladen“ geht nicht weiter** | Internet prüfen → *Einstellungen → Modelle* → **Laden** |
 | **Zusammenfassung zeigt Fehler** | *Einstellungen → KI* → **Testen**. Key richtig kopiert? Guthaben auf dem API-Konto? |
@@ -352,5 +339,5 @@ Oder von Hand – alle Dateien liegen auf der [Release-Seite](https://github.com
 
 REKORD öffnet sich unter Linux im Browser. Die Pakete (deb, rpm, pacman) geben die Firewall-Ports fürs iPhone selbst frei.
 Mit AppImage oder tar.gz: *Einstellungen → iPhone & Geräte* → **Für iPhone freigeben** (fragt nach deinem Passwort). Von Hand:
-- Fedora, openSUSE, RHEL: `sudo firewall-cmd --permanent --add-port=8765/tcp --add-port=8766/tcp && sudo firewall-cmd --reload`
-- Ubuntu, Mint: `sudo ufw allow 8765/tcp && sudo ufw allow 8766/tcp`
+- Fedora, openSUSE, RHEL: `sudo firewall-cmd --permanent --add-port=8765/tcp && sudo firewall-cmd --reload`
+- Ubuntu, Mint: `sudo ufw allow 8765/tcp`

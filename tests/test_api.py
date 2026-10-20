@@ -85,26 +85,87 @@ def test_status_reports_missing_ai(client, monkeypatch):
     assert st["ai_ready"] is False and "API-Key" in st["ai_problem"]
 
 
-def test_pairing_qr(client):
+def test_pairing_qr_and_code(client):
     p = client.get("/api/pair").json()
-    assert p["token"] == config.load()["pair_token"] and p["qr_app"].lstrip().startswith("<?xml")
+    assert p["qr_app"].lstrip().startswith("<?xml") and "token" not in p and "qr_web" not in p
+    assert len(p["code"]["code"]) == 6 and p["code"]["code"].isdigit() and p["code"]["expires"] > 0
 
 
-def test_lan_requires_token(client):
+def test_lan_is_only_for_the_iphone_app(client):
+    """In the Wi-Fi there is no web interface at all – only the paired app may use the API."""
     lan = TestClient(app, client=("192.168.1.50", 5000))
     assert lan.get("/api/status").status_code == 401
-    assert "koppeln" in lan.get("/").text.lower()
     tok = config.load()["pair_token"]
+    for path in ("/", "/static/app.js", f"/?token={tok}", "/manifest.webmanifest", "/setup", "/rekord.mobileconfig"):
+        r = lan.get(path, headers={"X-Rekord-Token": tok})
+        assert r.status_code == 403 and "REKORD-App" in r.text, path  # no web version on the phone
     assert lan.get("/api/status", headers={"X-Rekord-Token": tok}).status_code == 200
-    r = lan.get(f"/?token={tok}")
-    assert r.status_code == 200 and "rekord_token" in r.headers.get("set-cookie", "")
-    assert lan.get("/manifest.webmanifest").status_code == 200  # PWA assets stay public
-    fresh = TestClient(app, client=("192.168.1.51", 5000))  # no cookie, no token
+    assert lan.get(f"/api/status?token={tok}").status_code == 200  # the app's audio player uses the query form
+    fresh = TestClient(app, client=("192.168.1.51", 5000))
     with pytest.raises(Exception):
         with fresh.websocket_connect("/ws/events"):
             pass
-    with lan.websocket_connect("/ws/events"):  # paired via cookie → allowed
+    with lan.websocket_connect(f"/ws/events?token={tok}"):
         pass
+
+
+def test_six_digit_code_pairs_a_device_with_its_own_key(client):
+    from rekord import pairing
+    code = client.get("/api/pair").json()["code"]["code"]
+    phone = TestClient(app, client=("192.168.1.90", 5000))
+    r = phone.post("/api/pair/claim", json={"code": code[:3] + " " + code[3:], "name": "Emils iPhone"})
+    assert r.status_code == 200
+    key = r.json()["token"]
+    assert key != config.load()["pair_token"] and len(key) > 20
+    assert phone.get("/api/status", headers={"X-Rekord-Token": key}).status_code == 200
+    devs = client.get("/api/pair").json()["devices"]
+    dev = next(d for d in devs if d["name"] == "Emils iPhone")
+    assert "hash" not in dev and "hash" not in str(client.get("/api/settings").json()["devices"])
+    assert key not in (config.SETTINGS_PATH.read_text("utf-8"))  # only a hash is stored
+    assert phone.delete(f"/api/pair/devices/{dev['id']}", headers={"X-Rekord-Token": key}).status_code == 403  # only at the computer
+    assert client.delete(f"/api/pair/devices/{dev['id']}").json()["ok"]
+    assert phone.get("/api/status", headers={"X-Rekord-Token": key}).status_code == 401
+    pairing._tries.clear()
+
+
+def test_wrong_codes_lock_out_and_burn_the_code(client):
+    from rekord import pairing
+    pairing._tries.clear()
+    code = pairing.new_code()["code"]
+    wrong = f"{(int(code) + 1) % 10**6:06d}"
+    guesser = TestClient(app, client=("192.168.1.91", 5000))
+    for _ in range(pairing.MAX_TRIES):
+        assert guesser.post("/api/pair/claim", json={"code": wrong}).status_code == 403
+    r = guesser.post("/api/pair/claim", json={"code": code})  # even the right code: locked for a minute
+    assert r.status_code == 403 and "Versuche" in r.json()["detail"]
+    others = [TestClient(app, client=(f"10.0.0.{i}", 5000)) for i in range(10)]
+    for i in range(pairing.MAX_TOTAL_FAILS):
+        others[i % 10].post("/api/pair/claim", json={"code": wrong})
+    assert pairing.current_code()["code"] != code  # many guesses from many devices: the code is replaced
+    pairing._tries.clear()
+
+
+def test_code_runs_out(monkeypatch):
+    from rekord import pairing
+    pairing._tries.clear()
+    code = pairing.new_code()["code"]
+    real = pairing.time.time
+    monkeypatch.setattr(pairing.time, "time", lambda: real() + pairing.CODE_TTL + 1)
+    with pytest.raises(PermissionError, match="abgelaufen"):
+        pairing.claim(code, "1.2.3.4")
+    pairing._tries.clear()
+
+
+def test_disconnect_all(client):
+    from rekord import pairing
+    code = pairing.new_code()["code"]
+    key = pairing.claim(code, "1.2.3.5", "Altes Handy")
+    old = config.load()["pair_token"]
+    lan = TestClient(app, client=("192.168.1.92", 5000))
+    assert lan.post("/api/settings/rotate-token", headers={"X-Rekord-Token": key}).status_code == 403
+    assert client.post("/api/settings/rotate-token").json()["ok"]
+    assert config.load()["pair_token"] != old and config.load()["devices"] == []
+    assert not pairing.token_ok(key) and not pairing.token_ok(old)
 
 
 def test_shutdown_only_from_this_computer(client, monkeypatch):
@@ -122,27 +183,6 @@ def test_mcp_command_matches_install_type(client, monkeypatch):
     assert client.get("/api/status").json()["mcp_command"][1:] == ["-m", "rekord", "mcp"]
     monkeypatch.setattr(_sys, "frozen", True, raising=False)
     assert client.get("/api/status").json()["mcp_command"][1:] == ["mcp"]  # packaged app takes the subcommand directly
-
-
-def test_phone_setup_page_and_certificate(client, monkeypatch):
-    import plistlib
-    tok = config.load()["pair_token"]
-    monkeypatch.setattr(app.state, "https_port", 8766, raising=False)
-    monkeypatch.setattr(app.state, "https_config", None, raising=False)
-    lan = TestClient(app, client=("192.168.1.70", 5000), base_url="http://192.168.1.5:8765")
-    assert lan.get("/setup").status_code == 200 and "koppeln" in lan.get("/setup").text.lower()  # needs pairing
-    page = lan.get(f"/setup?token={tok}").text
-    assert f'"https://192.168.1.5:8766/?token={tok}"' in page and "{{" not in page
-    prof = lan.get("/rekord.mobileconfig")  # public: it is only the CA certificate
-    assert prof.status_code == 200 and prof.headers["content-type"].startswith("application/x-apple-aspen-config")
-    assert plistlib.loads(prof.content)["PayloadContent"][0]["PayloadType"] == "com.apple.security.root"
-    assert b"BEGIN CERTIFICATE" in lan.get("/rekord-ca.crt").content
-    assert lan.get("/manifest.webmanifest").json()["start_url"] == f"/?token={tok}"  # home-screen app stays paired
-    assert client.get("/manifest.webmanifest").json()["start_url"] == "/"
-    monkeypatch.setattr(app.state, "lan", True, raising=False)
-    monkeypatch.setattr(app.state, "port", 8765, raising=False)
-    monkeypatch.setattr("rekord.server.lan_ips", lambda: ["192.168.1.5"])
-    assert client.get("/api/pair").json()["web_url"] == f"http://192.168.1.5:8765/setup?token={tok}"
 
 
 def test_one_click_endpoints_only_on_this_computer(client, monkeypatch):

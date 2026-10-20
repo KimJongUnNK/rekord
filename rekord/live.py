@@ -16,7 +16,6 @@ import logging
 import queue
 import threading
 import time
-from pathlib import Path
 
 import numpy as np
 
@@ -59,12 +58,15 @@ class LiveSession:
         profiles = db.list_profiles(with_embedding=True)
         self.participants = [int(x) for x in (participants or [])]
         self.guests = max(0, int(guests or 0))
+        self.meeting = meeting if meeting in ("online", "lecture") else "person"
+        lecture = self.meeting == "lecture"
         if self.participants:  # only compare against the people who are actually in the room
             profiles = [p for p in profiles if p["id"] in self.participants]
+        # a lecture hall: nobody counts the audience – no closed set, no headcount cap
         self.cluster = voiceprint.OnlineClusterer(profiles, float(self.s["live_profile_threshold"]),
                                                   float(self.s["live_cluster_threshold"]),
-                                                  closed_set=bool(self.participants) and self.guests == 0,
-                                                  max_speakers=len(self.participants) + self.guests)
+                                                  closed_set=bool(self.participants) and self.guests == 0 and not lecture,
+                                                  max_speakers=0 if lecture else len(self.participants) + self.guests)
         self.engine = None
         if self.s.get("live_transcribe", True):
             try:
@@ -74,8 +76,7 @@ class LiveSession:
         self.title = title or time.strftime("Meeting %d.%m.%Y %H:%M")
         self.rec = db.create_recording(self.title, "", source=source, status="recording")
         self.rid = self.rec["id"]
-        self.meeting = "online" if meeting == "online" else "person"
-        if self.participants or self.guests or self.meeting == "online":
+        if self.participants or self.guests or self.meeting != "person":
             db.update_recording(self.rid, participants={"ids": self.participants, "guests": self.guests, "meeting": self.meeting})
         self.call = None
         self.notes: list[str] = []
@@ -273,7 +274,22 @@ class LiveSession:
         c = next(c for c in self.cluster.clusters if c["key"] == key)
         if c["profile"]:
             return {"key": key, "name": c["profile"]["name"], "color": c["profile"]["color"], "known": True}
+        if self.meeting == "lecture":  # the unknown voice that talks most gives the lecture, the others are the audience
+            if key == self._lecturer(key):
+                return {"key": key, "name": pipeline.LECTURER, "color": pipeline.LECTURER_COLOR, "known": False}
+            return {"key": key, "name": pipeline.AUDIENCE, "color": pipeline.UNKNOWN_COLOR, "known": False}
         return {"key": key, "name": pipeline.UNKNOWN, "color": pipeline.UNKNOWN_COLOR, "known": False}
+
+    def _lecturer(self, current=None):
+        """Key of the unknown voice with the most talking time so far (in a lecture: the lecturer)."""
+        unknown = [c["key"] for c in self.cluster.clusters if not c["profile"]]
+        if not unknown:
+            return None
+        known_max = max((sum(s["end"] - s["start"] for s in self.segments if s.get("known") and s["key"] == c["key"])
+                         for c in self.cluster.clusters if c["profile"]), default=0)
+        talk = {k: sum(s["end"] - s["start"] for s in self.segments if s["key"] == k) for k in unknown}
+        best = max(unknown, key=lambda k: (talk[k], k == current))
+        return best if talk[best] >= known_max or not known_max else None
 
     def _roster(self) -> None:
         items = []
@@ -283,6 +299,9 @@ class LiveSession:
         for c in self.cluster.clusters:
             if c["profile"]:
                 items.append({**self._label({"key": c["key"]}), "talk": round(talk(c["key"]), 1)})
+        if self.meeting == "lecture" and unknown and (lk := self._lecturer()) is not None:
+            items.append({**self._label({"key": lk}), "talk": round(talk(lk), 1)})
+            unknown = [c for c in unknown if c["key"] != lk]
         if unknown:  # one entry; tapping it names the voice heard last
             last = next((s["key"] for s in reversed(self.segments) if s["key"] in {c["key"] for c in unknown}), unknown[-1]["key"])
             items.append({**self._label({"key": last}), "talk": round(sum(talk(c["key"]) for c in unknown), 1), "voices": len(unknown)})
@@ -294,15 +313,20 @@ class LiveSession:
     def _save_live_transcript(self) -> None:
         keys = sorted({s["key"] for s in self.segments if s["key"] is not None})
         speakers, unknown = [], []
+        lk = self._lecturer() if self.meeting == "lecture" else None
         for k in keys:
             c = next(c for c in self.cluster.clusters if c["key"] == k)
+            if not c["profile"] and k == lk:
+                speakers.append({"label": k, "name": pipeline.LECTURER, "color": pipeline.LECTURER_COLOR, "embedding": c["emb"]})
+                continue
             if not c["profile"]:
                 unknown.append(c)
                 continue
             speakers.append({"label": k, "name": c["profile"]["name"], "color": c["profile"]["color"], "profile_id": c["profile"]["id"],
                              "match_score": round(float(c.get("pscore", 0)), 3), "embedding": c["emb"]})
         if unknown:
-            speakers.append({"label": pipeline.UNKNOWN_LABEL, "name": pipeline.UNKNOWN, "color": pipeline.UNKNOWN_COLOR,
+            speakers.append({"label": pipeline.UNKNOWN_LABEL, "name": pipeline.AUDIENCE if lk is not None else pipeline.UNKNOWN,
+                             "color": pipeline.UNKNOWN_COLOR,
                              "embedding": unknown[0]["emb"] if len(unknown) == 1 else None, "voices": len(unknown)})
         gone = {c["key"] for c in unknown}
         segs = [{"start": s["start"], "end": s["end"], "label": pipeline.UNKNOWN_LABEL if s["key"] in gone else s["key"], "text": s["text"],

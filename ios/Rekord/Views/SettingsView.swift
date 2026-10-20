@@ -173,7 +173,9 @@ struct PairingView: View {
 
                     Text("MANUELL").font(.caption.weight(.bold)).tracking(1.4).foregroundStyle(.secondary)
                     TextField("http://192.168.1.20:8765", text: $manualURL).textFieldStyle(.roundedBorder).keyboardType(.URL).textInputAutocapitalization(.never)
-                    TextField("Kopplungs-Code", text: $manualToken).textFieldStyle(.roundedBorder).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField("Code vom Computer, z. B. 482 913", text: $manualToken).textFieldStyle(.roundedBorder)
+                        .keyboardType(.numbersAndPunctuation).textContentType(.oneTimeCode).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Text("Der 6-stellige Code steht am Computer unter Einstellungen → iPhone & Geräte.").font(.footnote).foregroundStyle(.secondary)
                     Button(busy ? "Verbinde …" : "Koppeln") {
                         busy = true
                         Task { if !(await hub.pair(url: manualURL, token: manualToken)) { error = "Hub nicht erreichbar oder Code falsch." }; busy = false }

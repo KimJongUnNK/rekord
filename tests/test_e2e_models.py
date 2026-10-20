@@ -5,6 +5,7 @@ Run:  python scripts/make_test_audio.py && pytest -m models
 """
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from rekord import config, db, models, pipeline
@@ -193,3 +194,53 @@ print(json.dumps({{"segs": [e["name"] for e in ev if e["type"] == "segment"],
     assert {"Emil", "Lisa"} <= set(r["segs"]), r["segs"]  # known people, heard only through the call
     assert len(r["text"]) > 100
     assert r["participants"]["meeting"] == "online"
+
+
+def _write_wav(path, x):
+    import wave as _wave
+    with _wave.open(str(path), "wb") as w:
+        w.setnchannels(1), w.setsampwidth(2), w.setframerate(16000)
+        w.writeframes((np.clip(x, -1, 1) * 32767).astype("<i2").tobytes())
+
+
+def test_free_talk_enrollment_ignores_a_question_in_between(people, tmp_path):
+    """„Einfach reden lassen“: Emil talks, Lisa asks something in between → only Emil is learned."""
+    from rekord import audio
+    from rekord.engines import voiceprint
+    rid = next(r["id"] for r in db.list_recordings() if r.get("audio_path", "").endswith("meeting1.wav")
+               and {"Emil", "Lisa"} <= {s["name"] for s in db.list_speakers(r["id"])})
+    x = audio.load(FIX / "meeting1.wav")
+    segs = db.list_segments(rid)
+    sp = {s["id"]: s["name"] for s in db.list_speakers(rid)}
+    part = lambda who: [x[int(s["start"] * 16000):int(s["end"] * 16000)] for s in segs if sp.get(s["speaker_id"]) == who]  # noqa: E731
+    emil, lisa = part("Emil"), part("Lisa")
+    mixed = np.concatenate(emil[:len(emil) // 2] + lisa[:1] + emil[len(emil) // 2:])
+    _write_wav(tmp_path / "free.wav", mixed)
+    prof = pipeline.enroll_from_audio("Emil frei", str(tmp_path / "free.wav"), mode="free")
+    assert prof["quality"]["left_out"] >= 2, prof["quality"]  # Lisa's question was left out
+    learned = db.get_profile(prof["id"], with_embedding=True)["embedding"]
+    ref = {p["name"]: p["embedding"] for p in db.list_profiles(with_embedding=True)}
+    assert voiceprint.cosine(learned, ref["Emil"]) > voiceprint.cosine(learned, ref["Lisa"]) + 0.15
+    db.delete_profile(prof["id"])
+
+
+def test_lecture_separates_lecturer_and_audience(people, monkeypatch):
+    """Vorlesung: nobody known → the voice that talks most is the lecturer, everyone else the audience;
+    then the lecturer is learned from the recording."""
+    from rekord.engines import voiceprint
+    monkeypatch.setattr(voiceprint, "match_profiles", lambda embs, profiles, thr: {})  # as if nobody was enrolled
+    r = db.create_recording("Vorlesung", str(FIX / "meeting1.wav"))
+    db.update_recording(r["id"], participants={"ids": [], "guests": 0, "meeting": "lecture"})
+    pipeline.process(r["id"])
+    names = {s["name"]: s for s in db.list_speakers(r["id"])}
+    assert set(names) == {pipeline.LECTURER, pipeline.AUDIENCE}, names
+    assert names[pipeline.AUDIENCE]["voices"] == 2
+    voices = pipeline.recording_voices(r["id"])
+    lect = next(v for v in voices if v["name"] == pipeline.LECTURER)
+    assert all(lect["seconds"] >= v["seconds"] for v in voices)
+    assert len([v for v in voices if v["name"] == pipeline.AUDIENCE]) == 2
+    monkeypatch.undo()
+    prof = pipeline.learn_voice(r["id"], lect["speaker_id"], None, "Prof. Test")
+    assert prof["name"] == "Prof. Test"
+    assert any(s["name"] == "Prof. Test" for s in db.list_speakers(r["id"]))
+    db.delete_profile(prof["id"])

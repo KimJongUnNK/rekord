@@ -2,7 +2,6 @@
 Claude Desktop/Code connection, HTTPS certificates for phone browsers."""
 import http.server
 import io
-import ipaddress
 import json
 import os
 import signal
@@ -200,32 +199,3 @@ def test_connect_claude_code_uses_cli(tmp_path, monkeypatch):
 
 # ------------------------------------------------------------------ HTTPS for phone browsers
 
-def test_tls_certificate_only_valid_for_home_network():
-    from cryptography import x509
-    from cryptography.x509.verification import PolicyBuilder, Store, VerificationError
-
-    from rekord import tls
-    chain, _ = tls.ensure(["192.168.1.50", "8.8.8.8", "10.0.0.7"])
-    leaf, ca = x509.load_pem_x509_certificates(Path(chain).read_bytes())
-    ips = {str(a) for a in leaf.extensions.get_extension_for_class(x509.SubjectAlternativeName).value.get_values_for_type(x509.IPAddress)}
-    assert ips == {"127.0.0.1", "192.168.1.50", "10.0.0.7"}  # public address left out (would break the constraints)
-    verifier = PolicyBuilder().store(Store([ca])).build_server_verifier(x509.IPAddress(ipaddress.ip_address("192.168.1.50")))
-    assert len(verifier.verify(leaf, [])) == 2
-    with pytest.raises(VerificationError):  # CA must not vouch for the internet
-        PolicyBuilder().store(Store([ca])).build_server_verifier(x509.DNSName("example.com")).verify(leaf, [])
-    assert not tls.needs_renewal(["192.168.1.50"])
-    assert tls.needs_renewal(["192.168.178.20"])  # new Wi-Fi → new certificate, same CA
-    tls.ensure(["192.168.178.20"])
-    leaf2, ca2 = x509.load_pem_x509_certificates(Path(chain).read_bytes())
-    assert ca2 == ca and leaf2 != leaf
-
-
-def test_mobileconfig_installs_the_ca():
-    import plistlib
-
-    from rekord import tls
-    d = plistlib.loads(tls.mobileconfig())
-    payload = d["PayloadContent"][0]
-    assert d["PayloadType"] == "Configuration" and payload["PayloadType"] == "com.apple.security.root"
-    assert payload["PayloadContent"] == tls.ca_der()
-    assert plistlib.loads(tls.mobileconfig())["PayloadUUID"] == d["PayloadUUID"]  # stable → reinstall replaces

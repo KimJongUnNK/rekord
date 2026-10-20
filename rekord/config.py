@@ -71,6 +71,7 @@ DEFAULTS: dict = {
     },
     "inbox_enabled": True,
     "pair_token": "",
+    "devices": [],  # paired devices with their own key (only a hash is stored) – see pairing.py
     "models_dir": "",  # "" = <data folder>/models; otherwise e.g. an external drive (local AI models go into …/ollama)
     "storage_chosen": False,  # first start: no big download before the user picked where REKORD stores things
     "welcome_done": False,
@@ -166,6 +167,7 @@ def save(patch: dict) -> dict:
 def public(s: dict | None = None) -> dict:
     """Settings safe to send to the browser: API keys masked."""
     s = deepcopy(s or load())
+    s["devices"] = [{k: d[k] for k in ("id", "name", "created") if k in d} for d in s.get("devices") or []]
     for p in ("anthropic", "openai", "compatible"):
         key = s["llm"][p].get("api_key", "")
         s["llm"][p]["api_key"] = ("••••" + key[-4:]) if key else ""

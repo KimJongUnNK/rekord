@@ -85,10 +85,15 @@ Kurzbeschreibung (2 Sätze, spannend). ## Kapitel (mm:ss — Titel) ## Key Takea
       """# Interview: <Kandidat> für <Rolle>
 ## Profil & Erfahrung ## Stärken (mit Beleg) ## Schwächen/Risiken ## Motivation ## Gehalt & Verfügbarkeit
 ## Bewertung (1-5) je Kriterium: Fachlich, Kommunikation, Culture Fit, Motivation ## Empfehlung"""),
-    T("lecture", "Vorlesung / Lernzettel", "Bildung", "Lernzettel mit Definitionen & Prüfungsfragen",
-      """# <Thema>
-## Überblick ## Kernkonzepte (je: Erklärung in einfachen Worten + Beispiel) ## Definitionen & Formeln
-## Was der Dozent betont hat (Prüfungsrelevanz!) ## 10 Prüfungsfragen mit Musterantwort ## Offene Fragen zum Nachlesen"""),
+    T("lecture", "Vorlesung / Lernzettel", "Bildung", "Kernaussagen, Definitionen, Prüfungsrelevantes, Fragen aus dem Hörsaal",
+      """# <Thema der Vorlesung>
+## Überblick (3-5 Sätze: worum ging es, wie hängt es mit dem Fach zusammen)
+## Kernaussagen (je: Erklärung in einfachen Worten + ein Beispiel [mm:ss])
+## Definitionen & Formeln (exakt so, wie sie genannt wurden)
+## Prüfungsrelevant (alles, was die vortragende Person betont, wiederholt oder als „wichtig“ / „kommt dran“ markiert hat [mm:ss])
+## Fragen aus dem Hörsaal (Frage → Antwort der vortragenden Person)
+## 10 Prüfungsfragen mit Musterantwort
+## Offene Fragen & zum Nachlesen (Literatur, Folien, Aufgaben bis zum nächsten Mal als - [ ] Checkliste)"""),
     T("study", "Lerngruppe", "Bildung", "Wer erklärt was, Aufgabenverteilung",
       """# Lerngruppe <Fach>
 ## Erklärte Themen (wer hat was erklärt) ## Verständnisprobleme ## Aufgabenverteilung (- [ ]) ## Nächstes Treffen"""),

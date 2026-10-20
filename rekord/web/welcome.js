@@ -195,17 +195,13 @@ async function welcome(force = false) {
       return;
     }
     if (step === "mic") {
-      const secure = window.isSecureContext;
       ov.innerHTML = frame(`
         <div class="eyebrow">Schritt ${i + 1} · Mikrofon</div><h1 class="wl-h">Hört REKORD dich?</h1>
-        ${secure ? `<p class="wl-lead">Wähle dein Mikrofon und sag etwas – der Balken sollte bis etwa zur Mitte ausschlagen.</p>
+        <p class="wl-lead">Wähle dein Mikrofon und sag etwas – der Balken sollte bis etwa zur Mitte ausschlagen.</p>
         <div class="wl-field"><b>Mikrofon</b>${tip("mic")}<select id="wl-mic"><option value="">Systemstandard</option></select></div>
         <div class="level" style="height:14px"><i id="wl-lvl"></i></div>
-        <div class="muted" id="wl-micmsg" style="font-size:13px">Fragt der Browser nach dem Mikrofon: <b>Erlauben</b>.</div>`
-        : `<p class="wl-lead">Am Handy im Browser braucht das Mikrofon eine sichere Verbindung. Das richtest du in 1 Minute ein – jetzt oder später unter Live.</p>
-           <a class="btn primary" href="/setup">Jetzt einrichten</a>`}`);
+        <div class="muted" id="wl-micmsg" style="font-size:13px">Fragt REKORD nach dem Mikrofon: <b>Erlauben</b>.</div>`);
       bindFrame();
-      if (!secure) return;
       const startCap = async () => {
         if (cap) cap.stop();
         cap = new Capture({ onLevel: (v) => { const l = $("#wl-lvl", ov); if (l) l.style.width = v * 100 + "%"; if (v > 0.25) result.mic = true; } });
@@ -268,7 +264,7 @@ async function welcome(force = false) {
       try { people = (await api("/api/profiles")).items; } catch (e) {}
       ov.innerHTML = frame(`
         <div class="eyebrow">Schritt ${i + 1} · Deine Stimme</div><h1 class="wl-h">Damit REKORD dich erkennt.</h1>
-        <p class="wl-lead">Du liest einen kurzen Text vor (ca. 45 Sekunden) – jede Person bekommt ihren eigenen. Danach steht in jedem Meeting dein Name statt „${UNKNOWN}“.</p>
+        <p class="wl-lead">Ca. 45 Sekunden sprechen – entweder einen Text vorlesen (jede Person bekommt ihren eigenen) oder einfach über irgendwas reden. Danach steht in jedem Meeting dein Name statt „${UNKNOWN}“.</p>
         ${people.length ? `<p>Schon bekannt: ${people.map((p) => `<span class="chip" style="--c:${p.color}"><i></i>${esc(p.name)}</span>`).join(" ")}</p>` : ""}
         <div class="row"><input type="text" id="wl-name" placeholder="Dein Name" autocomplete="off" style="max-width:280px">
           <button class="btn primary" id="wl-enroll">🎙 Jetzt einsprechen</button></div>
@@ -284,10 +280,11 @@ async function welcome(force = false) {
       let p = null;
       try { p = await api("/api/pair"); } catch (e) {}
       ov.innerHTML = frame(`
-        <div class="eyebrow">Schritt ${i + 1} · iPhone</div><h1 class="wl-h">Auch am Handy aufnehmen?</h1>
-        <p class="wl-lead">Halte die iPhone-Kamera auf den Code. Die Seite führt dich in 2 Minuten durch alles – danach nimmst du am Handy auf, und hier landet alles.</p>
-        ${p && p.web_url ? `<div class="row" style="align-items:flex-start;gap:24px"><div class="qr">${p.qr_web}</div>
-          <p class="muted" style="max-width:260px">Handy und Computer müssen im selben WLAN sein. Die REKORD-App (Sperrbildschirm-Widget) koppelst du später unter Einstellungen → iPhone & Geräte.</p></div>`
+        <div class="eyebrow">Schritt ${i + 1} · iPhone</div><h1 class="wl-h">Auch am iPhone aufnehmen?</h1>
+        <p class="wl-lead">Mit der REKORD-App am iPhone: dort auf <b>Koppeln</b> tippen, den Code scannen oder die 6 Ziffern eintippen. Alles, was du am iPhone aufnimmst, landet hier.</p>
+        ${p && p.urls.length ? `<div class="row" style="align-items:center;gap:24px"><div class="qr">${p.qr_app}</div>
+          <div><b style="font-size:34px;letter-spacing:.12em">${esc(p.code.code.slice(0, 3) + " " + p.code.code.slice(3))}</b>
+          <p class="muted" style="max-width:260px">iPhone und Computer im selben WLAN. Der Code gilt 10 Minuten – später jederzeit unter Einstellungen → iPhone & Geräte.</p></div></div>`
           : `<p class="muted">Gerade kein WLAN gefunden. Später unter Einstellungen → iPhone & Geräte.</p>`}`,
       { next: "Weiter" });
       bindFrame();

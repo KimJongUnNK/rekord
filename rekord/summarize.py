@@ -127,6 +127,9 @@ def maybe_title(rid: str, content: str) -> None:
 def auto_summary(rid: str) -> None:
     s = config.load()
     tid = s.get("default_template") or "auto"
+    rec = db.get_recording(rid) or {}
+    if tid == "auto" and (rec.get("participants") or {}).get("meeting") == "lecture":
+        tid = "lecture"  # recorded as „Vorlesung“: a study sheet, not a meeting protocol
     generate(rid, tid)
 
 
