@@ -257,3 +257,51 @@ def test_storage_info_and_first_start_choice(client, monkeypatch):
     assert r.status_code == 200 and started == [1] and config.load()["storage_chosen"] is True
     assert client.post("/api/storage/move", json={"what": "models", "target": "relativ/pfad"}).status_code == 400
     monkeypatch.setattr(app.state, "auto_download", False, raising=False)
+
+
+def test_best_local_model_and_load_and_use(client, monkeypatch):
+    """„Bestes Modell laden & verwenden“ and „Anderes Modell“: download, then switch to it automatically."""
+    import socket
+    import threading
+    import time
+
+    import uvicorn
+
+    from rekord.llm import ollama
+    from tests import fake_ollama
+    fake_ollama.have[:] = ["qwen3:8b"]
+    with socket.socket() as sk:
+        sk.bind(("127.0.0.1", 0))
+        port = sk.getsockname()[1]
+    srv = uvicorn.Server(uvicorn.Config(fake_ollama.app, host="127.0.0.1", port=port, log_level="warning"))
+    threading.Thread(target=srv.run, daemon=True).start()
+    for _ in range(50):
+        if srv.started:
+            break
+        time.sleep(0.1)
+    base = f"http://127.0.0.1:{port}"
+    config.save({"llm": {"provider": "ollama", "ollama": {"base_url": base, "model": "qwen3:8b"}}})
+    monkeypatch.setattr(ollama, "hardware", lambda: {"ram_gb": 32.0, "gpu": "apple", "vram_gb": 22.4, "label": "32 GB RAM · Apple-Chip"})
+    monkeypatch.setattr(ollama, "ram_gb", lambda: 32.0)
+
+    def wait_model(want):
+        for _ in range(100):
+            if config.load()["llm"]["ollama"]["model"] == want:
+                return True
+            time.sleep(0.05)
+        return False
+    try:
+        st = client.get("/api/ollama").json()
+        assert st["best"] == "qwen3:30b" and st["hardware"]["label"].startswith("32 GB")
+        assert next(r for r in st["recommended"] if r["name"] == "qwen3:32b")["fits"] is False  # needs 48 GB
+        r = client.post("/api/ollama/best").json()
+        assert r == {"model": "qwen3:30b", "pulling": True}
+        assert wait_model("qwen3:30b")  # downloaded, then used without another click
+        assert client.post("/api/ollama/best").json() == {"model": "qwen3:30b", "pulling": False}
+        assert client.post("/api/ollama/pull", json={"model": "mistral:latest", "use": True}).json()["ok"]
+        assert wait_model("mistral:latest") and config.load()["llm"]["provider"] == "ollama"
+        lan = TestClient(app, client=("192.168.1.99", 5000), headers={"X-Rekord-Token": config.load()["pair_token"]})
+        assert lan.post("/api/ollama/best").status_code == 403  # downloading gigabytes: only at the computer
+    finally:
+        srv.should_exit = True
+        config.save({"llm": {"provider": "anthropic", "ollama": {"base_url": "http://localhost:11434", "model": ""}}})

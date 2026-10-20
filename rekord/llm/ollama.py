@@ -4,6 +4,7 @@ One click ("Lokal einrichten") = setup(): install Ollama if missing → start it
 fits this computer's RAM → select it. Every step reports progress via setup_state()/pulls()."""
 from __future__ import annotations
 
+import functools
 import json
 import os
 import platform
@@ -20,16 +21,24 @@ import httpx
 
 from .. import system
 
-# what we offer for one-click download (Ollama library tags), smallest first
+# what we offer for one-click download (Ollama library tags), smallest first. ram_gb: memory the computer
+# needs so the model runs comfortably next to REKORD's speech models.
 RECOMMENDED = [
     {"name": "qwen3:1.7b", "size_gb": 1.4, "ram_gb": 4, "note": "Für ältere oder schwache Rechner"},
-    {"name": "qwen3:4b", "size_gb": 2.6, "ram_gb": 8, "note": "Schnell, für die meisten Laptops"},
-    {"name": "qwen3:8b", "size_gb": 5.2, "ram_gb": 16, "note": "Empfohlen: gute Protokolle, Deutsch top"},
-    {"name": "gemma3:12b", "size_gb": 8.1, "ram_gb": 24, "note": "Sehr gute Qualität"},
-    {"name": "qwen3:14b", "size_gb": 9.3, "ram_gb": 32, "note": "Beste Qualität, braucht viel RAM"},
+    {"name": "qwen3:4b", "size_gb": 2.5, "ram_gb": 8, "note": "Schnell, für die meisten Laptops"},
+    {"name": "qwen3:8b", "size_gb": 5.2, "ram_gb": 14, "note": "Gute Protokolle, Deutsch top"},
+    {"name": "gemma3:12b", "size_gb": 8.1, "ram_gb": 20, "note": "Sehr gute Qualität, stark in Deutsch"},
+    {"name": "qwen3:14b", "size_gb": 9.3, "ram_gb": 24, "note": "Sehr gute Qualität"},
+    {"name": "qwen3:30b", "size_gb": 19.0, "ram_gb": 32, "note": "Top-Qualität und trotzdem flott (rechnet nur mit einem Teil des Modells)"},
+    {"name": "qwen3:32b", "size_gb": 20.0, "ram_gb": 48, "note": "Maximale Qualität, aber langsam"},
 ]
+CATALOG = {m["name"]: m for m in RECOMMENDED}
+# the automatic choice, best first: the first one this computer can run well wins
+BEST_ORDER = ["qwen3:30b", "qwen3:14b", "gemma3:12b", "qwen3:8b", "qwen3:4b", "qwen3:1.7b"]
+# dense mid-size models crawl without a graphics chip; the 30b one only computes ~3b per word, so CPUs manage it
+NEEDS_GPU = {"qwen3:14b", "gemma3:12b", "qwen3:32b"}
 # preferred when several models are already installed (quality per second on a normal computer)
-PREFERRED = ["qwen3:8b", "qwen3:14b", "gemma3:12b", "qwen3:4b", "gemma3:4b", "qwen3:1.7b"]
+PREFERRED = ["qwen3:30b", "qwen3:14b", "gemma3:12b", "qwen3:8b", "qwen3:4b", "gemma3:4b", "qwen3:1.7b"]
 DOWNLOAD_BASES = ("https://ollama.com/download", "https://github.com/ollama/ollama/releases/latest/download")
 
 
@@ -74,29 +83,63 @@ def ram_gb() -> float:
     return system.ram_gb()
 
 
-def recommended_for(ram: float | None = None) -> str:
-    """The model we download by default: good quality, still fast on this much memory."""
-    ram = ram_gb() if ram is None else ram
-    return "qwen3:8b" if ram >= 14 else "qwen3:4b" if ram >= 7 else "qwen3:1.7b"
+@functools.lru_cache(maxsize=1)
+def hardware() -> dict:
+    """What this computer has for local AI: memory and a graphics chip that speeds models up."""
+    ram = ram_gb()
+    hw = {"ram_gb": ram, "gpu": None, "vram_gb": 0.0}
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        hw.update(gpu="apple", vram_gb=round(ram * 0.7, 1))  # Apple chips share the memory with the graphics part
+    elif shutil.which("nvidia-smi"):
+        r = system.run(["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"], timeout=10)
+        try:
+            vram = max(float(x) for x in r.stdout.split()) / 1024
+            if vram >= 4:
+                hw.update(gpu="nvidia", vram_gb=round(vram, 1))
+        except ValueError:
+            pass
+    hw["label"] = (f"{ram:.0f} GB RAM" + (" · Apple-Chip" if hw["gpu"] == "apple" else
+                   f" · NVIDIA-Grafik {hw['vram_gb']:.0f} GB" if hw["gpu"] == "nvidia" else " · ohne Grafikchip"))
+    return hw
+
+
+def _runs_well(name: str, hw: dict) -> bool:
+    m = CATALOG[name]
+    if hw["ram_gb"] < m["ram_gb"] * 0.95:  # "16 GB" machines report a bit less
+        return False
+    if name in NEEDS_GPU and not (hw["gpu"] == "apple" or (hw["gpu"] == "nvidia" and hw["vram_gb"] >= m["size_gb"] * 1.1)):
+        return False
+    return True
+
+
+def recommended_for(ram: float | None = None, hw: dict | None = None) -> str:
+    """The best model this computer runs well: as good as possible, still fast enough for a protocol."""
+    if hw is None:
+        hw = dict(hardware()) if ram is None else {"ram_gb": ram, "gpu": "apple", "vram_gb": ram * 0.7}
+    return next((n for n in BEST_ORDER if _runs_well(n, hw)), "qwen3:1.7b")
 
 
 def pick_installed(models: list[dict], ram: float | None = None) -> str | None:
     """Best already-downloaded chat model (no embedding models), or None."""
     ram = ram_gb() if ram is None else ram
     chat = [m for m in models if "embed" not in m["name"].lower()]
-    names = {m["name"] for m in chat} | {m["name"].removesuffix(":latest") for m in chat}
+    fits = lambda m: m.get("size_gb", 0) <= ram * 0.6  # noqa: E731
+    names = {m["name"]: m for m in chat} | {m["name"].removesuffix(":latest"): m for m in chat}
     for want in PREFERRED:
-        if want in names:
-            return next(m["name"] for m in chat if m["name"] in (want, want + ":latest"))
-    fitting = [m for m in chat if m.get("size_gb", 0) <= ram * 0.6] or chat
+        if want in names and fits(names[want]):
+            return names[want]["name"]
+    fitting = [m for m in chat if fits(m)] or chat
     return max(fitting, key=lambda m: m.get("size_gb", 0))["name"] if fitting else None
 
 
 def status(base_url: str | None = None) -> dict:
     base = _base(base_url)
     ram = ram_gb()
+    hw = hardware()
+    best = recommended_for(hw=hw)
     out = {"installed": binary() is not None, "running": False, "version": "", "models": [],
-           "recommended": RECOMMENDED, "default": recommended_for(ram), "ram_gb": ram, "pulls": pulls(),
+           "recommended": [{**m, "fits": _runs_well(m["name"], hw), "best": m["name"] == best} for m in RECOMMENDED],
+           "default": best, "best": best, "hardware": hw, "ram_gb": ram, "pulls": pulls(),
            "setup": setup_state(), "can_install": _asset() is not None, "download_url": "https://ollama.com/download",
            "service": system_service()}
     try:
@@ -104,7 +147,8 @@ def status(base_url: str | None = None) -> dict:
         out["running"], out["installed"] = True, True
         out["version"] = v.get("version", "")
         tags = httpx.get(f"{base}/api/tags", timeout=5).json().get("models", [])
-        out["models"] = [{"name": m["name"], "size_gb": round(m.get("size", 0) / 1e9, 1)} for m in tags]
+        out["models"] = [{"name": m["name"], "size_gb": round(m.get("size", 0) / 1e9, 1),
+                          "fits": m.get("size", 0) / 1e9 <= ram * 0.6} for m in tags]
     except (httpx.HTTPError, ValueError):
         pass
     return out

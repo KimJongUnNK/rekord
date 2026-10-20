@@ -1665,22 +1665,49 @@ async function ollamaPanel(cfg) {
   } else if (!st.running) {
     html = `<div class="row"><span class="muted">Ollama ist installiert, läuft aber nicht.</span><button class="btn primary" id="oll-start">Ollama starten</button></div>`;
   } else {
-    html = `<div class="muted" style="font-size:13px;margin-bottom:10px"><span class="dot ok"></span>Ollama läuft${st.version ? " · v" + esc(st.version) : ""} · ${gbFmt(st.ram_gb)} RAM</div>`;
-    if (st.models.length) html += `<div class="eyebrow" style="margin-bottom:6px">Deine Modelle – antippen zum Verwenden</div>
-      <div class="oll-models" style="margin-bottom:14px">${st.models.map((m) => `<div class="row oll-model"><button class="btn sm ${m.name === cfg.model ? "primary" : ""}" data-use="${esc(m.name)}">${m.name === cfg.model ? "✓ " : ""}${esc(m.name)} <span class="muted">${gbFmt(m.size_gb)}</span></button>
-        ${IS_LOCAL ? `<button class="btn ghost sm" data-odel="${esc(m.name)}" title="Vom Computer löschen">Löschen</button>` : ""}</div>`).join("")}${IS_LOCAL ? tip("ollamadelete") : ""}</div>
+    const has = (n) => installed.has(n) || installed.has(n + ":latest");
+    const best = st.recommended.find((r) => r.best) || { name: st.best, size_gb: 0 };
+    const bestPull = st.pulls[best.name] || {};
+    const pct = (pr) => (pr.total ? Math.round((pr.done / pr.total) * 100) : 0);
+    html = `<div class="muted" style="font-size:13px;margin-bottom:10px"><span class="dot ok"></span>Ollama läuft${st.version ? " · v" + esc(st.version) : ""}</div>
+      <div class="card" style="margin-bottom:14px;padding:14px">
+        <div class="eyebrow" style="margin-bottom:4px">Dein Computer${tip("bestmodel")}</div>
+        <div><b>${esc(st.hardware.label)}</b> → am besten: <b>${esc(best.name)}</b> <span class="muted">${gbFmt(best.size_gb)}</span></div>
+        <div style="margin-top:8px">${cfg.model === best.name || cfg.model === best.name + ":latest" ? `<span class="badge acc">✓ wird verwendet</span>`
+          : bestPull.state === "downloading" ? `<span class="muted">Lädt ${pct(bestPull)} % – danach wird es automatisch verwendet</span>
+              <div class="progress" style="width:100%"><i style="width:${pct(bestPull)}%"></i></div>`
+          : IS_LOCAL ? `<button class="btn primary sm" id="oll-best">${has(best.name) ? `${esc(best.name)} verwenden` : `${esc(best.name)} laden & verwenden`}</button>` : ""}</div></div>`;
+    if (st.models.length) {
+      const unused = st.models.filter((m) => m.name !== cfg.model);
+      const freeGb = unused.reduce((a, m) => a + (m.size_gb || 0), 0);
+      html += `<div class="eyebrow" style="margin-bottom:6px">Auf diesem Computer${IS_LOCAL ? tip("ollamadelete") : ""}</div>
+      <div class="oll-models" style="margin-bottom:14px">${st.models.map((m) => {
+        const on = m.name === cfg.model;
+        return `<div class="model-row"><div><b>${on ? "● " : ""}${esc(m.name)}</b> <span class="muted">${gbFmt(m.size_gb)}</span>
+          ${on ? `<span class="badge acc">wird verwendet</span>` : ""}${m.fits === false ? ` <span class="badge" title="Mehr als ~60 % deines Arbeitsspeichers">zu groß für ${gbFmt(st.ram_gb)} RAM</span>` : ""}</div>
+          <div class="row" style="gap:6px">${on ? "" : `<button class="btn sm" data-use="${esc(m.name)}">Verwenden</button>`}
+          ${IS_LOCAL ? `<button class="btn ghost sm" data-odel="${esc(m.name)}" title="Vom Computer löschen">🗑 Löschen</button>` : ""}</div></div>`;
+      }).join("")}
+      ${IS_LOCAL && unused.length > 1 ? `<div class="row" style="margin-top:8px"><button class="btn ghost sm" id="oll-clean">Alle nicht verwendeten löschen · ${gbFmt(freeGb)} frei machen</button></div>` : ""}</div>
       ${st.service ? `<p class="muted" style="font-size:13px">Ollama läuft hier als Systemdienst – der Speicherort für dessen Modelle wird im Dienst festgelegt (<span class="kbd">sudo systemctl edit ollama</span> → <span class="kbd">Environment="OLLAMA_MODELS=…"</span>).</p>` : ""}`;
-    html += `<div class="eyebrow" style="margin-bottom:6px">${st.models.length ? "Weitere laden" : "Modell laden"}</div>` + st.recommended.map((r) => {
+    }
+    html += `<div class="eyebrow" style="margin-bottom:6px">Weitere Modelle</div>` + st.recommended.map((r) => {
       const pr = st.pulls[r.name] || {};
-      const pct = pr.total ? Math.round((pr.done / pr.total) * 100) : 0;
-      const right = installed.has(r.name) ? `<span class="badge">geladen</span>`
-        : pr.state === "downloading" ? `<span class="muted">${pct ? pct + " %" : esc(pr.status || "…")}</span>`
-        : `<button class="btn sm ${r.name === st.default && !st.models.length ? "primary" : ""}" data-pull="${esc(r.name)}">Laden</button>`;
-      return `<div class="model-row"><div><b>${esc(r.name)}</b> ${r.name === st.default ? `<span class="badge acc">empfohlen für diesen Computer</span>` : ""}
+      const right = has(r.name) ? `<span class="badge">geladen</span>`
+        : pr.state === "downloading" ? `<span class="muted">${pct(pr) ? pct(pr) + " %" : esc(pr.status || "…")}</span>`
+        : `<button class="btn sm ${r.best && !st.models.length ? "primary" : ""}" data-pull="${esc(r.name)}">${r.fits ? "Laden & verwenden" : "Trotzdem laden"}</button>`;
+      return `<div class="model-row" style="${r.fits ? "" : "opacity:.6"}"><div><b>${esc(r.name)}</b> ${r.best ? `<span class="badge acc">am besten für diesen Computer</span>` : ""}
         <span class="muted">${gbFmt(r.size_gb)} · ab ${r.ram_gb} GB RAM</span>
-        <div class="muted" style="font-size:13px">${esc(r.note)}${pr.state === "error" ? ` · <span style="color:#EF4444">${esc(pr.error)}</span>` : ""}</div>
-        ${pr.state === "downloading" ? `<div class="progress" style="width:100%"><i style="width:${pct}%"></i></div>` : ""}</div><div>${right}</div></div>`;
+        <div class="muted" style="font-size:13px">${esc(r.note)}${r.fits ? "" : " · läuft hier nur langsam"}${pr.state === "error" ? ` · <span style="color:#EF4444">${esc(pr.error)}</span>` : ""}</div>
+        ${pr.state === "downloading" ? `<div class="progress" style="width:100%"><i style="width:${pct(pr)}%"></i></div>` : ""}</div><div>${right}</div></div>`;
     }).join("");
+    const other = Object.entries(st.pulls).filter(([n, v]) => !st.recommended.some((r) => r.name === n) && v.state !== "done");
+    html += other.map(([n, pr]) => `<div class="model-row"><div><b>${esc(n)}</b>
+        <div class="muted" style="font-size:13px">${pr.state === "error" ? `<span style="color:#EF4444">${esc(pr.error)}</span>` : `lädt ${pct(pr)} %`}</div>
+        ${pr.state === "downloading" ? `<div class="progress" style="width:100%"><i style="width:${pct(pr)}%"></i></div>` : ""}</div></div>`).join("");
+    if (IS_LOCAL) html += `<div class="eyebrow" style="margin:12px 0 6px">Anderes Modell${tip("othermodel")}</div>
+      <div class="row"><input type="text" id="oll-name" placeholder="Name von ollama.com/library, z. B. llama3.1:8b" style="flex:1" autocomplete="off">
+        <button class="btn sm" id="oll-other">Laden & verwenden</button></div>`;
   }
   box.innerHTML = html;
   if (settingUp) ollStop = localSetupProgress($("#oll-prog"), async () => {
@@ -1709,8 +1736,35 @@ async function ollamaPanel(cfg) {
   });
   $$("#oll [data-pull]").forEach((b) => b.onclick = async () => {
     b.disabled = true; b.textContent = "startet …";
-    await api("/api/ollama/pull", { method: "POST", json: { model: b.dataset.pull } }); ollamaPanel(cfg);
+    await api("/api/ollama/pull", { method: "POST", json: { model: b.dataset.pull, use: true } }); ollamaPanel(cfg);
   });
+  $("#oll-best") && ($("#oll-best").onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      const r = await api("/api/ollama/best", { method: "POST" });
+      if (!r.pulling) { cfg.model = r.model; toast(`${r.model} wird verwendet`); refreshStatus(); }
+      else toast(`${r.model} wird geladen – danach automatisch verwendet`, 4000);
+    } catch (err) { toast(err.message, 5000); }
+    ollamaPanel(cfg);
+  });
+  $("#oll-clean") && ($("#oll-clean").onclick = async () => {
+    const st2 = await api("/api/ollama");
+    const unused = st2.models.filter((m) => m.name !== cfg.model);
+    if (!(await confirmBox(`${unused.length} Modelle löschen?`, unused.map((m) => esc(m.name)).join(", ") + ` – nur ${esc(cfg.model || "–")} bleibt.`, "Löschen"))) return;
+    for (const m of unused) {
+      try { await api(`/api/ollama/models/${encodeURIComponent(m.name)}`, { method: "DELETE" }); } catch (err) { toast(err.message, 6000); }
+    }
+    toast(`${unused.length} Modelle gelöscht`); ollamaPanel(cfg);
+  });
+  const otherGo = async () => {
+    const name = ($("#oll-name").value || "").trim();
+    if (!/^[\w.\-/:]+$/.test(name)) { toast("Name wie auf ollama.com/library, z. B. llama3.1:8b"); return; }
+    try { await api("/api/ollama/pull", { method: "POST", json: { model: name, use: true } }); toast(`${name} wird geladen – danach automatisch verwendet`, 4000); }
+    catch (err) { toast(err.message, 5000); }
+    ollamaPanel(cfg);
+  };
+  $("#oll-other") && ($("#oll-other").onclick = otherGo);
+  $("#oll-name") && $("#oll-name").addEventListener("keydown", (e) => { if (e.key === "Enter") otherGo(); });
   const wasPulling = pulling.length > 0;
   if (!settingUp && (wasPulling || (st.installed && !st.running))) ollTimer = setTimeout(async () => {
     if (!$("#oll")) return;

@@ -484,16 +484,35 @@ async def ollama_start():
 @app.post("/api/ollama/pull")
 async def ollama_pull(request: Request):
     from .llm import ollama
-    model = (await request.json())["model"].strip()
+    b = await request.json()
+    model = b["model"].strip()
     if not re.match(r"^[\w.\-/:]+$", model):
         raise HTTPException(400, "Ungültiger Modellname")
+    use = bool(b.get("use"))
 
-    def done(m: str):  # first local model → use it right away
+    def done(m: str):  # "laden & verwenden", or the first local model → use it right away
         s = config.load()
-        if s["llm"]["provider"] == "ollama" and not s["llm"]["ollama"].get("model"):
+        if use:
+            _use_ollama(m)
+        elif s["llm"]["provider"] == "ollama" and not s["llm"]["ollama"].get("model"):
             config.save({"llm": {"ollama": {"model": m}}})
     ollama.pull(model, config.load()["llm"]["ollama"].get("base_url"), on_done=done)
     return {"ok": True}
+
+
+@app.post("/api/ollama/best")
+async def ollama_best(request: Request):
+    """„Bestes Modell verwenden“: the strongest model this computer runs well – downloaded if needed, then used."""
+    from .llm import ollama
+    _local_only(request)
+    base = config.load()["llm"]["ollama"].get("base_url")
+    st = await asyncio.to_thread(ollama.status, base)
+    best = st["best"]
+    if best in {m["name"] for m in st["models"]} | {m["name"].removesuffix(":latest") for m in st["models"]}:
+        _use_ollama(best)
+        return {"model": best, "pulling": False}
+    ollama.pull(best, base, on_done=_use_ollama)
+    return {"model": best, "pulling": True}
 
 
 def _use_ollama(model: str) -> None:

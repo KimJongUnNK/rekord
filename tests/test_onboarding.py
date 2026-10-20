@@ -71,6 +71,7 @@ def test_local_ai_one_click_installs_starts_downloads_and_selects(fake_ollama_re
     from rekord.llm import ollama, providers
     base = fake_ollama_release
     monkeypatch.setattr(ollama, "ram_gb", lambda: 16.0)
+    monkeypatch.setattr(ollama, "hardware", lambda: {"ram_gb": 16.0, "gpu": None, "vram_gb": 0, "label": "16 GB RAM"})
     assert ollama.binary() is None
     ready = []
     assert ollama.setup(base, on_ready=ready.append)
@@ -104,10 +105,23 @@ def test_local_ai_one_click_installs_starts_downloads_and_selects(fake_ollama_re
 
 def test_recommended_model_fits_ram():
     from rekord.llm import ollama
-    assert ollama.recommended_for(64) == "qwen3:8b"
-    assert ollama.recommended_for(15.6) == "qwen3:8b"  # "16 GB" machines report a bit less
-    assert ollama.recommended_for(7.7) == "qwen3:4b"
-    assert ollama.recommended_for(4) == "qwen3:1.7b"
+    apple = lambda ram: {"ram_gb": ram, "gpu": "apple", "vram_gb": ram * 0.7}  # noqa: E731
+    cpu = lambda ram: {"ram_gb": ram, "gpu": None, "vram_gb": 0}  # noqa: E731
+    nvidia = lambda ram, vram: {"ram_gb": ram, "gpu": "nvidia", "vram_gb": vram}  # noqa: E731
+    # more memory → a better model; the best one for this computer, not the same for everyone
+    assert ollama.recommended_for(hw=apple(64)) == "qwen3:30b"
+    assert ollama.recommended_for(hw=apple(32)) == "qwen3:30b"
+    assert ollama.recommended_for(hw=apple(24)) == "qwen3:14b"
+    assert ollama.recommended_for(hw=apple(15.6)) == "qwen3:8b"  # "16 GB" machines report a bit less
+    assert ollama.recommended_for(hw=apple(7.7)) == "qwen3:4b"
+    assert ollama.recommended_for(hw=apple(4)) == "qwen3:1.7b"
+    # without a graphics chip dense mid-size models crawl – the 30b one (3b active) is still fine
+    assert ollama.recommended_for(hw=cpu(24)) == "qwen3:8b"
+    assert ollama.recommended_for(hw=cpu(32)) == "qwen3:30b"
+    assert ollama.recommended_for(hw=nvidia(24, 12)) == "qwen3:14b"
+    assert ollama.recommended_for(hw=nvidia(24, 6)) == "qwen3:8b"  # 9.3 GB model doesn't fit 6 GB of video memory
+    hw = ollama.hardware()
+    assert hw["ram_gb"] > 0.5 and "GB RAM" in hw["label"]
     models = [{"name": "nomic-embed-text:latest", "size_gb": 0.3}, {"name": "mistral:latest", "size_gb": 4.1},
               {"name": "llama3.1:70b", "size_gb": 40}]
     assert ollama.pick_installed(models, 16) == "mistral:latest"  # no embeddings, nothing too big
