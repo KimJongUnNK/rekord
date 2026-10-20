@@ -71,6 +71,8 @@ def hub():
                 break
         time.sleep(0.05)
     yield port
+    from rekord import jobs
+    jobs.wait_idle(300)  # no transcription may still run when the test process exits (native threads abort it)
     srv.should_exit = True
     t.join(5)
 

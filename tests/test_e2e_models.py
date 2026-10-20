@@ -321,9 +321,12 @@ def test_native_enrollment_from_the_window(hub, monkeypatch):
             time.sleep(0.01)
         return cond()
 
+    from rekord import jobs
+    assert jobs.wait_idle(300)  # the hub's worker picks up the recording of the live test before – let it finish
+
     # Lisa's lines from meeting 1 – what she'd say into the microphone
     x = audio.load(FIX / "meeting1.wav")
-    r = db.create_recording("Probe", str(FIX / "meeting1.wav"))
+    r = db.create_recording("Probe", str(FIX / "meeting1.wav"), status="processing")
     pipeline.process(r["id"])
     first = db.list_segments(r["id"])
     lisa_voice = first[1]["voice"]

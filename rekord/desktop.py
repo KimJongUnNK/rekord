@@ -126,7 +126,7 @@ def _ui(url: str, port: int, host: str, restarted: bool = False) -> None:
     """The window for the hub in this process: the native program, or the previous interface where it can't start."""
     from . import app
     if app.usable() and app.run(port) == 0:
-        return
+        _end()
     if os.environ.get("REKORD_SELFTEST_UI"):  # CI checks the native window: no fallback, a clear failure
         from pathlib import Path
         msg = f"the native window can't start here: {app.why() or 'the interface did not load'}"
@@ -138,6 +138,20 @@ def _ui(url: str, port: int, host: str, restarted: bool = False) -> None:
         print(msg, flush=True)
         os._exit(3)
     _window(url, own_hub=True, restarted=restarted, port=port, host=host)
+
+
+def _end() -> None:
+    """REKORD was quit: end the process right here. A transcription still running in the background would
+    otherwise be torn down by Python's shutdown mid-calculation – an "unexpectedly quit" crash report. Its
+    recording stays queued and continues at the next start."""
+    import logging
+    logging.shutdown()
+    for f in (sys.stdout, sys.stderr):
+        try:
+            f.flush()
+        except Exception:  # noqa: BLE001
+            pass
+    os._exit(0)
 
 
 def classic(url: str) -> None:

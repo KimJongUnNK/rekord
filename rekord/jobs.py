@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
 import traceback
 
 from . import config, db
@@ -89,5 +90,13 @@ def start() -> None:
             enqueue(r["id"])
 
 
-def wait_idle() -> None:
-    _q.join()
+def wait_idle(timeout: float | None = None) -> bool:
+    """Until every queued job is done (False if the timeout ran out first)."""
+    end = None if timeout is None else time.monotonic() + timeout
+    with _q.all_tasks_done:
+        while _q.unfinished_tasks:
+            left = None if end is None else end - time.monotonic()
+            if left is not None and left <= 0:
+                return False
+            _q.all_tasks_done.wait(left)
+    return True
