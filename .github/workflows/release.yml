@@ -74,11 +74,22 @@ jobs:
     container: python:3.12-bullseye
     steps:
       - uses: actions/checkout@v7
-      - name: Qt's X11 libraries, so they travel inside the app (libxcb-cursor0 & co. are missing on many desktops)
+      - name: Qt's X11 and sound libraries, so they travel inside the app (libxcb-cursor0 & co. are missing on many desktops)
         run: |
-          apt-get update -q && apt-get install -y -q libpulse0 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
-            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon0 libegl1 libgl1 libfontconfig1 \
-            libdbus-1-3 xvfb xauth
+          PKGS="libpulse0 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
+                libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon0 libegl1 libgl1 libfontconfig1 libdbus-1-3 xvfb xauth"
+          if ! apt-get update -q > apt.log 2>&1; then
+            # Debian 11 leaves the regular mirrors after its support ends: the same packages live on archive.debian.org
+            for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+              if [ -f "$f" ]; then
+                sed -i -e 's|//[a-z.]*debian.org/debian-security|//archive.debian.org/debian-security|g' \
+                       -e 's|//deb.debian.org/debian|//archive.debian.org/debian|g' -e '/^deb .*bullseye-updates/d' -e 's/ bullseye-updates//' "$f"
+              fi
+            done
+            apt-get -o Acquire::Check-Valid-Until=false update -q >> apt.log 2>&1 \
+              || { echo "::error title=apt update::$(tail -c 2500 apt.log | tr '\n' ' ')"; exit 1; }
+          fi
+          apt-get install -y -q $PKGS >> apt.log 2>&1 || { echo "::error title=apt install::$(tail -c 2500 apt.log | tr '\n' ' ')"; exit 1; }
       # glibc 2.31 here: pip takes the newest Qt for Python built for it (6.9) – runs on Debian 11+, Ubuntu 20.04+ …
       - run: pip install ".[mcp,docx]" "PySide6>=6.8" pyinstaller pillow
       - name: build
