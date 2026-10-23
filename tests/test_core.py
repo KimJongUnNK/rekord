@@ -383,3 +383,55 @@ def test_wait_idle_gives_up_after_the_timeout(monkeypatch):
     fresh.get()
     fresh.task_done()
     assert jobs.wait_idle(0.1) is True
+
+
+def test_analysis_threads_leave_half_the_computer_free(monkeypatch):
+    from rekord import system
+    monkeypatch.setattr(system.os, "cpu_count", lambda: 10)
+    assert system.processing_threads(8, gentle=True) == 5 and system.processing_threads(8, gentle=False) == 8
+    assert system.processing_threads(3, gentle=True) == 3  # never more than you set
+    monkeypatch.setattr(system.os, "cpu_count", lambda: 2)
+    assert system.processing_threads(8, gentle=True) == 2  # but at least two
+
+
+def test_mac_runs_the_analysis_with_utility_quality_of_service(monkeypatch):
+    from rekord import system
+    monkeypatch.setattr(system, "_taskpolicy", None)
+    monkeypatch.setattr(system.sys, "platform", "darwin")
+    monkeypatch.setattr(system.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 0})())
+    assert system.in_background(["REKORD", "--process-job", "x"]) == ["/usr/sbin/taskpolicy", "-c", "utility", "REKORD", "--process-job", "x"]
+    monkeypatch.setattr(system, "_taskpolicy", False)  # an old macOS without -c: start it plainly (nice still applies)
+    assert system.in_background(["REKORD"]) == ["REKORD"]
+    monkeypatch.setattr(system.sys, "platform", "linux")
+    assert system.in_background(["rekord"]) == ["rekord"]
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "getpriority"), reason="POSIX priority")
+def test_analysis_process_lowers_its_own_priority():
+    import subprocess
+    import sys
+    code = "import os; from rekord import system; system.lower_priority(); print(os.getpriority(os.PRIO_PROCESS, 0))"
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+    assert int(r.stdout.strip()) >= 10, r.stderr
+
+
+def test_pid_alive():
+    import os
+    import subprocess
+    import sys
+
+    from rekord import system
+    assert system.pid_alive(os.getpid())
+    p = subprocess.Popen([sys.executable, "-c", "pass"])
+    p.wait()
+    assert not system.pid_alive(p.pid) and not system.pid_alive(0)
+
+
+def test_local_ai_context_fits_the_request():
+    """Ollama reserves memory for its whole context window – only as much as the request needs."""
+    from rekord.llm.providers import fit_context
+    assert fit_context("Fasse zusammen.", [{"role": "user", "content": "kurz"}]) == 8192
+    meeting = "x" * 26000  # ~30 min of talk
+    assert fit_context("System", [{"role": "user", "content": meeting}]) == 16384
+    assert fit_context("System", [{"role": "user", "content": "x" * 400000}]) == 32768  # never above the setting
+    assert fit_context("System", [{"role": "user", "content": meeting}], 8192) == 8192

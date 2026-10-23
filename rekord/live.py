@@ -70,7 +70,8 @@ class LiveSession:
         self.engine = None
         if self.s.get("live_transcribe", True):
             try:
-                self.engine = asr.get_engine(self.s)
+                from . import system  # short clips: half the cores are plenty – the rest stays with the apps in front
+                self.engine = asr.get_engine({**self.s, "threads": system.processing_threads(self.s["threads"], True)})
             except Exception as e:  # noqa: BLE001 - live works without words, too
                 log.warning("live ASR unavailable: %s", e)
         self.title = title or time.strftime("Meeting %d.%m.%Y %H:%M")

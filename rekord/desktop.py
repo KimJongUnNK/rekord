@@ -145,6 +145,9 @@ def _end() -> None:
     otherwise be torn down by Python's shutdown mid-calculation – an "unexpectedly quit" crash report. Its
     recording stays queued and continues at the next start."""
     import logging
+
+    from . import jobs
+    jobs.stop_child()
     logging.shutdown()
     for f in (sys.stdout, sys.stderr):
         try:

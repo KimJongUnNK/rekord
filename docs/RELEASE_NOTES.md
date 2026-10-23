@@ -19,6 +19,14 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.3.1 – der Computer bleibt flüssig, während REKORD auswertet
+- **Auswertung im Hintergrund:** Sprecher trennen und Transkribieren laufen jetzt in einem eigenen Prozess mit niedriger Priorität und höchstens der Hälfte der Prozessorkerne. Am Mac mit Apples Utility-Priorität: Apps, mit denen du arbeitest, haben Vorrang. Gemessen: Andere Programme behalten während der Auswertung 94 % ihrer Rechenleistung (vorher 68 %). Die Auswertung dauert dafür etwas länger.
+- **Speicher sofort zurück:** Die Sprachmodelle (~1 GB) liegen nur noch im Auswerte-Prozess und sind weg, sobald er fertig ist – vorher blieben sie bis zum Beenden von REKORD im Speicher.
+- **Live-Mitschrift** nutzt nur noch die Hälfte der Kerne.
+- **Lokale KI (Ollama) braucht viel weniger RAM:** Statt immer Platz für 32.000 Tokens zu reservieren (bei qwen3:8b ~4,5 GB extra), nur so viel, wie die Zusammenfassung wirklich braucht. Danach gibt Ollama den Speicher nach 2 statt 5 Minuten frei. Startet REKORD Ollama selbst, nutzt es einen halb so großen Zwischenspeicher (8-Bit-KV-Cache).
+- **Weniger Unruhe in der Oberfläche:** Fortschritt kommt in wenigen Schritten statt mehrmals pro Sekunde, und die Aufnahme-Ansicht baut sich dabei nicht mehr jedes Mal neu auf.
+- Neu: *Einstellungen → Transkription → Computer flüssig halten* (Standard an). Aus = volle Leistung, schneller fertig.
+
 ### Neu in 1.3.0 – alles im REKORD-Fenster
 Ab jetzt ist REKORD am Computer komplett ein eigenes Programm – keine Seite öffnet mehr die bisherige Ansicht.
 - **Fragen** über alle Aufnahmen als Chat: Die Antwort nennt, wer es wann gesagt hat, ein Klick öffnet die Aufnahme genau an der Stelle.

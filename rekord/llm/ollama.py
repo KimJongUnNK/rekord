@@ -175,6 +175,9 @@ def start(base_url: str | None = None, wait: float = 20) -> bool:
     if (d := config.ollama_models_dir()) is not None:  # models on the chosen drive/folder
         d.mkdir(parents=True, exist_ok=True)
         env["OLLAMA_MODELS"] = str(d)
+    # half the memory for the context window (8-bit cache, needs flash attention) – unless you set it yourself
+    env.setdefault("OLLAMA_FLASH_ATTENTION", "1")
+    env.setdefault("OLLAMA_KV_CACHE_TYPE", "q8_0")
     # macOS: the server inside the app bundle, not the menu bar app – on its first start the app asks for an admin
     # password (CLI symlink) and only then starts serving
     exe = str(Path(b) / "Contents/Resources/ollama") if b.endswith(".app") else b

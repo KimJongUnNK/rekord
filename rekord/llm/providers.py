@@ -147,6 +147,22 @@ def _openai(cfg: dict, system: str, messages: list[dict], max_tokens: int, compa
 
 # ------------------------------------------------------------------ Ollama (native API: lets us raise num_ctx)
 
+# A local model reserves memory for its whole context window up front (qwen3:8b: ~4.5 GB for 32k tokens, on top of
+# the model) – on a 16 GB Mac that's swapping, and the whole computer stutters. So: only as much as this request needs.
+OLLAMA_KEEP_ALIVE = "2m"  # and give the memory back soon after (Ollama's own default keeps it for 5 minutes)
+
+
+def fit_context(system: str, messages: list[dict], limit: int = 32768) -> int:
+    """Context window for one request: prompt (~3 chars per token, generous) + room for the answer, rounded up to a
+    power of two, between 4096 and the configured limit."""
+    chars = len(system) + sum(len(str(m.get("content", ""))) for m in messages)
+    need = chars // 3 + 4096
+    ctx = 4096
+    while ctx < need and ctx < limit:
+        ctx *= 2
+    return max(2048, min(ctx, limit))
+
+
 def _ollama(cfg: dict, system: str, messages: list[dict]) -> Iterator[str]:
     from . import ollama
     base = (cfg.get("base_url") or "http://localhost:11434").rstrip("/")
@@ -161,7 +177,8 @@ def _ollama(cfg: dict, system: str, messages: list[dict]) -> Iterator[str]:
         raise LLMError("Kein lokales Modell gewählt. Einstellungen → KI → Lokal → Modell laden.")
     body = {"model": model, "stream": True, "think": False,
             "messages": [{"role": "system", "content": system}] + messages,
-            "options": {"num_ctx": int(cfg.get("num_ctx", 32768))}}
+            "options": {"num_ctx": fit_context(system, messages, int(cfg.get("num_ctx", 32768)))},
+            "keep_alive": OLLAMA_KEEP_ALIVE}
     try:
         with httpx.stream("POST", f"{base}/api/chat", json=body, timeout=httpx.Timeout(600, connect=5)) as r:
             if r.status_code == 404:

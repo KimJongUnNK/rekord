@@ -80,6 +80,15 @@ jobs:
           cat window.log
           if [ $rc -ne 0 ]; then echo "::error title=window ${{ runner.os }}::$(tail -c 2500 window.log | tr -d '\r' | tr '\n%' ' _')"; exit 1; fi
           echo "::notice title=window ${{ runner.os }}::$(grep -E 'UI selftest|OK' window.log | tr -d '\r' | tr '\n' ' ')"
+      - name: the packaged app analyzes in its own low-priority process (macOS through taskpolicy)
+        shell: bash
+        run: |
+          set +e
+          if [ "$RUNNER_OS" = "macOS" ]; then BIN="desktop/dist/REKORD.app/Contents/MacOS/REKORD"; elif [ "$RUNNER_OS" = "Windows" ]; then BIN="desktop/dist/REKORD/REKORD.exe"; else BIN="desktop/dist/REKORD/REKORD"; fi
+          python scripts/job_smoke.py "$BIN" > job.log 2>&1; rc=$?
+          cat job.log
+          if [ $rc -ne 0 ]; then echo "::error title=analysis process ${{ runner.os }}::$(tail -c 2500 job.log | tr -d '\r' | tr '\n%' ' _')"; exit 1; fi
+          echo "::notice title=analysis process ${{ runner.os }}::$(grep -E 'command:|exit code|OK' job.log | tr -d '\r' | tr '\n' ' ' | cut -c1-900)"
       - uses: actions/upload-artifact@v7
         if: always()
         with: { name: "window-shots-${{ runner.os }}", path: window-shots/, if-no-files-found: ignore }

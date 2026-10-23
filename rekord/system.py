@@ -1,6 +1,7 @@
 """Small OS helpers shared by the one-click features: child processes, RAM, firewall, shortcuts, autostart."""
 from __future__ import annotations
 
+import logging
 import os
 import plistlib
 import re
@@ -9,6 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+log = logging.getLogger("rekord.system")
 PORTS = (8765,)  # the iPhone app talks to REKORD on this port
 
 
@@ -77,6 +79,73 @@ def ram_gb() -> float:
 def app_command() -> list[str]:
     """How to start this REKORD again (packaged app or source install)."""
     return [sys.executable] if frozen() else [sys.executable, "-m", "rekord"]
+
+
+# ------------------------------------------------------------------ analysis without slowing the computer down
+
+def processing_threads(setting: int, gentle: bool) -> int:
+    """CPU threads for one analysis. Gentle: at most half the cores – the other half stays free for whatever
+    you're doing meanwhile."""
+    setting = max(1, int(setting or 4))
+    return min(setting, max(2, (os.cpu_count() or 4) // 2)) if gentle else setting
+
+
+_taskpolicy: bool | None = None
+
+
+def in_background(cmd: list[str]) -> list[str]:
+    """macOS: start a program with its threads clamped to "utility" quality of service – the system keeps the
+    performance cores for the apps in front and runs it next to them, instead of everything else stuttering."""
+    global _taskpolicy
+    if sys.platform != "darwin":
+        return cmd
+    if _taskpolicy is None:
+        try:  # -c (QoS clamp) needs a recent macOS; check once
+            _taskpolicy = subprocess.run(["/usr/sbin/taskpolicy", "-c", "utility", "/usr/bin/true"], capture_output=True,
+                                         timeout=10).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            _taskpolicy = False
+    return ["/usr/sbin/taskpolicy", "-c", "utility", *cmd] if _taskpolicy else cmd
+
+
+def lower_priority() -> None:
+    """Called first thing in an analysis process: below every app you use (threads started later inherit it)."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+            k32 = ctypes.windll.kernel32
+            k32.SetPriorityClass(k32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)
+            return
+        os.setpriority(os.PRIO_PROCESS, 0, 10)
+        if sys.platform == "darwin":  # and the quality of service of this thread (in case taskpolicy wasn't there)
+            import ctypes
+            QOS_CLASS_UTILITY = 0x11
+            ctypes.CDLL("/usr/lib/libSystem.dylib").pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0)
+    except Exception as e:  # noqa: BLE001 - only nicer, never needed
+        log.debug("lower priority: %s", e)
+
+
+def pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        code = ctypes.c_ulong()
+        ok = k32.GetExitCodeProcess(h, ctypes.byref(code))
+        k32.CloseHandle(h)
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 # ------------------------------------------------------------------ keep the computer awake while recording

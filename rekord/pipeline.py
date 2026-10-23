@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -28,12 +29,22 @@ def speaker_name(i: int) -> str:  # older recordings / live keys
 
 def process(rid: str, on_event=None) -> dict:
     s = config.load()
+    if os.environ.get("REKORD_JOB_THREADS"):  # in the analysis process: the thread budget it was started with
+        s = {**s, "threads": int(os.environ["REKORD_JOB_THREADS"])}
     rec = db.get_recording(rid)
     if rec is None:
         raise KeyError(rid)
     t0 = time.time()
 
+    last = {"name": "", "p": -1.0, "t": 0.0}
+
     def stage(name: str, p: float) -> None:
+        # the engines report very often (diarization: every half second of audio) – a database write and a
+        # redraw each time cost more than they tell: a new step, or ≥1 % more and ≥0.5 s later
+        now = time.monotonic()
+        if name == last["name"] and (p - last["p"] < 0.01 or now - last["t"] < 0.5):
+            return
+        last.update(name=name, p=p, t=now)
         db.update_recording(rid, status="processing", stage=name, progress=round(p, 3))
         if on_event:
             on_event({"type": "progress", "id": rid, "stage": name, "progress": p})

@@ -45,9 +45,13 @@ async def delete(r: Request):
     return {}
 
 
+seen: list[dict] = []  # the chat requests, for tests that check what REKORD asks for
+
+
 @app.post("/api/chat")
 async def chat(r: Request):
     b = await r.json()
+    seen.append(b)
 
     def g():
         for part in ["<think>hmm", "</think>", f"OK {b['model']}"]:

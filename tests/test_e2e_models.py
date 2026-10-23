@@ -351,3 +351,25 @@ def test_native_enrollment_from_the_window(hub, monkeypatch):
     assert prof["name"] == "Lisa Native" and prof["quality"]["seconds"] > 5
     v.discard()
     assert not os.path.exists(v.path or "/nonexistent")
+
+
+def test_analysis_in_its_own_low_priority_process(hub):
+    """The real path after every recording: the hub's worker hands the recording to `rekord --process-job` (low
+    priority, half the cores) – the transcript arrives, progress comes in few steps, the window process stays light."""
+    from rekord import jobs
+    assert jobs.wait_idle(300)
+    events = []
+    jobs.subscribe(events.append)
+    try:
+        r = db.create_recording("Hintergrund", str(FIX / "meeting2.wav"))
+        jobs.enqueue(r["id"])
+        assert jobs.wait_idle(600)
+    finally:
+        jobs.unsubscribe(events.append)
+    rec = db.get_recording(r["id"])
+    assert rec["status"] == "done", rec.get("error")
+    assert len(db.list_segments(r["id"])) >= 4 and db.list_speakers(r["id"])
+    mine = [e for e in events if e.get("id") == r["id"]]
+    prog = [e for e in mine if e["type"] == "progress"]
+    assert 3 <= len(prog) <= 40, len(prog)  # not one per half second of audio any more
+    assert mine[-1]["type"] == "done"

@@ -52,6 +52,8 @@ DEFAULTS: dict = {
     "faster_whisper_device": "auto",
     "embedding_model": "eres2net-base",
     "threads": max(1, min(8, (os.cpu_count() or 4))),
+    # analyze with low priority and at most half the cores: the computer stays smooth meanwhile (off = faster)
+    "gentle_processing": True,
     "num_speakers": 0,  # 0 = auto
     "cluster_threshold": 0.6,
     "profile_threshold": 0.55,

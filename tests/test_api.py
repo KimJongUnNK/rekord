@@ -322,3 +322,50 @@ def test_templates_in_my_order(client):
     client.put("/api/settings", json={"template_order": []})
     assert [t["id"] for t in client.get("/api/templates").json()["items"]][: len(default)] == default
     client.delete(f"/api/templates/{tid}")
+
+
+def test_local_ai_gets_a_fitting_context_and_lets_go_of_the_memory(monkeypatch):
+    import socket
+    import threading
+    import time
+
+    import uvicorn
+
+    from rekord.llm import providers
+    from tests import fake_ollama
+    fake_ollama.have[:] = ["qwen3:8b"]
+    with socket.socket() as sk:
+        sk.bind(("127.0.0.1", 0))
+        port = sk.getsockname()[1]
+    srv = uvicorn.Server(uvicorn.Config(fake_ollama.app, host="127.0.0.1", port=port, log_level="warning"))
+    threading.Thread(target=srv.run, daemon=True).start()
+    for _ in range(50):
+        if srv.started:
+            break
+        time.sleep(0.1)
+    try:
+        s = {**config.load(), "llm": {**config.load()["llm"], "provider": "ollama",
+                                     "ollama": {"base_url": f"http://127.0.0.1:{port}", "model": "qwen3:8b", "num_ctx": 32768}}}
+        assert "".join(providers.stream(s, "Fasse zusammen.", [{"role": "user", "content": "Kurzes Gespräch."}])) == "OK qwen3:8b"
+        body = fake_ollama.seen[-1]
+        assert body["options"]["num_ctx"] == 8192 and body["keep_alive"] == providers.OLLAMA_KEEP_ALIVE
+    finally:
+        srv.should_exit = True
+
+
+def test_analysis_runs_in_its_own_process_and_reports_errors(client, tmp_path):
+    """The heavy work happens in `rekord --process-job` (low priority, memory back afterwards); its errors arrive here."""
+    from rekord import jobs
+    jobs.start()
+    events = []
+    jobs.subscribe(events.append)
+    try:
+        rid = db.create_recording("Kaputt", str(tmp_path / "gibts-nicht.m4a"))["id"]
+        jobs.enqueue(rid)
+        assert jobs.wait_idle(180)
+    finally:
+        jobs.unsubscribe(events.append)
+    rec = db.get_recording(rid)
+    mine = [e for e in events if e.get("id") == rid]
+    assert rec["status"] == "error" and rec["error"] and "Code" not in rec["error"]  # the child's own message
+    assert any(e.get("stage") == "Startet" for e in mine) and mine[-1]["type"] == "error"

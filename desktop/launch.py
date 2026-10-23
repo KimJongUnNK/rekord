@@ -2,7 +2,7 @@
 
 No arguments (double-click, app menu)  → hub + REKORD's window.  --background → hub only.
 With a subcommand → the normal CLI, e.g.  `rekord mcp`, `rekord serve --host 0.0.0.0`, `rekord models list`.
-Internal: --qt-probe (can the native window start here?).
+Internal: --qt-probe (can the native window start here?), --process-job <id> (one analysis, low priority).
 """
 import os
 import sys
@@ -10,7 +10,7 @@ import sys
 from rekord.__main__ import main as cli
 from rekord.desktop import run
 
-COMMANDS = {"serve", "desktop", "process", "models", "enroll", "mcp", "-h", "--help", "--qt-probe"}
+COMMANDS = {"serve", "desktop", "process", "models", "enroll", "mcp", "-h", "--help", "--qt-probe", "--process-job"}
 
 if __name__ == "__main__":
     from rekord.system import ensure_output

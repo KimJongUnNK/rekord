@@ -378,7 +378,12 @@ Page {
                         }
                     }
                     Field {
-                        label: "CPU-Threads"; tip: "threads"; hint: "Mehr = schneller, Computer stärker ausgelastet."
+                        label: "Computer flüssig halten"; tip: "gentle"
+                        hint: "Die Auswertung läuft mit niedriger Priorität und höchstens der Hälfte der Kerne – du arbeitest normal weiter. Aus = schneller fertig, der Computer ist dabei aber ausgelastet."
+                        Check { text: "Im Hintergrund auswerten"; checked: page.s ? page.s.gentle_processing !== false : true; onToggled: page.save({ gentle_processing: checked }) }
+                    }
+                    Field {
+                        label: "CPU-Threads"; tip: "threads"; hint: "Mehr = schneller, Computer stärker ausgelastet. Mit „Im Hintergrund auswerten“ höchstens die Hälfte der Kerne."
                         SpinBox {
                             from: 1; to: 32
                             value: page.s ? page.s.threads : 4

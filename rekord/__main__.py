@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import socket
 import sys
 import webbrowser
@@ -50,6 +51,13 @@ def main(argv: list[str] | None = None) -> None:
     if args[:1] == ["--qt-probe"]:  # can REKORD's native window start on this computer? (see app.usable)
         from .app import probe
         sys.exit(probe())
+    if args[:1] == ["--process-job"] and len(args) > 1:  # one analysis in its own low-priority process (jobs.py)
+        from .system import ensure_output
+        ensure_output()
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+        from .jobs import child_main
+        sys.stdout.flush()
+        os._exit(child_main(args[1]))
     from .system import ensure_output
     ensure_output()  # started without a console (pythonw, windowed app): log to a file instead of crashing
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")

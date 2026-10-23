@@ -11,6 +11,9 @@ Page {
     required property var app
     property string rid: ""
     property var rec: null
+    // progress of the running analysis: kept apart from rec, so a tick doesn't rebuild transcript, players and charts
+    property string jobStage: ""
+    property real jobProgress: 0
     property var templates: []
     property var knownNames: []
     property int tab: 0
@@ -32,6 +35,8 @@ Page {
             if (id !== page.rid) return
             const first = !page.rec || page.rec.id !== r.id
             page.rec = r
+            page.jobStage = r.stage || ""
+            page.jobProgress = r.progress || 0
             if (first) {
                 player.load(r.audio_path || "")
                 if (page.startAt > 0) { player.seek(page.startAt); page.tab = 1; page.startAt = 0 }
@@ -68,9 +73,13 @@ Page {
         function onEvent(ev) {
             if (ev.id !== page.rid || !page.rec) return
             if (ev.type === "progress") {
-                const r = Object.assign({}, page.rec)
-                r.status = "processing"; r.stage = ev.stage; r.progress = ev.progress
-                page.rec = r
+                page.jobStage = ev.stage
+                page.jobProgress = ev.progress
+                if (page.rec.status !== "processing") {  // once: from "queued" to "processing"
+                    const r = Object.assign({}, page.rec)
+                    r.status = "processing"
+                    page.rec = r
+                }
             } else if (["done", "summary_done", "error", "queued"].indexOf(ev.type) >= 0) {
                 page.reload()
             } else if (ev.type === "summary_started") {
@@ -171,14 +180,14 @@ Page {
                     BusyIndicator { visible: page.busy; running: page.busy; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
                     Text {
                         Layout.fillWidth: true
-                        text: page.rec ? (page.rec.status === "error" ? "Verarbeitung fehlgeschlagen. " + (page.rec.error || "") : (page.rec.stage || "In Warteschlange")) : ""
+                        text: page.rec ? (page.rec.status === "error" ? "Verarbeitung fehlgeschlagen. " + (page.rec.error || "") : (page.jobStage || "In Warteschlange")) : ""
                         wrapMode: Text.WordWrap
                         font.family: Theme.text; font.pixelSize: 14; font.weight: Font.Bold; color: Theme.fg
                     }
-                    Text { visible: page.busy; text: Math.round(((page.rec && page.rec.progress) || 0) * 100) + " %"; font.family: Theme.text; font.pixelSize: 13; color: Theme.fg2 }
+                    Text { visible: page.busy; text: Math.round(page.jobProgress * 100) + " %"; font.family: Theme.text; font.pixelSize: 13; color: Theme.fg2 }
                     Btn { visible: page.rec && page.rec.status === "error"; small: true; text: "Nochmal"; onClicked: page.app.call("POST", "/api/recordings/" + page.rid + "/reprocess", null, () => page.app.toast("Neu gestartet")) }
                 }
-                Bar { visible: page.busy; Layout.fillWidth: true; value: (page.rec && page.rec.progress) || 0 }
+                Bar { visible: page.busy; Layout.fillWidth: true; value: page.jobProgress }
                 Muted { visible: page.busy; font.pixelSize: 12; text: "Sprecher trennen → Personen erkennen → transkribieren → zusammenfassen. Läuft komplett auf diesem Rechner." }
             }
         }
