@@ -46,7 +46,9 @@ def fake_anthropic(monkeypatch_module=None):
             yield ev("message_delta", {"type": "message_delta", "delta": {"stop_reason": stop, "stop_sequence": None},
                                        "usage": {"output_tokens": 12}})
             yield ev("message_stop", {"type": "message_stop"})
-        if req.headers.get("x-api-key") != "sk-ant-test":
+        # SDK 1.x sends the key as x-api-key, 2.x as "Authorization: Bearer …" – the API takes both
+        key = req.headers.get("x-api-key") or req.headers.get("authorization", "").removeprefix("Bearer ")
+        if key != "sk-ant-test":
             return JSONResponse({"type": "error", "error": {"type": "authentication_error", "message": "invalid x-api-key"}}, status_code=401)
         return StreamingResponse(gen(), media_type="text/event-stream")
 
