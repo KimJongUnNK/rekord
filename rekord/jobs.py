@@ -140,7 +140,7 @@ def stop_child() -> None:
 
 def child_main(rid: str) -> int:
     """`rekord --process-job <id>`: analyze one recording, then end (see _process_isolated)."""
-    from . import pipeline, system
+    from . import system
     if os.environ.get("REKORD_JOB_GENTLE") == "1":
         system.lower_priority()  # before anything starts threads: they inherit it
     parent = int(os.environ.get("REKORD_JOB_PARENT") or 0)
@@ -152,6 +152,7 @@ def child_main(rid: str) -> int:
     if parent:
         threading.Thread(target=watch, daemon=True, name="watch-parent").start()
     try:
+        from . import pipeline  # loads the speech engine: if that fails, the recording says so
         pipeline.process(rid)
         return 0
     except Exception as e:  # noqa: BLE001

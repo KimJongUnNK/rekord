@@ -19,6 +19,12 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.3.2 – aktuelle Sprach-Engine und Claude-Schnittstelle
+- **Sprach-Engine sherpa-onnx 2.0** (Transkription, Sprecher-Trennung, Stimmabdrücke, Live-Erkennung). Auf den Test-Meetings liefert sie exakt dieselben Ergebnisse wie die bisherige Version; alle Tests mit echten Modellen laufen damit.
+- **Claude über die neue API-Version 2026-10-21** (Anthropic-SDK 2): Der API-Key geht jetzt als `Authorization: Bearer` raus statt im `x-api-key`-Header – laut Anthropic nimmt die API beides an. Für dich ändert sich nichts: Key bleibt, Zusammenfassungen, Denkaufwand und Ausweichmodell funktionieren wie bisher.
+- Wenn die Sprach-Engine in der Auswertung nicht laden kann, steht das jetzt als Fehler bei der Aufnahme (vorher blieb sie ohne Meldung hängen).
+- Unter der Haube: Die Test-Meetings liegen fest im Projekt, statt bei jedem Testlauf neu synthetisiert zu werden – neue Bibliotheksversionen können die Tests nicht mehr unbemerkt verändern.
+
 ### Neu in 1.3.1 – der Computer bleibt flüssig, während REKORD auswertet
 - **Auswertung im Hintergrund:** Sprecher trennen und Transkribieren laufen jetzt in einem eigenen Prozess mit niedriger Priorität und höchstens der Hälfte der Prozessorkerne. Am Mac mit Apples Utility-Priorität: Apps, mit denen du arbeitest, haben Vorrang. Gemessen: Andere Programme behalten während der Auswertung 94 % ihrer Rechenleistung (vorher 68 %). Die Auswertung dauert dafür etwas länger.
 - **Speicher sofort zurück:** Die Sprachmodelle (~1 GB) liegen nur noch im Auswerte-Prozess und sind weg, sobald er fertig ist – vorher blieben sie bis zum Beenden von REKORD im Speicher.

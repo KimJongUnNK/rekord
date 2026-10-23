@@ -1,9 +1,20 @@
 """Builds the synthetic multi-speaker test meetings used by the end-to-end tests (tests/fixtures/*.wav).
 
 Uses open Piper voices (via sherpa-onnx TTS, downloaded from GitHub releases), so the test needs no real people's audio.
+The meetings are in the repository: the tests always hear the same audio, whatever library versions are installed.
+Run this only to change them – then check the end-to-end tests against the new audio.
+
+sherpa-onnx 2 has no built-in pronunciation (espeak-ng was removed, it's GPL): the phonemes then come from the
+espeak-ng program (apt install espeak-ng / brew install espeak-ng) – the way Piper itself does it. Its audio differs
+slightly from sherpa-onnx 1.x (how sentences are joined), so regenerated meetings are new test data.
 """
+import json
+import re
+import shutil
+import subprocess
 import sys
 import tarfile
+import unicodedata
 import urllib.request
 from pathlib import Path
 
@@ -39,6 +50,30 @@ MEETING2 = [
 ]
 
 
+# sherpa-onnx 1.x pronounces text itself; 2.x takes phonemes (GenerationConfig.phoneme_codepoints)
+PHONEMES = "phoneme_codepoints" in dir(sherpa_onnx.GenerationConfig()) if hasattr(sherpa_onnx, "GenerationConfig") else False
+
+
+def phonemize(text: str, lang: str) -> list[str]:
+    """Text → IPA like Piper's own frontend: one entry per sentence, espeak-ng per clause, words split by spaces,
+    the punctuation kept."""
+    exe = shutil.which("espeak-ng")
+    if not exe:
+        sys.exit("sherpa-onnx 2 needs the espeak-ng program for the test voices: apt install espeak-ng / brew install espeak-ng")
+    sentences, cur = [], []
+    for clause, punct in re.findall(r"([^.,!?;:]+)([.,!?;:]?)", text):
+        if clause.strip():
+            ipa = subprocess.run([exe, "-q", "--ipa", "-v", lang, clause.strip()], capture_output=True, text=True,
+                                 check=True).stdout
+            cur.append(" ".join(ipa.split()) + punct)
+        if punct in ".!?" and cur:
+            sentences.append(" ".join(cur))
+            cur = []
+    if cur:
+        sentences.append(" ".join(cur))
+    return sentences
+
+
 def voice(name: str) -> sherpa_onnx.OfflineTts:
     d = CACHE / name
     if not d.exists():
@@ -58,13 +93,35 @@ def voice(name: str) -> sherpa_onnx.OfflineTts:
     return sherpa_onnx.OfflineTts(cfg)
 
 
+def codepoints(phonemes: str, name: str) -> list[int]:
+    """Like sherpa-onnx 1.x did it: decomposed (NFD), and only what the voice knows – so the test meetings come out
+    the same as before (e.g. "ç" → "c", its cedilla dropped)."""
+    known = {line.rsplit(" ", 1)[0] if line.count(" ") else " " for line in
+             (CACHE / name / "tokens.txt").read_text("utf-8").splitlines() if line.strip()}
+    return [ord(c) for c in unicodedata.normalize("NFD", phonemes) if c in known]
+
+
+def espeak_voice(name: str) -> str:
+    """The espeak-ng language a Piper voice was trained with (from its .onnx.json)."""
+    cfg = next((CACHE / name).glob("*.onnx.json"), None)
+    if cfg is not None:
+        return json.loads(cfg.read_text("utf-8")).get("espeak", {}).get("voice", "de")
+    return "en-us" if "en_US" in name else "de"
+
+
 def build(script, path: Path, gap: float) -> list[tuple[float, float, str]]:
     tts: dict[str, sherpa_onnx.OfflineTts] = {}
     out, truth, t = [], [], 0.0
     for who, text in script:
         if who not in tts:
             tts[who] = voice(VOICES[who])
-        a = tts[who].generate(text, sid=0, speed=1.0)
+        if PHONEMES:
+            cfg = sherpa_onnx.GenerationConfig()
+            cfg.sid, cfg.speed = 0, 1.0
+            cfg.phoneme_codepoints = [codepoints(sentence, VOICES[who]) for sentence in phonemize(text, espeak_voice(VOICES[who]))]
+            a = tts[who].generate("", cfg)
+        else:
+            a = tts[who].generate(text, sid=0, speed=1.0)
         x = resample(np.array(a.samples, dtype=np.float32), a.sample_rate, 16000)
         out += [x, np.zeros(int(16000 * gap), dtype=np.float32)]
         truth.append((t, t + len(x) / 16000, who))

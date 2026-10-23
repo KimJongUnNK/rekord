@@ -12,7 +12,7 @@ from rekord import config, db, models, pipeline
 
 FIX = Path(__file__).parent / "fixtures"
 pytestmark = [pytest.mark.models,
-              pytest.mark.skipif(not (FIX / "meeting1.wav").exists(), reason="run scripts/make_test_audio.py first")]
+              pytest.mark.skipif(not (FIX / "meeting1.wav").exists(), reason="tests/fixtures/*.wav missing (they are in the repository)")]
 
 
 @pytest.fixture(scope="module", autouse=True)

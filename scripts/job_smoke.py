@@ -1,6 +1,7 @@
 """CI: the packaged REKORD analyzes in its own low-priority process (`REKORD --process-job <id>`), the way the
 window starts it – on macOS through taskpolicy (utility QoS). Without models: the recording points to a missing file,
-so the analysis process must start, lower its priority, fail cleanly, write the error into the database and end.
+so the analysis process must start, lower its priority, load the speech engine (sherpa-onnx with its native
+libraries), fail cleanly on the file, write the error into the database and end.
 
     python scripts/job_smoke.py <REKORD binary>
 """
@@ -29,10 +30,11 @@ def main(binary: str) -> int:
     took = time.time() - t0
     rec = db.get_recording(rid)
     print(f"exit code {r.returncode} after {took:.1f}s · status {rec['status']} · error: {rec['error']}")
-    if r.returncode != 1 or rec["status"] != "error" or not rec["error"]:
+    # the file error comes after the speech engine loaded – an engine that can't load would be the error instead
+    if r.returncode != 1 or rec["status"] != "error" or "gibts-nicht" not in (rec["error"] or ""):
         print("FAIL\n" + (r.stdout + r.stderr)[-3000:])
         return 1
-    print("OK – analysis process started, failed cleanly, reported back")
+    print("OK – analysis process started, speech engine loaded, failed cleanly on the file, reported back")
     return 0
 
 

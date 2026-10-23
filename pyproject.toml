@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rekord"
-version = "1.3.1"
+version = "1.3.2"
 description = "Lokaler KI-Notizrekorder: aufnehmen, transkribieren, live erkennen wer spricht, zusammenfassen mit Claude/ChatGPT/Ollama."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,10 +13,10 @@ dependencies = [
   "fastapi>=0.110",
   "uvicorn[standard]>=0.29",
   "python-multipart>=0.0.9",
-  "sherpa-onnx>=1.12,<2",  # 2.0: own core package, no espeak frontend – upgrade deliberately, not by accident
+  "sherpa-onnx>=1.12,<3",
   "numpy>=1.26",
   "av>=12",
-  "anthropic>=0.60,<2",  # 2.x sends the key as Bearer token – upgrade once checked against the real API
+  "anthropic>=0.60,<3",
   "openai>=1.40",
   "httpx>=0.27",
   "qrcode>=7.4",
