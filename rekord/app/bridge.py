@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import re
 import shutil
 import threading
 import time
@@ -17,7 +18,7 @@ import numpy as np
 from PySide6.QtCore import (Property, QAbstractListModel, QByteArray, QModelIndex, QObject, Qt, QTimer, QUrl, Signal,
                             Slot)
 
-from .. import __version__, config, db, jobs, live
+from .. import __version__, audio, config, db, jobs, live
 
 log = logging.getLogger("rekord.app")
 AUDIO_EXT = {".m4a", ".mp3", ".wav", ".webm", ".ogg", ".opus", ".flac", ".aac", ".mp4", ".mov", ".mkv", ".caf", ".amr", ".3gp"}
@@ -221,6 +222,24 @@ class People(QObject):
 
 # ------------------------------------------------------------------ microphone (native, Qt Multimedia)
 
+SILENT_PEAK = 3e-4  # below about -70 dBFS: no microphone sends that while it's on – muted or the wrong one
+SILENT_WARN = 6.0   # seconds of that before the window says so
+MIC_STALL = 2.5     # seconds without any audio: the microphone is restarted
+BLUETOOTH = re.compile(r"airpods|bluetooth|beats|buds|hands-?free|freisprech|bose|\bwh-|\bwf-", re.I)
+
+
+def mic_hint(device_id: str, mics: list[dict]) -> str:
+    """Bluetooth headsets switch to their telephone mode as soon as their microphone is used: muffled, "electronic"
+    voice, and the sound in the ears gets worse too. Recommend the computer's microphone."""
+    name = next((m["name"] for m in mics if m["id"] == device_id), "")
+    if not device_id:
+        name = next((m["name"] for m in mics if m.get("default")), "")
+    if not BLUETOOTH.search(name or ""):
+        return ""
+    return (f"„{name}“ ist ein Bluetooth-Mikrofon: Bluetooth nimmt damit nur in Telefonqualität auf (klingt dumpf, "
+            "„elektronisch“). Besser: das Mikrofon des Computers wählen – die Kopfhörer kannst du zum Hören weiter nutzen.")
+
+
 class Mic(QObject):
     """The microphone through Qt Multimedia: 16-bit PCM chunks + a level for the meter. Where Qt Multimedia can't
     load (e.g. Linux without libpulse), the system's sound library (soundcard) records instead."""
@@ -233,6 +252,7 @@ class Mic(QObject):
         self._io = None
         self._fmt = None
         self._stop = None
+        self._ch, self._ch_rms = 0, None  # which input channel carries the voice
 
     @staticmethod
     def devices() -> list[dict]:
@@ -262,6 +282,7 @@ class Mic(QObject):
         if not dev.isFormatSupported(fmt):
             fmt = dev.preferredFormat()
         self._fmt = fmt
+        self._ch, self._ch_rms = 0, None
         self._src = QAudioSource(dev, fmt, self)
         self._src.setBufferSize(fmt.bytesForDuration(200_000))
         self._io = self._src.start()
@@ -310,8 +331,19 @@ class Mic(QObject):
         else:  # UInt8
             x = (np.frombuffer(data, dtype=np.uint8).astype(np.float32) - 128) / 128.0
         if ch > 1:
-            x = x[: len(x) // ch * ch].reshape(-1, ch).mean(axis=1)
+            x = self._voice_channel(x[: len(x) // ch * ch].reshape(-1, ch))
         self.chunk.emit((np.clip(x, -1, 1) * 32767).astype("<i2").tobytes(), f.sampleRate())
+
+    def _voice_channel(self, frames: np.ndarray) -> np.ndarray:
+        """Several input channels (stereo USB microphone, audio interface): the one with the voice. A mean would
+        thin it out (one live channel of four = a quarter of the level) or even cancel it (channels in opposite
+        phase). Switches only to a clearly louder channel, so it doesn't jump around."""
+        rms = np.sqrt(np.mean(frames ** 2, axis=0))
+        self._ch_rms = rms if self._ch_rms is None or len(self._ch_rms) != len(rms) else 0.8 * self._ch_rms + 0.2 * rms
+        best = int(np.argmax(self._ch_rms))
+        if self._ch >= len(rms) or self._ch_rms[best] > 2 * self._ch_rms[self._ch] + 1e-4:
+            self._ch = best
+        return frames[:, self._ch]
 
     def stop(self) -> None:
         if self._stop is not None:
@@ -363,7 +395,7 @@ class Live(QObject):
         self._mic = Mic(self)
         self._mic.chunk.connect(self._on_chunk)
         self._mic.failed.connect(self._mic_failed)
-        self._lines = ListModel(["time", "name", "color", "text", "known"], self)
+        self._lines = ListModel(["time", "name", "color", "text", "known", "gap"], self)
         self._roster: list[dict] = []
         self._speaking: dict = {}
         self._level = 0.0
@@ -383,7 +415,12 @@ class Live(QObject):
         self._event.connect(self._on_event, Qt.QueuedConnection)
         self._ready.connect(self._on_ready, Qt.QueuedConnection)
         self._tick = QTimer(self, interval=250)
-        self._tick.timeout.connect(self.changed.emit)
+        self._tick.timeout.connect(self._check)
+        self._rs = None  # one resampler per recording: the filter runs across all chunks
+        self._last_chunk = 0.0
+        self._quiet_from: float | None = None
+        self._restarted = 0.0
+        self._warning = ""
         self._feeder = threading.Thread(target=self._feed_loop, daemon=True, name="live-feed")
         self._feeder.start()
 
@@ -435,6 +472,16 @@ class Live(QObject):
     def error(self):
         return self._error
 
+    @Property(str, notify=changed)
+    def micWarning(self):  # noqa: N802 - QML API
+        """During a recording: nothing arrives from the microphone (muted, wrong one, gone)."""
+        return self._warning
+
+    @Property(str, notify=micsChanged)
+    def micHint(self):  # noqa: N802 - QML API
+        """A Bluetooth microphone (AirPods …): it records in telephone quality – say so before the meeting."""
+        return mic_hint(self.mic, self._mics)
+
     @Property(bool, notify=changed)
     def callAudio(self):  # noqa: N802 - QML API
         return self._call
@@ -464,6 +511,13 @@ class Live(QObject):
     def setMic(self, device_id: str) -> None:  # noqa: N802 - QML API
         config.save({"desktop": {"mic": device_id}})
         self.micsChanged.emit()
+        if self._state in ("recording", "paused"):  # switch right away – the recording continues with the new one
+            self._mic.stop()
+            self._quiet_from, self._warning = None, ""
+            if self._mic.start(device_id):
+                self._last_chunk = time.monotonic()
+                self.toast.emit("Mikrofon gewechselt – die Aufnahme läuft weiter.")
+            self.changed.emit()
 
     @Property("QVariantMap", notify=changed)
     def lastWho(self):  # noqa: N802 - QML API
@@ -495,6 +549,7 @@ class Live(QObject):
         self._lines.set_items([])
         self._roster, self._speaking, self._notes, self._error, self._highlights = [], {}, "", "", 0
         self._pending, self._level = [], 0.0
+        self._rs, self._quiet_from, self._warning, self._last_chunk = None, None, "", 0.0
         self._state = "starting"
         self.changed.emit()
         self._with_mic_permission(lambda: self._begin(ids, guests))
@@ -601,6 +656,13 @@ class Live(QObject):
         elif self._state == "recording":
             self._q.put((data, rate))
         x = np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0
+        now = time.monotonic()
+        self._last_chunk = now
+        if len(x) and float(np.abs(x).max()) < SILENT_PEAK:  # digital silence: muted, or not the microphone you use
+            if self._quiet_from is None:
+                self._quiet_from = now
+        else:
+            self._quiet_from = None
         if len(x):
             self._level = 0.6 * self._level + 0.4 * min(1.0, float(np.sqrt(np.mean(x ** 2))) * 6)
             now = time.monotonic()
@@ -619,11 +681,36 @@ class Live(QObject):
                 try:
                     data, rate = item
                     if rate != live.SR:
-                        x = live.resample(np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0, rate, live.SR)
+                        if self._rs is None or self._rs.sr_in != rate:
+                            self._rs = audio.Resampler(rate)
+                        x = self._rs(np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0)
                         data = (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
                     sess.feed_pcm16(data)
                 except Exception as e:  # noqa: BLE001
                     log.warning("live feed: %s", e)
+
+    @Slot()
+    def _check(self) -> None:
+        """Every quarter second while recording: the clock, and whether the microphone still delivers."""
+        if self._state == "recording":
+            now = time.monotonic()
+            if self._last_chunk and now - self._last_chunk > MIC_STALL and now - self._restarted > 8:
+                # nothing for a while (AirPods taken out, USB microphone unplugged, the system took it away): again,
+                # with the chosen microphone or – if it's gone – the system's default one
+                self._restarted = now
+                log.warning("microphone delivered nothing for %.1f s – restarting it", now - self._last_chunk)
+                self._mic.stop()
+                if self._mic.start(config.load()["desktop"]["mic"]):
+                    self.toast.emit("Das Mikrofon hatte ausgesetzt – REKORD nimmt weiter auf.")
+                self._last_chunk = now
+            silent = self._quiet_from is not None and now - self._quiet_from > SILENT_WARN
+            warning = ("Vom Mikrofon kommt kein Ton an – stummgeschaltet, oder ist ein anderes gemeint? "
+                       "Hier wechseln, die Aufnahme läuft weiter.") if silent else ""
+            if warning != self._warning:
+                self._warning = warning
+                if warning:
+                    log.warning("microphone delivers digital silence")
+        self.changed.emit()
 
     @Slot(str)
     def _mic_failed(self, msg: str) -> None:
@@ -645,7 +732,11 @@ class Live(QObject):
         kind = ev.get("type")
         if kind == "segment" and ev.get("text"):
             self._lines.append({"time": fmt_dur(ev.get("start")), "name": ev.get("name", ""), "color": ev.get("color", "#8A877F"),
-                                "text": ev["text"], "known": bool(ev.get("known"))})
+                                "text": ev["text"], "known": bool(ev.get("known")), "gap": False})
+        elif kind == "gap":  # a slow computer: the live text skipped ahead – say so, the full transcript has it
+            self._lines.append({"time": fmt_dur(ev.get("start")), "name": "", "color": "#8A877F", "known": False,
+                                "text": f"… {fmt_dur(ev.get('start'))}–{fmt_dur(ev.get('end'))} übersprungen, damit die "
+                                        "Mitschrift beim Jetzt bleibt. Nach dem Stopp ist alles im Transkript.", "gap": True})
         elif kind == "speaking":
             self._speaking = {"name": ev.get("name", ""), "color": ev.get("color", "#8A877F"), "known": bool(ev.get("known")),
                               "key": ev.get("key") if ev.get("key") is not None else -1}
@@ -692,6 +783,7 @@ class VoiceRecorder(QObject):
         self._level, self._talking = 0.0, False
         self._max = 120.0
         self._path = ""
+        self._rs = None
 
     @Property(bool, notify=changed)
     def recording(self):
@@ -723,6 +815,7 @@ class VoiceRecorder(QObject):
             return
         self.discard()
         self._max = max_seconds
+        self._rs = None
         self._parts, self._buf = [], np.zeros(0, dtype=np.float32)
         self._floor, self._speech, self._wall, self._last_voice = 0.02, 0.0, 0.0, -1.0
 
@@ -781,7 +874,9 @@ class VoiceRecorder(QObject):
             return
         x = np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0
         if rate != live.SR:
-            x = live.resample(x, rate, live.SR)
+            if self._rs is None or self._rs.sr_in != rate:
+                self._rs = audio.Resampler(rate)
+            x = self._rs(x)
         self._parts.append(x)
         self._buf = np.concatenate([self._buf, x])
         step = live.SR // 10  # judged every 0.1 s, like the previous interface

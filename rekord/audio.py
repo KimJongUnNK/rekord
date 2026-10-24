@@ -28,6 +28,43 @@ def load(path: str | Path, sr: int = SR) -> np.ndarray:
     return np.ascontiguousarray(np.concatenate(chunks).astype(np.float32))
 
 
+class Resampler:
+    """Streaming sample-rate conversion (microphone, call sound, iPhone stream → 16 kHz), chunk by chunk.
+
+    One filter runs across all chunks – no click at every chunk border – and a low-pass keeps everything above
+    8 kHz from folding back into the voice. Converting each chunk on its own with straight lines (as before) left
+    errors about as loud as the voice: the "electronic" sound of 44.1/48 kHz microphones. libswresample via PyAV."""
+
+    def __init__(self, sr_in: int, sr_out: int = SR):
+        self.sr_in, self.sr_out = int(sr_in), int(sr_out)
+        self._rs = None if self.sr_in == self.sr_out else av.AudioResampler(format="flt", layout="mono", rate=self.sr_out)
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        x = np.ascontiguousarray(x, dtype=np.float32).reshape(-1)
+        if self._rs is None or not len(x):
+            return x
+        f = av.AudioFrame.from_ndarray(x.reshape(1, -1), format="flt", layout="mono")
+        f.sample_rate = self.sr_in
+        return self._collect(self._rs.resample(f))
+
+    def flush(self) -> np.ndarray:
+        """The last few samples still inside the filter (end of a stream)."""
+        return self._collect(self._rs.resample(None)) if self._rs is not None else np.zeros(0, dtype=np.float32)
+
+    @staticmethod
+    def _collect(frames) -> np.ndarray:
+        out = [fr.to_ndarray().reshape(-1) for fr in frames]
+        return np.concatenate(out).astype(np.float32) if out else np.zeros(0, dtype=np.float32)
+
+
+def resample(x: np.ndarray, sr_in: int, sr_out: int = SR) -> np.ndarray:
+    """A whole signal at once (see Resampler)."""
+    if int(sr_in) == int(sr_out) or not len(x):
+        return np.asarray(x, dtype=np.float32)
+    rs = Resampler(sr_in, sr_out)
+    return np.concatenate([rs(x), rs.flush()])
+
+
 def write_wav(path: str | Path, samples: np.ndarray, sr: int = SR) -> None:
     pcm = (np.clip(samples, -1, 1) * 32767).astype("<i2")
     with wave.open(str(path), "wb") as w:

@@ -998,11 +998,30 @@ def _stream_text(gen_factory, on_done=None):
     return StreamingResponse(agen(), media_type="text/plain; charset=utf-8", headers={"X-Accel-Buffering": "no"})
 
 
+ANALYZING = ("Die Aufnahme wird gerade noch genau ausgewertet – erst danach ist das Transkript vollständig. "
+             "Die Zusammenfassung lässt sich vormerken und entsteht dann automatisch.")
+
+
+@app.post("/api/recordings/{rid}/summaries/later")
+async def summarize_rec_later(rid: str, request: Request):
+    """Summarize as soon as the full analysis is done (asked for while it still runs)."""
+    b = await request.json()
+    tid = b.get("template_id", "auto")
+    templates.get(tid)  # unknown template → 500 like the direct way
+    if db.get_recording(rid) is None:
+        raise HTTPException(404, "Aufnahme nicht gefunden")
+    return {"ok": True, "queued": jobs.summarize_later(rid, tid)}
+
+
 @app.post("/api/recordings/{rid}/summaries")
 async def summarize_rec(rid: str, request: Request):
     b = await request.json()
     tid = b.get("template_id", "auto")
     tpl = templates.get(tid)
+    rec = db.get_recording(rid)
+    if rec is not None and rec.get("status") in ("queued", "processing", "recording"):
+        # the live transcript has gaps; a summary of it wouldn't match what was said
+        raise HTTPException(409, ANALYZING)
     s = config.load()
 
     def save(content: str):

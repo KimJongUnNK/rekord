@@ -372,7 +372,8 @@ def test_voice_level_starts_at_zero_again(qt, monkeypatch):
     v.start(60)
     pump(lambda: v.recording)
     loud = (np.sin(np.arange(4800) / 48000 * 2 * np.pi * 200) * 20000).astype("<i2").tobytes()
-    v._on_chunk(loud, 48000)  # noqa: SLF001
+    for _ in range(2):  # the resampler holds a few samples back at the very start of a stream
+        v._on_chunk(loud, 48000)  # noqa: SLF001
     assert v.level > 0.2
     v.discard()
     assert v.level == 0.0 and not v.recording
@@ -495,3 +496,65 @@ def test_quitting_ends_the_process_without_python_teardown(monkeypatch):
     monkeypatch.setattr(desktop.os, "_exit", lambda code: ended.append(code))
     desktop._end()  # noqa: SLF001
     assert ended == [0]
+
+
+def test_microphone_takes_the_channel_with_the_voice(qt):
+    """Several input channels: the loudest one, not the mean (which thins the voice out or even cancels it)."""
+    m = bridge.Mic()
+    voice = np.sin(np.arange(1600) / 16000 * 2 * np.pi * 300).astype(np.float32) * 0.5
+    quiet = np.zeros(1600, np.float32)
+    four = np.stack([quiet, voice, quiet, quiet], axis=1)  # an interface: the microphone on input 2
+    out = m._voice_channel(four)  # noqa: SLF001
+    assert np.allclose(out, voice)
+    m2 = bridge.Mic()
+    inverted = np.stack([voice, -voice * 0.9], axis=1)  # opposite phase: the mean would be almost silent
+    assert np.sqrt(np.mean(m2._voice_channel(inverted) ** 2)) > 0.3  # noqa: SLF001
+
+
+def test_bluetooth_microphone_gets_a_hint():
+    mics = [{"id": "a", "name": "AirPods von Emil", "default": True}, {"id": "b", "name": "MacBook Pro-Mikrofon", "default": False},
+            {"id": "c", "name": "Logitech USB Headset", "default": False}]
+    assert "Telefonqualität" in bridge.mic_hint("a", mics) and "AirPods" in bridge.mic_hint("a", mics)
+    assert bridge.mic_hint("", mics)  # the system default is the AirPods
+    assert bridge.mic_hint("b", mics) == "" and bridge.mic_hint("c", mics) == ""
+
+
+def test_live_restarts_a_stalled_microphone_and_warns_about_silence(qt, monkeypatch):
+    started = []
+    monkeypatch.setattr(bridge.Mic, "start", lambda self, device_id="": started.append(device_id) or True)
+    monkeypatch.setattr(bridge.Mic, "stop", lambda self: None)
+    lv = bridge.Live()
+    toasts = []
+    lv.toast.connect(toasts.append)
+    lv._state = "recording"  # noqa: SLF001 - the watch only, no engine
+    lv._last_chunk = time.monotonic() - 5  # noqa: SLF001 - nothing for 5 s (AirPods taken out)
+    lv._check()  # noqa: SLF001
+    assert started and any("ausgesetzt" in t for t in toasts)
+    zero = np.zeros(1600, "<i2").tobytes()
+    lv._on_chunk(zero, 16000)  # noqa: SLF001
+    lv._quiet_from -= 7  # noqa: SLF001 - digital silence for 7 s
+    lv._check()  # noqa: SLF001
+    assert "kein Ton" in lv.micWarning
+    voice = (np.sin(np.arange(1600) / 16000 * 2 * np.pi * 300) * 8000).astype("<i2").tobytes()
+    lv._on_chunk(voice, 16000)  # noqa: SLF001
+    lv._check()  # noqa: SLF001
+    assert lv.micWarning == ""
+    started.clear()
+    lv.setMic("usb-mic")  # switching during the recording: right away
+    assert started == ["usb-mic"] and any("gewechselt" in t for t in toasts)
+    lv._state = "idle"  # noqa: SLF001
+    lv.setMic("")
+
+
+def test_playback_uses_the_current_output_device(qt):
+    from rekord.app import api as api_mod
+    p = api_mod.Player()
+    if not p.available:
+        pytest.skip("no Qt Multimedia here")
+    followed = []
+    p._follow_output = lambda: followed.append(1)  # noqa: SLF001
+    p.toggle()
+    p.seekPlay(1.0)
+    p.playRange(0.0, 2.0)
+    assert len(followed) == 3
+    p.stop()

@@ -119,6 +119,16 @@ Page {
                 popup.background: Rectangle { radius: 11; color: Theme.card; border.width: 1; border.color: Theme.line }
             }
         }
+        Text {  // AirPods & co.: telephone quality as soon as their microphone is used
+            visible: live.micHint !== ""
+            Layout.fillWidth: true
+            Layout.maximumWidth: 560
+            Layout.alignment: Qt.AlignHCenter
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            text: live.micHint
+            font.family: Theme.text; font.pixelSize: 13; color: Theme.warn
+        }
         Text {
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
@@ -210,6 +220,30 @@ Page {
                 wrapMode: Text.WordWrap
                 text: live.notes
                 font.family: Theme.text; font.pixelSize: 13; color: Theme.fg
+            }
+        }
+
+        Rectangle {  // nothing arrives from the microphone: say so, and switch without stopping
+            visible: live.micWarning !== ""
+            Layout.fillWidth: true
+            Layout.preferredHeight: warnRow.implicitHeight + 20
+            radius: 10
+            color: Qt.rgba(0.94, 0.27, 0.27, 0.12)
+            border.width: 1
+            border.color: Qt.rgba(0.94, 0.27, 0.27, 0.4)
+            RowLayout {
+                id: warnRow
+                x: 12; y: 10
+                width: parent.width - 24
+                spacing: 12
+                Icon { name: "mic"; width: 18; height: 18; color: Theme.err }
+                Text { Layout.fillWidth: true; text: live.micWarning; wrapMode: Text.WordWrap; font.family: Theme.text; font.pixelSize: 13; font.weight: Font.Bold; color: Theme.fg }
+                Select {
+                    Layout.preferredWidth: 300
+                    options: [{ value: "", label: "Standard-Mikrofon des Systems" }].concat(live.mics.map(m => ({ value: m.id, label: m.name })))
+                    value: live.mic
+                    onPicked: (v) => live.setMic(v)
+                }
             }
         }
 
@@ -366,9 +400,11 @@ Page {
                             required property string name
                             required property string color
                             required property string text
+                            required property bool gap  // a slow computer: the live text skipped ahead
                             width: words.width - 12
                             spacing: 2
                             RowLayout {
+                                visible: !ln.gap
                                 spacing: 8
                                 Rectangle { width: 8; height: 8; radius: 4; color: ln.color }
                                 Text { text: ln.name; font.family: Theme.text; font.pixelSize: 13; font.weight: Font.Bold; color: Theme.fg }
@@ -378,7 +414,8 @@ Page {
                                 Layout.fillWidth: true
                                 text: ln.text
                                 wrapMode: Text.WordWrap
-                                font.family: Theme.text; font.pixelSize: 16; lineHeight: 1.08; color: Theme.fg
+                                font.family: Theme.text; font.pixelSize: ln.gap ? 13 : 16; font.italic: ln.gap
+                                lineHeight: 1.08; color: ln.gap ? Theme.fg3 : Theme.fg
                             }
                         }
                         add: Transition {

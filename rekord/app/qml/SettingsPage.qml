@@ -150,6 +150,7 @@ Page {
                             onPicked: (v) => { live.setMic(v); if (page.micTest) { voice.discard(); voice.start(600) } }
                             Component.onCompleted: live.refreshMics()
                         }
+                        Text { visible: live.micHint !== ""; Layout.fillWidth: true; text: live.micHint; wrapMode: Text.WordWrap; font.family: Theme.text; font.pixelSize: 12; color: Theme.warn }
                         RowLayout {
                             Btn {
                                 small: true

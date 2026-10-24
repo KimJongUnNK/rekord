@@ -248,10 +248,14 @@ class Player(QObject):
         self._timer = QTimer(self, interval=60)
         self._timer.timeout.connect(self._poll)
         try:
-            from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+            from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
             self._p = QMediaPlayer(self)
             self._out = QAudioOutput(self)
             self._p.setAudioOutput(self._out)
+            # Qt keeps the output it was created with: AirPods connected at REKORD's start, later taken out (or a
+            # USB microphone plugged in) – and REKORD played into nothing. Always the system's current output instead.
+            self._devices = QMediaDevices(self)
+            self._devices.audioOutputsChanged.connect(self._follow_output)
             self._p.playbackStateChanged.connect(self._state)
             self._p.durationChanged.connect(lambda *_: self.changed.emit())
             self._p.errorOccurred.connect(lambda *_: self._fail(self._p.errorString()))
@@ -261,6 +265,19 @@ class Player(QObject):
     def _fail(self, msg: str) -> None:
         self._error = msg
         self.changed.emit()
+
+    @Slot()
+    def _follow_output(self) -> None:
+        if self._out is None:
+            return
+        from PySide6.QtMultimedia import QMediaDevices
+        dev = QMediaDevices.defaultAudioOutput()
+        if not dev.isNull() and dev != self._out.device():
+            self._out.setDevice(dev)
+
+    def _play(self) -> None:
+        self._follow_output()
+        self._p.play()
 
     @Property(bool, notify=changed)
     def available(self):
@@ -310,7 +327,7 @@ class Player(QObject):
             self._p.pause()
         else:
             self._until = None
-            self._p.play()
+            self._play()
 
     @Slot()
     def pause(self) -> None:
@@ -329,7 +346,7 @@ class Player(QObject):
         self._until = None
         self.seek(sec)
         if self._p is not None and not self.playing:
-            self._p.play()
+            self._play()
 
     @Slot(float, float)
     def playRange(self, start: float, end: float) -> None:  # noqa: N802 - QML API
@@ -338,7 +355,7 @@ class Player(QObject):
             return
         self.seek(start)
         self._until = min(end, start + 8)
-        self._p.play()
+        self._play()
 
     @Slot(float)
     def skip(self, delta: float) -> None:

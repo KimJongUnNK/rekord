@@ -15,6 +15,20 @@ Item {
     readonly property var list: page.rec ? page.rec.summaries.filter(s => s.template_id !== "mindmap") : []
     readonly property bool hasText: page.rec && page.rec.segments.length > 0
     readonly property bool noAi: !rekord.status.ai
+    // the full analysis still runs: the live transcript has gaps – the summary is written once it's complete
+    readonly property bool analyzing: page.busy
+    property var later: []  // templates asked for meanwhile
+    Connections { target: v.page; function onRidChanged() { v.later = [] } }
+
+    function askLater() {
+        const t = page.templates.find(x => x.id === tpl)
+        const name = t ? t.name : tpl
+        page.app.call("POST", "/api/recordings/" + page.rid + "/summaries/later", { template_id: tpl }, (r) => {
+            if (v.later.indexOf(name) < 0) v.later = v.later.concat([name])
+            page.app.toast(r.queued ? "Vorgemerkt – „" + name + "“ entsteht, sobald das Transkript vollständig ist."
+                                    : "„" + name + "“ kommt sowieso: automatisch nach der Auswertung.")
+        })
+    }
 
     function generate() {
         const t = page.templates.find(x => x.id === tpl)
@@ -39,11 +53,20 @@ Item {
                 value: v.tpl
                 onPicked: (x) => v.tpl = x
             }
-            Btn { kind: "primary"; text: v.busy ? "Schreibt …" : "Zusammenfassen"; iconName: "spark"; enabled: v.hasText && !v.busy; onClicked: v.generate() }
+            Btn {
+                kind: "primary"
+                text: v.busy ? "Schreibt …" : v.analyzing ? "Nach der Auswertung" : "Zusammenfassen"
+                iconName: "spark"
+                enabled: (v.hasText || v.analyzing) && !v.busy && !v.noAi
+                onClicked: v.analyzing ? v.askLater() : v.generate()
+            }
             Muted {
                 Layout.fillWidth: true
                 font.pixelSize: 13
-                text: "Mehrere Vorlagen = mehrere Blickwinkel auf dasselbe Gespräch."
+                wrapMode: Text.WordWrap
+                text: !v.analyzing ? "Mehrere Vorlagen = mehrere Blickwinkel auf dasselbe Gespräch."
+                    : v.later.length ? "Vorgemerkt: " + v.later.join(", ") + " – entsteht automatisch, sobald das Transkript vollständig ist."
+                    : "Die genaue Auswertung läuft noch – erst danach ist das Transkript vollständig. Zusammenfassen merkt die Vorlage vor."
             }
             Btn { kind: "ghost"; small: true; text: "Vorlagen verwalten"; onClicked: v.page.app.go("templates") }
         }

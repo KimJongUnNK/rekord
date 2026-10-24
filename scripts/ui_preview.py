@@ -220,15 +220,28 @@ def main(out: Path) -> int:
             "start": t * 9.0, "end": t * 9.0 + 8, "text": text})
     em({"type": "speaking", "key": 0, "name": "Lisa", "color": "#3B82F6", "known": True})
     tone = (np.sin(np.arange(1600) / 16000 * 2 * np.pi * 220) * 9000).astype("<i2").tobytes()
-    for _ in range(12):
-        o["live"]._on_chunk(tone, 16000)
-        wait(0.03)
+    mic = {"chunk": tone}
+    from PySide6.QtCore import QTimer
+    feed = QTimer()  # like a real microphone: a chunk every 100 ms for as long as it records
+    feed.timeout.connect(lambda: o["live"]._on_chunk(mic["chunk"], 16000))
+    feed.start(100)
+    wait(0.4)
     o["live"].highlight()
     shot("live-recording")
     em({"type": "speaking", "key": 2, "name": pipeline.UNKNOWN, "color": pipeline.UNKNOWN_COLOR, "known": False})
     shot("live-unknown")
+    mic["chunk"] = np.zeros(1600, "<i2").tobytes()  # muted: only digital silence arrives
+    wait(0.3)
+    o["live"]._quiet_from -= 7
+    o["live"]._check()
+    shot("live-mic-warning")
+    if "kein Ton" not in o["live"].micWarning:
+        problems_extra.append("live: no warning while the microphone delivers silence")
+    mic["chunk"] = tone
+    wait(0.3)
     o["rekord"].setTheme("light")
     shot("live-light")
+    feed.stop()
     o["live"].stop()
     for _ in range(300):
         wait(0.02)

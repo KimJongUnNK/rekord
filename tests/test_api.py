@@ -369,3 +369,20 @@ def test_analysis_runs_in_its_own_process_and_reports_errors(client, tmp_path):
     mine = [e for e in events if e.get("id") == rid]
     assert rec["status"] == "error" and rec["error"] and "Code" not in rec["error"]  # the child's own message
     assert any(e.get("stage") == "Startet" for e in mine) and mine[-1]["type"] == "error"
+
+
+def test_no_summary_of_the_half_finished_transcript(client, monkeypatch):
+    """While the full analysis runs, the transcript is only the live one (with gaps): summarizing waits for it."""
+    from rekord import jobs, pipeline, summarize
+    rid = db.create_recording("Läuft noch", "/nirgends.m4a", status="processing")["id"]
+    r = client.post(f"/api/recordings/{rid}/summaries", json={"template_id": "meeting"})
+    assert r.status_code == 409 and "vormerken" in r.json()["detail"]
+    assert client.post(f"/api/recordings/{rid}/summaries/later", json={"template_id": "meeting"}).json() == {"ok": True, "queued": True}
+    order = []
+    monkeypatch.setenv("REKORD_JOBS_INPROCESS", "1")
+    monkeypatch.setattr(pipeline, "process", lambda r_, on_event=None: (order.append("analysis"), db.update_recording(r_, status="done")))
+    monkeypatch.setattr(summarize, "generate", lambda r_, tid: order.append(f"summary:{tid}"))
+    jobs.start()
+    jobs.enqueue(rid)
+    assert jobs.wait_idle(60)
+    assert order == ["analysis", "summary:meeting"]  # on the complete transcript

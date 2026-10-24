@@ -373,3 +373,69 @@ def test_analysis_in_its_own_low_priority_process(hub):
     prog = [e for e in mine if e["type"] == "progress"]
     assert 3 <= len(prog) <= 40, len(prog)  # not one per half second of audio any more
     assert mine[-1]["type"] == "done"
+
+
+def test_live_window_shows_who_speaks_while_the_transcript_is_busy(people, monkeypatch):
+    """The bug "I talk, but REKORD shows me silent": in real time (100 ms microphone chunks at 48 kHz on the UI
+    thread), while whisper works on the last sentence, the window must keep showing that someone speaks – and the
+    live lines must arrive in order."""
+    pytest.importorskip("PySide6.QtQuick", exc_type=ImportError)
+    import time
+
+    import sherpa_onnx
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QCoreApplication, QTimer
+    from PySide6.QtGui import QGuiApplication
+
+    from rekord import audio, live, models
+    from rekord.app import bridge
+    QGuiApplication.instance() or QGuiApplication(["rekord-e2e"])
+    x = audio.load(FIX / "meeting1.wav")
+    vcfg = sherpa_onnx.VadModelConfig(silero_vad=sherpa_onnx.SileroVadModelConfig(
+        model=str(models.path("silero-vad")), threshold=0.5, min_silence_duration=0.35, min_speech_duration=0.25,
+        max_speech_duration=30.0, window_size=live.WIN), sample_rate=16000, num_threads=1)
+    vad = sherpa_onnx.VoiceActivityDetector(vcfg, buffer_size_in_seconds=120)
+    for i in range(0, len(x) // live.WIN * live.WIN, live.WIN):
+        vad.accept_waveform(x[i:i + live.WIN])
+    vad.flush()
+    truth = []
+    while not vad.empty():
+        truth.append((vad.front.start / 16000, (vad.front.start + len(vad.front.samples)) / 16000))
+        vad.pop()
+
+    monkeypatch.setattr(bridge.Mic, "start", lambda self, device_id="": True)
+    monkeypatch.setattr(bridge.Mic, "stop", lambda self: None)
+    lv = bridge.Live()
+    done = []
+    lv.finished.connect(done.append)
+    lv.start("Echtzeit", "person", [], 3)
+    end = time.time() + 120
+    while lv.state != "recording" and time.time() < end:
+        QCoreApplication.processEvents()
+        time.sleep(0.01)
+    pcm = (np.clip(audio.resample(x, 16000, 48000), -1, 1) * 32767).astype("<i2").tobytes()
+    step, pos, t0, shown = 9600, [0], time.monotonic(), []
+
+    def tick():  # like a microphone: as much audio as real time allows, on the UI thread
+        target = int((time.monotonic() - t0) * 10) * step
+        while pos[0] < min(target, len(pcm)):
+            lv._mic.chunk.emit(pcm[pos[0]:pos[0] + step], 48000)  # noqa: SLF001
+            pos[0] += step
+        shown.append((pos[0] / 2 / 48000, bool(lv.speaking)))
+    timer = QTimer()
+    timer.timeout.connect(tick)
+    timer.start(100)
+    stop_at = time.monotonic() + len(x) / 16000 + 1
+    while time.monotonic() < stop_at:
+        QCoreApplication.processEvents()
+        time.sleep(0.005)
+    timer.stop()
+    talking = [s for s in shown if any(a + 0.4 <= s[0] <= b - 0.1 for a, b in truth)]
+    silent = sum(1 for s in talking if not s[1])
+    assert talking and silent / len(talking) < 0.1, f"shown silent {silent / len(talking):.0%} of the talk"
+    lv.stop()
+    end = time.time() + 300
+    while not done and time.time() < end:
+        QCoreApplication.processEvents()
+        time.sleep(0.01)
+    assert done and len(lv.lines.items()) >= 3

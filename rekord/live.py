@@ -6,14 +6,15 @@ Client -> server: binary frames of 16-bit little-endian mono PCM (any sample rat
 Server -> client: {"type":"speaking","key","name","color","score","t"}   ~ every 0.5 s while someone talks
                   {"type":"silence","t"}
                   {"type":"segment","key","name","color","start","end","text"}
+                  {"type":"gap","start","end"}        the live text skipped this (a slow computer) – after Stopp it's complete
                   {"type":"speakers","items":[...]}    session roster
                   {"type":"level","rms"}               input level meter
                   {"type":"stopped","id"}              recording saved, full-quality processing queued
 """
 from __future__ import annotations
 
+import collections
 import logging
-import queue
 import threading
 import time
 
@@ -28,13 +29,12 @@ log = logging.getLogger("rekord.live")
 WIN = 512  # silero window at 16 kHz
 SPEAKING_EVERY = 0.5
 SPEAKING_WINDOW = 1.6
+QUIET_AFTER = 1.2  # "nobody speaks" only after this much real quiet – not in every breath between two words
+MERGE_MAX = 10.0  # behind with the transcript: short lines of one speaker in one go (saves whisper's fixed cost)
+LAG_MAX = 20.0  # the live transcript never lags more than this: further behind, its preview skips to now
 
 
-def resample(x: np.ndarray, sr_in: int, sr_out: int = SR) -> np.ndarray:
-    if sr_in == sr_out or len(x) == 0:
-        return x
-    n_out = int(round(len(x) * sr_out / sr_in))
-    return np.interp(np.linspace(0, len(x) - 1, n_out), np.arange(len(x)), x).astype(np.float32)
+resample = audio.resample  # a whole signal; streams use audio.Resampler
 
 
 class LiveSession:
@@ -47,6 +47,7 @@ class LiveSession:
         self.s = config.load()
         self.emit = emit
         self.sr_in = int(sample_rate)
+        self._rs = audio.Resampler(self.sr_in)  # one filter across all chunks of this stream
         models.ensure(["silero-vad", self.s["embedding_model"]])
         vcfg = sherpa_onnx.VadModelConfig(
             silero_vad=sherpa_onnx.SileroVadModelConfig(model=str(models.path("silero-vad")), threshold=0.5,
@@ -98,17 +99,24 @@ class LiveSession:
         self.highlights: list[float] = []
         self.segments: list[dict] = []
         self.names: dict[int, str] = {}  # key -> manual name for unknown voices
-        self._work: "queue.Queue[tuple | None]" = queue.Queue()
-        self._worker = threading.Thread(target=self._run, daemon=True, name=f"live-{self.rid}")
-        self._worker.start()
+        # two workers: "who speaks now" must never wait behind the transcript of the last sentence
+        self._segs: collections.deque = collections.deque()  # finished speech pieces for the transcript, in order
+        self._segs_cv = threading.Condition()
+        self._probe = None  # only the newest "who speaks now" sample counts
+        self._probe_cv = threading.Condition()
+        self._quiet_since: float | None = None
         self._closed = False
+        self._worker = threading.Thread(target=self._run, daemon=True, name=f"live-{self.rid}")
+        self._prober = threading.Thread(target=self._run_probes, daemon=True, name=f"live-who-{self.rid}")
+        self._worker.start()
+        self._prober.start()
         self._last_probe: dict | None = None
         self._lock = threading.RLock()  # clusters/segments are touched by the worker and by name_speaker()
         self._unclear_before = False
 
     # ------------------------------------------------------------ input
     def feed_pcm16(self, data: bytes) -> None:
-        x = resample(np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0, self.sr_in)
+        x = self._rs(np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0)
         if self.call is not None:  # online: the others in the call, in step with the microphone
             call = self.call.read(len(x))
             if not self.paused:
@@ -133,9 +141,15 @@ class LiveSession:
         if self.t - self.last_speaking >= SPEAKING_EVERY:
             self.last_speaking = self.t
             if self.vad.is_speech_detected():
-                self._work.put(("speaking", self.ring[-int(SR * SPEAKING_WINDOW):].copy(), self.t))
+                self._quiet_since = None
+                with self._probe_cv:
+                    self._probe = (self.ring[-int(SR * SPEAKING_WINDOW):].copy(), self.t)
+                    self._probe_cv.notify()
             else:
-                self.emit({"type": "silence", "t": round(self.t, 2)})
+                if self._quiet_since is None:
+                    self._quiet_since = self.t
+                if self.t - self._quiet_since >= QUIET_AFTER:
+                    self.emit({"type": "silence", "t": round(self.t, 2)})
 
     def _drain_vad(self) -> None:
         while not self.vad.empty():
@@ -143,7 +157,9 @@ class LiveSession:
             start = seg.start / SR
             samples = np.array(seg.samples, dtype=np.float32)
             self.vad.pop()
-            self._work.put(("segment", samples, start))
+            with self._segs_cv:
+                self._segs.append({"samples": samples, "start": start})
+                self._segs_cv.notify()
 
     # ------------------------------------------------------------ control
     def highlight(self) -> float:
@@ -187,8 +203,13 @@ class LiveSession:
             self.call.stop()
         self.vad.flush()
         self._drain_vad()
-        self._work.put(None)
+        with self._segs_cv:
+            self._segs.append(None)
+            self._segs_cv.notify()
+        with self._probe_cv:
+            self._probe_cv.notify()
         self._worker.join(timeout=120)
+        self._prober.join(timeout=5)
         self.wav.close()
         duration = self.wav.seconds
         final = self.wav_path
@@ -214,50 +235,111 @@ class LiveSession:
         return self.rid
 
     # ------------------------------------------------------------ worker
-    def _run(self) -> None:
+    def _run_probes(self) -> None:
+        """Who speaks right now – every half second while someone talks, independent of the transcript."""
         while True:
-            item = self._work.get()
+            with self._probe_cv:
+                while self._probe is None and not self._closed:
+                    self._probe_cv.wait()
+                if self._probe is None:
+                    break
+                samples, t = self._probe
+                self._probe = None
+            try:
+                e = self.embedder.embed(samples)
+                if e is None:
+                    continue
+                with self._lock:
+                    r = self.cluster.assign(e, update=False)
+                    lab = self._label(r)
+                # smoothing: a single unclear probe (overlap, cough, turn boundary) keeps the last speaker
+                unclear = lab["key"] is None and not lab["known"]
+                if unclear and self._last_probe is not None and not self._unclear_before:
+                    lab = self._last_probe
+                self._unclear_before = unclear
+                if not unclear:
+                    self._last_probe = lab
+                self.emit({"type": "speaking", **lab, "score": r["score"], "t": round(t, 2)})
+            except Exception as ex:  # noqa: BLE001
+                log.exception("live probe: %s", ex)
+
+    def _next_seg(self) -> dict | None:
+        with self._segs_cv:
+            while not self._segs:
+                self._segs_cv.wait()
+            return self._segs.popleft()
+
+    def _run(self) -> None:
+        """The live transcript. In step with the talk: piece by piece. Behind (a slow computer, many short pieces):
+        the waiting pieces of the same speaker together – one transcription instead of many."""
+        while True:
+            item = self._next_seg()
             if item is None:
                 break
-            kind, samples, t = item
             try:
-                if kind == "speaking":
-                    if self._work.qsize() > 6:  # falling behind: skip stale 'speaking' probes
-                        continue
-                    e = self.embedder.embed(samples)
-                    if e is not None:
-                        with self._lock:
-                            r = self.cluster.assign(e, update=False)
-                            lab = self._label(r)
-                        # smoothing: a single unclear probe (overlap, cough, turn boundary) keeps the last speaker
-                        unclear = lab["key"] is None and not lab["known"]
-                        if unclear and self._last_probe is not None and not self._unclear_before:
-                            lab = self._last_probe
-                        self._unclear_before = unclear
-                        if not unclear:
-                            self._last_probe = lab
-                        self.emit({"type": "speaking", **lab, "score": r["score"], "t": round(t, 2)})
-                else:
-                    self._segment(samples, t)
+                if self.t - (item["start"] + len(item["samples"]) / SR) > LAG_MAX and self.engine is not None:
+                    self._catch_up(item)
+                    continue
+                group = [item]
+                r = self._who(item)
+                while True:
+                    with self._segs_cv:
+                        nxt = self._segs[0] if self._segs else None
+                    if nxt is None or sum(len(g["samples"]) for g in group) / SR + len(nxt["samples"]) / SR > MERGE_MAX:
+                        break
+                    if self._who(nxt).get("key") != r.get("key") or r.get("key") is None:
+                        break
+                    group.append(self._next_seg())
+                self._segment(group, r)
             except Exception as ex:  # noqa: BLE001
                 log.exception("live worker: %s", ex)
         db.close()
 
-    def _segment(self, samples: np.ndarray, start: float) -> None:
-        end = start + len(samples) / SR
-        e = self.embedder.embed(samples)
+    def _catch_up(self, first: dict) -> None:
+        """Far behind (a slow computer): who spoke still counts, but the text of what's waiting is skipped – the
+        preview continues with what is said now. After Stopp the full analysis transcribes everything."""
+        skipped = [first]
+        with self._segs_cv:
+            while self._segs and self._segs[0] is not None and \
+                    self.t - (self._segs[0]["start"] + len(self._segs[0]["samples"]) / SR) > LAG_MAX / 2:
+                skipped.append(self._segs.popleft())
+        for it in skipped:
+            r = self._who(it)
+            if r.get("skip"):
+                continue
+            with self._lock:
+                self.segments.append({"start": round(it["start"], 2), "text": "", **self._label(r),
+                                      "end": round(it["start"] + len(it["samples"]) / SR, 2)})
+        self.emit({"type": "gap", "start": round(first["start"], 2),
+                   "end": round(skipped[-1]["start"] + len(skipped[-1]["samples"]) / SR, 2)})
+
+    def _who(self, item: dict) -> dict:
+        """Whose voice a speech piece is (assigned once, also when it was looked at for grouping)."""
+        if "r" in item:
+            return item["r"]
+        e = self.embedder.embed(item["samples"])
         with self._lock:
             if e is None:
                 if not self.cluster.clusters:
-                    return
+                    item["r"] = {"key": None, "skip": True}
+                    return item["r"]
                 r = {"key": self.segments[-1]["key"] if self.segments else self.cluster.clusters[-1]["key"],
                      "profile_id": None, "name": None, "color": None, "score": 0, "new": False}
             else:
                 r = self.cluster.assign(e)
                 if r["new"]:
                     self._roster()
+        item["r"] = r
+        return r
+
+    def _segment(self, group: list[dict], r: dict) -> None:
+        if r.get("skip"):
+            return
+        start = group[0]["start"]
+        end = group[-1]["start"] + len(group[-1]["samples"]) / SR
         text = ""
         if self.engine is not None:
+            samples = np.concatenate([g["samples"] for g in group])
             clips = asr.split_long(0, len(samples) / SR, samples)
             parts = [self.engine.transcribe_clip(samples[int(a * SR):int(b * SR)])[0] for a, b in clips]
             text = asr.apply_vocabulary(asr.clean_text(" ".join(parts)), self.s.get("vocabulary", []))

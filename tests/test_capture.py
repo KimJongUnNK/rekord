@@ -5,8 +5,9 @@ import wave
 from pathlib import Path
 
 import numpy as np
+import pytest
 
-from rekord import capture, live
+from rekord import audio, capture, live
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -53,10 +54,13 @@ def test_planar_stereo_becomes_mono():
     assert np.array_equal(capture._mono(mono, 480), mono)
 
 
-def test_resample_keeps_duration():
-    x = np.zeros(4800, np.float32)
-    assert len(capture._resample(x, 48000)) == 1600
-    assert len(capture._resample(x, 16000)) == 4800
+def test_resampler_keeps_duration_across_blocks():
+    """The call sound comes in 0.1 s blocks at 48 kHz: one filter across all of them, nothing lost or added."""
+    rs = capture._resampler(48000)
+    out = np.concatenate([rs(np.zeros(4800, np.float32)) for _ in range(50)] + [rs.flush()])
+    assert len(out) == 50 * 1600
+    same = capture._resampler(16000)
+    assert len(same(np.zeros(4800, np.float32))) == 4800
 
 
 class _FakeCall:
@@ -71,6 +75,7 @@ class _FakeCall:
 def _session(call, paused=False):
     s = live.LiveSession.__new__(live.LiveSession)  # no models needed: only the mixing is under test
     s.sr_in, s.call, s.paused, s._fed = 16000, call, paused, []
+    s._rs = audio.Resampler(16000)
     s.feed = s._fed.append
     return s
 
@@ -144,3 +149,20 @@ print(float(np.sqrt(np.mean(x ** 2))) if len(x) else 0.0, float(np.argmax(spec) 
     rms, freq = map(float, out.stdout.split())
     assert rms > 0.1, rms  # 0.3 sine → rms ≈ 0.21
     assert abs(freq - 440) < 5, freq  # right pitch = right sample rate after resampling
+
+
+@pytest.mark.parametrize("chunk", [4800, 4096, 1024, 441])
+def test_microphone_audio_is_converted_cleanly_in_any_chunk_size(chunk):
+    """48 kHz microphone → 16 kHz in the chunks the system hands over: no click at each border, nothing above 8 kHz
+    folds back into the voice. (The old chunk-by-chunk straight lines left errors as loud as the voice.)"""
+    sr = 48000
+    t = np.arange(sr * 2) / sr
+    voice = 0.3 * np.sin(2 * np.pi * 440 * t) + 0.2 * np.sin(2 * np.pi * 1700 * t)
+    x = (voice + 0.1 * np.sin(2 * np.pi * 12000 * t)).astype(np.float32)  # hiss above 8 kHz must vanish
+    rs = audio.Resampler(sr)
+    y = np.concatenate([rs(x[i:i + chunk]) for i in range(0, len(x), chunk)] + [rs.flush()])
+    t16 = np.arange(16000 * 2) / 16000
+    ref = (0.3 * np.sin(2 * np.pi * 440 * t16) + 0.2 * np.sin(2 * np.pi * 1700 * t16)).astype(np.float32)
+    n = min(len(y), len(ref)) - 1000
+    snr = max(10 * np.log10(np.sum(ref[500:n] ** 2) / np.sum((y[500 + lag:n + lag] - ref[500:n]) ** 2)) for lag in range(40))
+    assert snr > 60, snr

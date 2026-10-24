@@ -19,11 +19,12 @@ from .llm import providers
 
 log = logging.getLogger("rekord.jobs")
 
-_q: "queue.Queue[tuple[str, str]]" = queue.Queue()
+_q: "queue.Queue[tuple[str, str, str | None]]" = queue.Queue()  # (kind, recording, template)
 _listeners: list = []
 _llock = threading.Lock()
 _started = False
 _child: subprocess.Popen | None = None
+_later: dict[str, list[str]] = {}  # summaries asked for while the recording was still being analyzed
 
 
 def subscribe(fn) -> None:
@@ -50,8 +51,24 @@ def emit(ev: dict) -> None:
 def enqueue(rid: str, kind: str = "process") -> None:
     if kind == "process":
         db.update_recording(rid, status="queued", stage="Warteschlange", progress=0, error="")
-    _q.put((kind, rid))
+    _q.put((kind, rid, None))
     emit({"type": "queued", "id": rid})
+
+
+def summarize_later(rid: str, template_id: str) -> bool:
+    """A summary asked for while the analysis still runs: it would only see the live transcript (with its gaps), so
+    it's written as soon as the full transcript is there. False: it comes anyway (automatic summary, same template)."""
+    s = config.load()
+    if wants_auto_summary(s) and (s.get("default_template") or "auto") == template_id:
+        return False
+    rec = db.get_recording(rid) or {}
+    if rec.get("status") in ("queued", "processing", "recording"):
+        with _llock:
+            if template_id not in _later.setdefault(rid, []):
+                _later[rid].append(template_id)
+    else:
+        _q.put(("summary", rid, template_id))
+    return True
 
 
 def wants_auto_summary(settings: dict) -> bool:
@@ -66,23 +83,32 @@ def pending() -> int:
 def _run() -> None:
     from . import pipeline, summarize
     while True:
-        kind, rid = _q.get()
+        kind, rid, template_id = _q.get()
         try:
             if kind == "process":
                 if os.environ.get("REKORD_JOBS_INPROCESS") == "1":  # tests that patch the pipeline
                     pipeline.process(rid, on_event=emit)
                 else:
                     _process_isolated(rid)
+                with _llock:
+                    asked = _later.pop(rid, [])
+                for tid in asked:  # what was asked for during the analysis – now on the full transcript
+                    _q.put(("summary", rid, tid))
                 if wants_auto_summary(config.load()):
-                    _q.put(("summary", rid))
+                    _q.put(("summary", rid, None))
             elif kind == "summary":
                 emit({"type": "summary_started", "id": rid})
-                summarize.auto_summary(rid)
+                if template_id:
+                    summarize.generate(rid, template_id)
+                else:
+                    summarize.auto_summary(rid)
                 emit({"type": "summary_done", "id": rid})
         except Exception as e:  # noqa: BLE001
             log.error("job %s %s failed: %s", kind, rid, traceback.format_exc())
             if kind == "process":
                 db.update_recording(rid, status="error", stage="", error=str(e))
+                with _llock:
+                    _later.pop(rid, None)
             emit({"type": "error", "id": rid, "kind": kind, "error": str(e)})
         finally:
             db.close()  # thread-local connection hygiene

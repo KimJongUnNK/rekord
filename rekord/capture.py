@@ -17,11 +17,9 @@ log = logging.getLogger("rekord.capture")
 SR = 16000
 
 
-def _resample(x: np.ndarray, sr_in: int) -> np.ndarray:
-    if sr_in == SR or not len(x):
-        return x.astype(np.float32)
-    n = int(round(len(x) * SR / sr_in))
-    return np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x).astype(np.float32)
+def _resampler(sr_in: int):
+    from .audio import Resampler
+    return Resampler(sr_in, SR)  # one per stream: the filter runs across the blocks
 
 
 def _mac_version() -> tuple[int, ...]:
@@ -138,13 +136,14 @@ class SystemAudio:
             spk = sc.default_speaker()
             mic = sc.get_microphone(id=str(spk.name), include_loopback=True)
             rate = 48000
+            rs = _resampler(rate)
             with mic.recorder(samplerate=rate, channels=1, blocksize=rate // 10) as rec:
                 self.started = True
                 self._ready.set()
                 while not self._stop.is_set():
                     data = rec.record(numframes=rate // 10)
                     mono = data.mean(axis=1) if data.ndim > 1 else data
-                    self._push(_resample(np.nan_to_num(mono), rate))
+                    self._push(rs(np.nan_to_num(mono)))
         except Exception as e:  # noqa: BLE001
             self._fail(f"Call-Ton nicht verfügbar: {e}", e)
 
@@ -202,7 +201,7 @@ def output_class():
                 status, data = CM.CMBlockBufferCopyDataBytes(blk, 0, n, None)
                 if status == 0 and data:
                     x = _mono(np.frombuffer(bytes(data), dtype=np.float32), int(CM.CMSampleBufferGetNumSamples(sbuf)))
-                    fn(_resample(x, 48000))
+                    fn(x)  # 48 kHz – MacCapture converts it (one filter across the whole call)
             except Exception as e:  # noqa: BLE001
                 log.debug("sck audio: %s", e)
 
@@ -250,7 +249,8 @@ class MacCapture:
         cfg.setHeight_(2)
         cfg.setMinimumFrameInterval_(CM.CMTimeMake(1, 1))
         self._out = output_class().alloc().init()
-        self._out.on_audio = self.on_audio
+        rs = _resampler(48000)
+        self._out.on_audio = lambda x: self.on_audio(rs(x))
         self.stream = SCK.SCStream.alloc().initWithFilter_configuration_delegate_(filt, cfg, None)
         queue = dispatch.dispatch_queue_create(b"app.rekord.capture", None)
         for kind in (SCK.SCStreamOutputTypeAudio, SCK.SCStreamOutputTypeScreen):

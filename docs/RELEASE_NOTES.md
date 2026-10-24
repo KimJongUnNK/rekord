@@ -19,6 +19,16 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.3.3 – Live-Anzeige, Klang und Wiedergabe repariert
+- **„Ich rede, aber REKORD zeigt mich stumm“ – behoben.** Die Anzeige, wer gerade spricht, wartete hinter der Live-Transkription, und schon jede Atempause galt als Stille. Jetzt hat sie einen eigenen Ablauf, und „niemand spricht“ kommt erst nach 1,2 s echter Ruhe. Gemessen (Echtzeit, Test-Meeting): vorher 94 % der Sprechzeit fälschlich als stumm angezeigt, jetzt 1 %.
+- **Klang: nicht mehr „elektronisch“.** Die Umrechnung des Mikrofons auf 16 kHz passierte in kleinen Häppchen ohne Filter – Störgeräusche fast so laut wie die Stimme (Signal-Rausch-Abstand 0–11 dB). Jetzt ein durchgehender Filter: 95 dB, sauberer Klang in der Aufnahme und bessere Erkennung. Gilt für das Mikrofon im Fenster, *Person einsprechen*, den Call-Ton bei Online-Meetings und den Live-Stream vom iPhone.
+- **Abspielen ohne Ton – behoben.** REKORD spielte immer auf dem Ausgabegerät, das beim Start aktiv war (z. B. AirPods, die später weg sind). Jetzt immer auf dem aktuellen Ausgang des Systems.
+- **Zusammenfassung passt zum Gespräch:** Solange die genaue Auswertung läuft, wird nicht mehr aus der Live-Mitschrift zusammengefasst. *Nach der Auswertung* merkt die Vorlage vor, das Protokoll entsteht dann automatisch aus dem vollständigen Transkript.
+- **Mikrofon-Wächter:** Kommt kein Ton an (stumm geschaltet, falsches Mikro), zeigt REKORD das während der Aufnahme – mit Mikrofon-Wechsel direkt im Hinweis, ohne Stopp. Setzt das Mikrofon aus (AirPods raus, USB abgesteckt), startet REKORD es von selbst neu.
+- **Mehrkanal-Mikrofone und Audio-Interfaces:** REKORD nimmt den Kanal mit der Stimme, statt alle zu mitteln (das hat die Stimme verdünnt oder sogar ausgelöscht).
+- **Bluetooth-Hinweis:** Bei AirPods & Co. als Mikrofon sagt REKORD, dass Bluetooth dann nur Telefonqualität aufnimmt – und empfiehlt das Mikrofon des Computers.
+- **Live-Mitschrift auf langsamen Computern:** Sätze desselben Sprechers werden gebündelt; fällt sie zu weit zurück, holt sie sichtbar auf statt immer weiter hinterherzuhinken. Nach dem Stopp steht ohnehin alles im Transkript.
+
 ### Neu in 1.3.2 – aktuelle Sprach-Engine und Claude-Schnittstelle
 - **Sprach-Engine sherpa-onnx 2.0** (Transkription, Sprecher-Trennung, Stimmabdrücke, Live-Erkennung). Auf den Test-Meetings liefert sie exakt dieselben Ergebnisse wie die bisherige Version; alle Tests mit echten Modellen laufen damit.
 - **Claude über die neue API-Version 2026-10-21** (Anthropic-SDK 2): Der API-Key geht jetzt als `Authorization: Bearer` raus statt im `x-api-key`-Header – laut Anthropic nimmt die API beides an. Für dich ändert sich nichts: Key bleibt, Zusammenfassungen, Denkaufwand und Ausweichmodell funktionieren wie bisher.

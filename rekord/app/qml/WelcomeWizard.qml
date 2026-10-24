@@ -294,6 +294,7 @@ Popup {
                                 value: live.mic
                                 onPicked: (v) => { live.setMic(v); voice.discard(); voice.start(600) }
                             }
+                            Text { visible: live.micHint !== ""; Layout.fillWidth: true; text: live.micHint; wrapMode: Text.WordWrap; font.family: Theme.text; font.pixelSize: 12; color: Theme.warn }
                             Rectangle {
                                 Layout.fillWidth: true
                                 height: 16; radius: 8
