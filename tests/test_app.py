@@ -83,7 +83,138 @@ def test_import_copies_and_queues(qt, tmp_path, monkeypatch):
     rec = db.get_recording(queued[0])
     assert rec["title"] == "Interview" and rec["source"] == "import" and Path(rec["audio_path"]).is_file()
     assert Path(rec["audio_path"]).parent == config.AUDIO_DIR
-    assert toasts == ["1 Datei wird verarbeitet", "Nicht unterstützt: notizen.txt"]
+    assert toasts[0] == "1 Datei wird verarbeitet" and toasts[1].startswith("Kein Ton gefunden: notizen.txt")
+
+
+def test_import_mp3_and_mp4_from_downloads(qt, tmp_path, monkeypatch):
+    """MP3 and MP4 (a video: only its sound counts) are real recordings – decodable and queued for transcription."""
+    import av
+
+    from rekord import audio
+    lib = bridge.Library()
+    queued = []
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append(rid))
+    x = (audio.load(Path(__file__).parent / "fixtures" / "meeting1.wav")[:16000 * 3] * 32767).astype(np.int16)
+    for name, fmt, codec in (("Sprachnachricht.mp3", "mp3", "libmp3lame"), ("Zoom Aufzeichnung.mp4", "mp4", "aac")):
+        with av.open(str(tmp_path / name), "w", format=fmt) as out:
+            st = out.add_stream(codec, rate=16000)
+            st.layout = "mono"
+            fr = av.AudioFrame.from_ndarray(x.reshape(1, -1), format="s16", layout="mono")
+            fr.sample_rate = 16000
+            for pk in [*st.encode(fr), *st.encode(None)]:
+                out.mux(pk)
+    assert lib.importFiles([(tmp_path / "Sprachnachricht.mp3").as_uri(), (tmp_path / "Zoom Aufzeichnung.mp4").as_uri()]) == 2
+    recs = [db.get_recording(r) for r in queued]
+    assert [r["title"] for r in recs] == ["Sprachnachricht", "Zoom Aufzeichnung"]
+    for r in recs:
+        assert 2.9 < len(audio.load(r["audio_path"])) / 16000 < 3.2  # the pipeline reads it like any recording
+
+
+def test_import_says_why_a_file_cant_be_read(qt, tmp_path, monkeypatch):
+    """macOS refusing the Downloads folder (or a file that's gone) must not end the import silently."""
+    import shutil
+    import sys
+    lib = bridge.Library()
+    queued, toasts = [], []
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append(rid))
+    lib.toast.connect(toasts.append)
+    (tmp_path / "ok.mp3").write_bytes(b"\0" * 64)
+    (tmp_path / "gesperrt.mp4").write_bytes(b"\0" * 64)
+    real = shutil.copyfile
+
+    def copy(src, dst):
+        if Path(src).name == "gesperrt.mp4":
+            raise PermissionError(1, "Operation not permitted")
+        return real(src, dst)
+    monkeypatch.setattr(bridge.shutil, "copyfile", copy)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    before = set(config.AUDIO_DIR.iterdir())
+    assert lib.importFiles([str(tmp_path / "gesperrt.mp4"), str(tmp_path / "ok.mp3"), str(tmp_path / "weg.mp3")]) == 1
+    assert len(queued) == 1  # the readable one goes through
+    assert any("Kein Zugriff auf gesperrt.mp4, weg.mp3" in t and "Dateien und Ordner" in t for t in toasts), toasts
+    new = set(config.AUDIO_DIR.iterdir()) - before
+    assert [p.suffix for p in new] == [".mp3"]  # only the readable one – no half-copied leftovers
+
+
+def test_paste_imports_files_copied_in_finder_or_explorer(qt, tmp_path, monkeypatch):
+    from PySide6.QtCore import QMimeData, QUrl
+    from PySide6.QtGui import QGuiApplication
+    lib = bridge.Library()
+    queued = []
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append(rid))
+    (tmp_path / "Podcast.mp3").write_bytes(b"\0" * 64)
+    cb = QGuiApplication.clipboard()
+    data = QMimeData()
+    data.setUrls([QUrl.fromLocalFile(str(tmp_path / "Podcast.mp3"))])
+    cb.setMimeData(data)
+    if not cb.mimeData().urls():
+        pytest.skip("no clipboard on this platform/session")
+    assert lib.pasteFiles() == 1 and db.get_recording(queued[0])["title"] == "Podcast"
+    cb.setText(str(tmp_path / "Podcast.mp3"))  # "Als Pfad kopieren" (Windows) / ⌥⌘C (Mac)
+    assert lib.pasteFiles() == 1 and len(queued) == 2
+    cb.setText("nur ein Satz, keine Datei")
+    assert lib.pasteFiles() == 0 and len(queued) == 2  # ordinary text: nothing happens
+
+
+def test_append_files_to_an_open_recording(qt, tmp_path, monkeypatch):
+    from rekord import pipeline
+    lib = bridge.Library()
+    added, queued, toasts = [], [], []
+    monkeypatch.setattr(pipeline, "append_files", lambda rid, paths: added.append((rid, [Path(p).name for p in paths])) or 95.0)
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append(rid))
+    lib.toast.connect(toasts.append)
+    rec = db.create_recording("Workshop", "", source="import")
+    (tmp_path / "Teil 2.mp4").write_bytes(b"\0")
+    (tmp_path / "liste.pdf").write_bytes(b"\0")
+    db.update_recording(rec["id"], status="processing")
+    assert lib.appendFiles(rec["id"], [str(tmp_path / "Teil 2.mp4")]) == 0  # not while it's being analysed
+    assert "sobald" in toasts[-1] and added == []
+    db.update_recording(rec["id"], status="done")
+    assert lib.appendFiles(rec["id"], [(tmp_path / "Teil 2.mp4").as_uri(), str(tmp_path / "liste.pdf")]) == 1
+    assert pump(lambda: queued == [rec["id"]])
+    assert added == [(rec["id"], ["Teil 2.mp4"])]
+    assert any("Kein Ton gefunden: liste.pdf" in t for t in toasts)
+    assert pump(lambda: any("Angehängt (+1:35)" in t and "neu transkribiert" in t for t in toasts)), toasts
+
+
+def test_append_failure_is_said_not_swallowed(qt, tmp_path, monkeypatch):
+    from rekord import pipeline
+    lib = bridge.Library()
+    toasts = []
+    lib.toast.connect(toasts.append)
+
+    def broken(rid, paths):
+        raise ValueError("Datei enthält keine Audiospur")
+    monkeypatch.setattr(pipeline, "append_files", broken)
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": pytest.fail("must not reprocess"))
+    rec = db.create_recording("X", "", source="import")
+    db.update_recording(rec["id"], status="done")
+    (tmp_path / "leer.mp4").write_bytes(b"\0")
+    assert lib.appendFiles(rec["id"], [str(tmp_path / "leer.mp4")]) == 1
+    assert pump(lambda: any("Anhängen fehlgeschlagen: Datei enthält keine Audiospur" in t for t in toasts)), toasts
+
+
+def test_one_imported_file_is_opened_right_away(qt, tmp_path, monkeypatch):
+    """Fewer steps: after importing one file the window opens its recording – lastImportedId names it."""
+    lib = bridge.Library()
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": None)
+    (tmp_path / "a.mp3").write_bytes(b"\0")
+    (tmp_path / "b.mp3").write_bytes(b"\0")
+    assert lib.importFiles([str(tmp_path / "a.mp3")]) == 1
+    rid = lib.lastImportedId()
+    assert rid and db.get_recording(rid)["title"] == "a"
+    assert lib.importFiles([str(tmp_path / "a.mp3"), str(tmp_path / "b.mp3")]) == 2
+    assert lib.lastImportedId() == ""  # several: the list shows them
+    assert lib.importFiles([str(tmp_path / "notiz.txt")]) == 0 and lib.lastImportedId() == ""
+    import shutil
+    shutil.copy(Path(__file__).parent / "fixtures" / "meeting1.wav", tmp_path / "Diktat.dss2")  # any ending, sound inside
+    assert lib.importFiles([str(tmp_path / "Diktat.dss2")]) == 1 and lib.lastImportedId()
+
+
+def test_import_dialog_opens_in_downloads(qt):
+    url = bridge.Library().downloadsUrl
+    assert url == "" or url.startswith("file://")
 
 
 class FakeSession:
@@ -120,7 +251,8 @@ def fake_live(qt, monkeypatch):
     monkeypatch.setattr(bridge.Mic, "start", lambda self, device_id="": True)
     monkeypatch.setattr(bridge.Mic, "stop", lambda self: None)
     monkeypatch.setattr(bridge.Live, "callAvailable", property(lambda self: True))
-    return bridge.Live()
+    yield bridge.Live()
+    live._sessions.clear()  # a test that failed mid-recording must not leave its session to the next ones
 
 
 def test_live_recording_from_start_to_saved(fake_live):
@@ -147,7 +279,8 @@ def test_live_recording_from_start_to_saved(fake_live):
                                               {"key": 3, "name": pipeline.UNKNOWN, "color": pipeline.UNKNOWN_COLOR, "known": False, "talk": 10, "voices": 2}]}):
         threading.Thread(target=s.emit, args=(ev,)).start()
     assert pump(lambda: len(lv.roster) == 2 and lv.lines.count == 1)
-    assert lv.speaking["name"] == "Lisa"
+    # the events come from separate threads – their order isn't guaranteed, so wait for this one too
+    assert pump(lambda: lv.speaking.get("name") == "Lisa"), lv.speaking
     assert lv.lines.items()[0]["time"] == "1:01"
     assert [(r["name"], r["share"], r["voices"]) for r in lv.roster] == [("Lisa", 0.75, 0), (pipeline.UNKNOWN, 0.25, 2)]
     lv.nameSpeaker(3, " Tom ")

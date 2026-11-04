@@ -67,7 +67,7 @@ Page {
                 }
             }
             Btn {
-                text: "Importieren"
+                text: "Datei transkribieren"
                 iconName: "import"
                 onClicked: page.app.importFiles()
                 ToolTip.visible: hovered
@@ -214,17 +214,16 @@ Page {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     text: library.query ? "Gesucht wird in Titeln, Notizen und allem, was gesagt wurde."
-                        : "Drück auf „Aufnehmen“ – oder zieh eine Audio- oder Videodatei in dieses Fenster."
+                        : "Gespräch aufnehmen – oder eine fertige Audio- oder Videodatei transkribieren (auch einfach ins Fenster ziehen)."
                     font.family: Theme.text; font.pixelSize: 15; color: Theme.fg2
                 }
-                Btn {
+                RowLayout {
                     visible: !library.query
                     Layout.alignment: Qt.AlignHCenter
                     Layout.topMargin: 6
-                    kind: "primary"
-                    text: "Aufnehmen"
-                    iconName: "record"
-                    onClicked: page.app.startRecording()
+                    spacing: 10
+                    Btn { kind: "primary"; text: "Aufnehmen"; iconName: "record"; onClicked: page.app.startRecording() }
+                    Btn { text: "Datei transkribieren"; iconName: "import"; onClicked: page.app.importFiles() }
                 }
             }
         }

@@ -44,6 +44,8 @@ if [ "$OS" = "Darwin" ]; then
   done
   ditto -x -k "$TMP/rekord.zip" "$DEST"
   xattr -dr com.apple.quarantine "$DEST/REKORD.app" 2>/dev/null || true
+  # a valid (ad-hoc) signature for exactly this copy – macOS ties Mikrofon / Systemaudio permissions to it
+  codesign --force --deep --sign - --identifier app.rekord.desktop "$DEST/REKORD.app" >/dev/null 2>&1 || true
   say "Installiert: $DEST/REKORD.app – startet jetzt."
   open "$DEST/REKORD.app"
   exit 0

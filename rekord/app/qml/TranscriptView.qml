@@ -12,9 +12,37 @@ Item {
     readonly property var segs: page.rec ? page.rec.segments : []
     readonly property var shown: q ? segs.filter(s => (s.text || "").toLowerCase().indexOf(q) >= 0 || page.spk(s.speaker_id).name.toLowerCase().indexOf(q) >= 0) : segs
     readonly property var hl: page.rec && page.rec.highlights ? page.rec.highlights : []
+    readonly property var stills: page.rec && page.rec.frames ? page.rec.frames : []  // from a video: what was on screen
     property int active: -1
 
     FindReplaceDialog { id: frep; page: v.page }
+
+    Popup {  // a still, big – and listen from there
+        id: big
+        property var still: null
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(parent ? parent.width - 80 : 900, 1100)
+        modal: true
+        padding: 14
+        background: Rectangle { radius: 16; color: Theme.card; border.width: 1; border.color: Theme.line }
+        contentItem: ColumnLayout {
+            spacing: 10
+            Image {
+                Layout.fillWidth: true
+                Layout.preferredHeight: width * (implicitHeight > 0 ? implicitHeight / Math.max(1, implicitWidth) : 0.5625)
+                source: big.still ? big.still.file : ""
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+            }
+            RowLayout {
+                Muted { text: big.still ? "Bild bei " + v.page.fmt(big.still.t) : ""; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Btn { small: true; kind: "primary"; iconName: "play"; text: "Ab hier anhören"; onClicked: { player.seekPlay(big.still.t); big.close() } }
+                Btn { small: true; text: "Schließen"; onClicked: big.close() }
+            }
+        }
+    }
 
     Connections {  // the line being played: highlighted, and (Mitscrollen) kept in view
         target: player
@@ -59,6 +87,7 @@ Item {
                 required property int index
                 readonly property var who: v.page.spk(modelData.speaker_id)
                 readonly property bool star: v.hl.some(h => h >= modelData.start - 2 && h <= modelData.end + 2)
+                readonly property var pics: v.stills.filter(f => f.seg === modelData.id)
                 width: list.width - 12
                 height: line.implicitHeight + 14
                 radius: 10
@@ -108,6 +137,44 @@ Item {
                             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: player.seekPlay(row.modelData.start) }
                         }
                     }
+                    ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Flow {  // what was on screen while this was said
+                        Layout.fillWidth: true
+                        visible: row.pics.length > 0
+                        spacing: 8
+                        Repeater {
+                            model: row.pics
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: 220
+                                height: thumb.status === Image.Ready ? thumb.paintedHeight + 2 : 124
+                                radius: 8
+                                color: Theme.card2
+                                border.width: thumbHover.hovered ? 2 : 1
+                                border.color: thumbHover.hovered ? Theme.accent : Theme.line
+                                clip: true
+                                Image {
+                                    id: thumb
+                                    anchors.centerIn: parent
+                                    width: parent.width - 2
+                                    source: modelData.file
+                                    sourceSize.width: 440
+                                    fillMode: Image.PreserveAspectFit
+                                    asynchronous: true
+                                }
+                                Rectangle {
+                                    anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 6
+                                    width: tLabel.implicitWidth + 10; height: 18; radius: 5
+                                    color: Qt.rgba(0, 0, 0, 0.6)
+                                    Text { id: tLabel; anchors.centerIn: parent; text: v.page.fmt(modelData.t); color: "white"; font.family: Theme.text; font.pixelSize: 11; font.features: ({ "tnum": 1 }) }
+                                }
+                                HoverHandler { id: thumbHover; cursorShape: Qt.PointingHandCursor }
+                                TapHandler { onTapped: { big.still = modelData; big.open() } }
+                            }
+                        }
+                    }
                     TextArea {
                         id: ta
                         Layout.fillWidth: true
@@ -134,6 +201,7 @@ Item {
                                 v.page.app.call("PATCH", "/api/segments/" + row.modelData.id, { text: t }, () => v.page.app.toast("Gespeichert"))
                             }
                         }
+                    }
                     }
                 }
             }

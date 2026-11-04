@@ -9,6 +9,47 @@ import numpy as np
 
 SR = 16000
 
+# what the file dialogs offer and what's accepted without a look inside – anything else is accepted too when FFmpeg
+# finds a sound track in it (see probe)
+MEDIA_EXT = {
+    # audio
+    ".wav", ".mp3", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".flac", ".wma", ".amr", ".awb", ".caf", ".aif", ".aiff",
+    ".aifc", ".alac", ".ape", ".wv", ".mka", ".ac3", ".eac3", ".dts", ".mp2", ".mpa", ".au", ".snd", ".spx", ".m4b", ".m4r",
+    ".gsm", ".voc", ".w64", ".rf64", ".tta", ".mid",
+    # video
+    ".mp4", ".m4v", ".mov", ".qt", ".mkv", ".webm", ".avi", ".wmv", ".asf", ".flv", ".f4v", ".3gp", ".3g2", ".mts",
+    ".m2ts", ".ts", ".mpg", ".mpeg", ".vob", ".ogv", ".mxf", ".divx", ".dv", ".rm", ".rmvb", ".nut",
+}
+VIDEO_EXT = {".mp4", ".m4v", ".mov", ".qt", ".mkv", ".webm", ".avi", ".wmv", ".asf", ".flv", ".f4v", ".3gp", ".3g2",
+             ".mts", ".m2ts", ".ts", ".mpg", ".mpeg", ".vob", ".ogv", ".mxf", ".divx", ".dv", ".rm", ".rmvb", ".nut"}
+DIALOG_FILTER = "Audio & Video (" + " ".join(f"*{e}" for e in sorted(MEDIA_EXT)) + ")"
+
+
+def _cover_art(stream) -> bool:
+    """A still picture inside an audio file (the album cover of an MP3/M4A) – not a video."""
+    try:
+        return bool(stream.disposition & av.stream.Disposition.attached_pic)
+    except Exception:  # noqa: BLE001 - older/newer PyAV without the flag
+        return False
+
+
+def probe(path: str | Path) -> dict:
+    """What's inside – {"audio": bool, "video": bool}, whatever the file is called. Reads only the header."""
+    try:
+        with av.open(str(path)) as c:
+            return {"audio": any(s.type == "audio" for s in c.streams),
+                    "video": any(s.type == "video" and not _cover_art(s) for s in c.streams)}
+    except Exception:  # noqa: BLE001 - not a media file
+        return {"audio": False, "video": False}
+
+
+def accepted(path: str | Path) -> bool:
+    """Can REKORD transcribe this? Known endings at once; anything else if FFmpeg finds a sound track."""
+    p = Path(path)
+    if p.is_dir():
+        return False
+    return p.suffix.lower() in MEDIA_EXT or probe(p)["audio"]
+
 
 def load(path: str | Path, sr: int = SR) -> np.ndarray:
     """Decode any audio/video file to mono float32 at `sr`."""

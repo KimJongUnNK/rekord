@@ -2,6 +2,7 @@
 import json
 import threading
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -455,7 +456,8 @@ def test_mac_reset_clears_screen_and_microphone_of_this_app_only(monkeypatch):
     system, calls = _mac(monkeypatch)
     assert system.mac_reset_permissions() is True
     assert calls == [["tccutil", "reset", "ScreenCapture", "app.rekord.desktop"],
-                     ["tccutil", "reset", "Microphone", "app.rekord.desktop"]]
+                     ["tccutil", "reset", "Microphone", "app.rekord.desktop"],
+                     ["tccutil", "reset", "SystemPolicyDownloadsFolder", "app.rekord.desktop"]]
 
 
 def test_mac_new_version_resets_once(monkeypatch):
@@ -463,8 +465,8 @@ def test_mac_new_version_resets_once(monkeypatch):
     from rekord import config
     system, calls = _mac(monkeypatch)
     config.save({"mac_permissions_for": "1.3.3"})
-    assert system.mac_fresh_permissions("1.3.4") is True and len(calls) == 2
-    assert system.mac_fresh_permissions("1.3.4") is False and len(calls) == 2  # next start: nothing
+    assert system.mac_fresh_permissions("1.3.4") is True and len(calls) == 3
+    assert system.mac_fresh_permissions("1.3.4") is False and len(calls) == 3  # next start: nothing
     assert config.load()["mac_permissions_for"] == "1.3.4"
 
 
@@ -481,3 +483,89 @@ def test_mac_opens_the_exact_privacy_pane(monkeypatch):
     assert system.mac_open_privacy("ScreenCapture") and system.mac_open_privacy("Microphone")
     assert calls == [["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"],
                      ["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"]]
+
+
+# ------------------------------------------------------------------ add files to a recording afterwards
+
+def _clip(path, seconds, start=0):
+    from rekord import audio as a
+    x = a.load(Path(__file__).parent / "fixtures" / "meeting1.wav")[int(16000 * start):int(16000 * (start + seconds))]
+    a.write_wav(path, x)
+    return path
+
+
+def test_append_files_puts_audio_behind_the_recording(tmp_path):
+    from rekord import audio as a
+    from rekord import config, db, pipeline
+    config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    first = _clip(config.AUDIO_DIR / "teil1.wav", 3)
+    rec = db.create_recording("Workshop", str(first), source="import")
+    db.update_recording(rec["id"], highlights=[1.5])
+    added = pipeline.append_files(rec["id"], [str(_clip(tmp_path / "teil2.wav", 2, start=10)),
+                                               str(_clip(tmp_path / "teil3.wav", 1, start=20))])
+    r = db.get_recording(rec["id"])
+    assert 2.9 < added < 3.1
+    assert abs(r["duration"] - (3 + 1 + 2 + 1 + 1)) < 0.2  # 3 s + pause + 2 s + pause + 1 s
+    assert r["audio_path"].endswith(".m4a") and Path(r["audio_path"]).is_file() and r["peaks"]
+    assert abs(len(a.load(r["audio_path"])) / 16000 - r["duration"]) < 0.2
+    assert not first.exists()  # REKORD's own old copy is replaced …
+    assert (tmp_path / "teil2.wav").exists()  # … the user's files are never touched
+    assert r["highlights"] == [1.5]  # earlier marks keep their times
+
+
+def test_append_files_refuses_what_has_no_sound(tmp_path):
+    import pytest as _pt
+
+    from rekord import config, db, pipeline
+    config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    rec = db.create_recording("X", str(_clip(config.AUDIO_DIR / "x.wav", 1)), source="import")
+    (tmp_path / "kaputt.mp3").write_bytes(b"keine Musik")
+    with _pt.raises(Exception):
+        pipeline.append_files(rec["id"], [str(tmp_path / "kaputt.mp3")])
+    assert db.get_recording(rec["id"])["audio_path"].endswith("x.wav")  # nothing changed
+    with _pt.raises(KeyError):
+        pipeline.append_files("gibtsnicht", [str(tmp_path / "kaputt.mp3")])
+
+
+# ------------------------------------------------------------------ every format · stills from videos
+
+def test_any_audio_or_video_counts_whatever_its_name(tmp_path):
+    import shutil
+
+    from rekord import audio as a
+    odd = tmp_path / "aufnahme.xyz"  # an unusual ending – there's sound inside, so it's fine
+    shutil.copy(Path(__file__).parent / "fixtures" / "meeting1.wav", odd)
+    assert a.accepted(odd) and a.probe(odd) == {"audio": True, "video": False}
+    (tmp_path / "liste.txt").write_text("kein Ton")
+    assert not a.accepted(tmp_path / "liste.txt") and not a.accepted(tmp_path)
+    assert a.accepted(tmp_path / "egal.mkv")  # known endings are taken without a look inside
+    assert ".mkv" in a.MEDIA_EXT and ".aiff" in a.MEDIA_EXT and ".avi" in a.MEDIA_EXT and "*.wmv" in a.DIALOG_FILTER
+
+
+def test_stills_at_each_new_slide_not_for_the_pointer(tmp_path):
+    from media import slides_video
+
+    from rekord import audio as a
+    from rekord import frames
+    vid = slides_video(tmp_path / "praesentation.mp4")
+    assert a.probe(vid) == {"audio": True, "video": True}
+    assert frames.extract(vid, "r1") == 3
+    assert [f["t"] for f in frames.items("r1")] == [0.0, 5.0, 10.0]  # exactly the three slide changes
+    assert all(Path(f["path"]).read_bytes()[:2] == b"\xff\xd8" for f in frames.items("r1"))  # real JPEGs
+    assert frames.extract(vid, "r2", offset=61.0) == 3 and frames.items("r2")[0]["t"] == 61.0
+    assert frames.extract(Path(__file__).parent / "fixtures" / "meeting1.wav", "r3") == 0 and not frames.has("r3")
+    segs = [{"id": 7, "start": 0, "end": 4}, {"id": 8, "start": 5.5, "end": 9}, {"id": 9, "start": 10.5, "end": 14}]
+    assert [(f["t"], f["seg"]) for f in frames.attach("r1", segs)] == [(0.0, 7), (5.0, 8), (10.0, 9)]
+    frames.remove("r1")
+    assert frames.items("r1") == []
+
+
+def test_appended_video_keeps_its_stills_in_place(tmp_path):
+    from media import slides_video
+
+    from rekord import config, db, frames, pipeline
+    config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    rec = db.create_recording("Webinar", str(_clip(config.AUDIO_DIR / "intro.wav", 4)), source="import")
+    pipeline.append_files(rec["id"], [str(slides_video(tmp_path / "teil2.mp4"))])
+    assert [f["t"] for f in frames.items(rec["id"])] == [5.0, 10.0, 15.0]  # 4 s intro + 1 s pause, then its slides
+    assert db.get_recording(rec["id"])["audio_path"].endswith(".m4a")

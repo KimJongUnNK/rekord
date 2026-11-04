@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import audio, config, db
+from . import audio, config, db, frames
 from .engines import asr, voiceprint
 from .engines.diarize import clean_turns, diarize, refine_turns
 
@@ -50,6 +50,9 @@ def process(rid: str, on_event=None) -> dict:
             on_event({"type": "progress", "id": rid, "stage": name, "progress": p})
 
     stage("Audio laden", 0.01)
+    if not frames.has(rid) and audio.probe(rec["audio_path"])["video"]:
+        stage("Standbilder aus dem Video", 0.02)  # what was on screen, next to what was said
+        frames.extract(rec["audio_path"], rid)
     samples = audio.load(rec["audio_path"])
     duration = len(samples) / audio.SR
     db.update_recording(rid, duration=duration, peaks=audio.peaks(samples))
@@ -138,6 +141,48 @@ def process(rid: str, on_event=None) -> dict:
 
 # Voiceprints of the same person (two halves of their turns) score 0.7–0.9, different people mostly below 0.4.
 MERGE_THRESHOLD = 0.65
+
+
+APPEND_GAP = 1.0  # seconds of silence between the parts: a clear boundary for the speech detection
+
+
+def append_files(rid: str, paths: list[str]) -> float:
+    """More audio for an existing recording – e.g. the second half of a meeting recorded separately, or voice memos
+    that belong to it. The files are put behind the recording (with a short pause in between), stored as one file,
+    and the recording is analysed again as a whole. Returns the seconds added. Highlights keep their times."""
+    rec = db.get_recording(rid)
+    if rec is None:
+        raise KeyError(rid)
+    old = Path(rec["audio_path"]) if rec.get("audio_path") else None
+    parts = [audio.load(old)] if old and old.is_file() else []
+    loaded = []
+    for p in paths:  # all of them first: one without sound changes nothing
+        x = audio.load(p)  # ValueError: no sound in it
+        if not len(x):
+            raise ValueError(f"{Path(p).name}: enthält keinen Ton")
+        loaded.append((p, x))
+    if old and old.is_file() and not frames.has(rid) and audio.probe(old)["video"]:
+        frames.extract(old, rid)  # the video is about to become sound only: keep its stills first
+    added = 0.0
+    for p, x in loaded:
+        if parts:
+            parts.append(np.zeros(int(audio.SR * APPEND_GAP), dtype=np.float32))
+        at = sum(len(q) for q in parts) / audio.SR
+        if audio.probe(p)["video"]:
+            frames.extract(p, rid, offset=at)  # its stills at their place in the whole recording
+        parts.append(x)
+        added += len(x) / audio.SR
+    if not added:
+        return 0.0
+    samples = np.concatenate(parts)
+    config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    new = config.AUDIO_DIR / f"{rid}-{int(time.time() * 1000)}.m4a"
+    audio.encode_m4a(samples, new)
+    db.update_recording(rid, audio_path=str(new), duration=len(samples) / audio.SR, peaks=audio.peaks(samples))
+    if old and old.is_file() and old.parent == config.AUDIO_DIR and old != new:
+        old.unlink(missing_ok=True)  # REKORD's own copy – an imported original elsewhere stays untouched
+    log.info("appended %d file(s), %.0f s, to %s", len(paths), added, rid)
+    return added
 
 
 def _voiceprints(samples, turns, emb):

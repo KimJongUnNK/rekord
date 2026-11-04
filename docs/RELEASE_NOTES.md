@@ -19,6 +19,17 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.3.6 – Videos mit Bildern im Transkript · jedes Format · 2 Klicks zum Transkript
+- **Mac: REKORD sagt jetzt, was macOS wirklich meldet.** Bisher klang jeder Fehler beim Call-Ton wie eine fehlende Erlaubnis – auch wenn der Schalter längst an war. Jetzt steht die echte Antwort von macOS (Text und Fehlercode) in der Meldung und in *rekord.log*. Nur eine echte Ablehnung zeigt weiter die Knöpfe zum Erlauben.
+- **Mac-App: Signatur wird nach jedem Build geprüft.** Die Release-Pipeline prüft die Signatur der Mac-App streng und bricht ab, wenn sie ungültig ist; die Installations-Zeile und das In-App-Update signieren die App auf deinem Mac zusätzlich selbst (ad hoc) – damit macOS die Erlaubnisse immer einer gültigen App zuordnen kann.
+- **Videos mit Bildern im Transkript:** Bei einem Video (Teams-/Zoom-Aufzeichnung mit Bildschirmfreigabe, Vortrag, Webinar) speichert REKORD automatisch ein Standbild, wann immer sich das Bild deutlich ändert – neue Folie, anderer Bildschirm, neue Szene. Im Transkript steht es direkt über dem Satz, der dazu gesagt wurde; antippen zeigt es groß, mit *Ab hier anhören*. Ein Mauszeiger oder kleine Bewegungen zählen nicht. Läuft lokal, ohne Internet.
+- **Jedes Audio- und Videoformat:** nicht mehr nur eine feste Liste – MKV, AVI, WMV, AIFF, MTS und alles andere, was Ton enthält, auch mit ungewöhnlicher Endung.
+- **Fertige Audios in 2 Schritten statt 4:** Links, direkt unter *Aufnehmen*, gibt es auf jeder Seite **Datei transkribieren** – Datei wählen, die Aufnahme öffnet sich sofort und wird ausgewertet. Kein Seitenwechsel, kein Suchen in der Liste. Dasselbe beim Reinziehen, beim Einfügen mit ⌘V und im Menüleisten-Symbol.
+- **Dateien an eine Aufnahme anhängen:** Aufnahme öffnen → **Audio anhängen** (oben rechts, sichtbar statt im Menü versteckt) – oder Datei auf die Aufnahme ziehen → *Anhängen*. Teil 2 des Meetings, Sprachmemos dazu, ein zweites Gerät – alles kommt hinten dran, und REKORD transkribiert die ganze Aufnahme neu, mit Sprechern über alle Teile hinweg. Deine Originaldateien bleiben unberührt.
+- **Dateien einfügen:** Audio- oder Videodatei im Finder/Explorer kopieren (z. B. aus *Downloads*) und in REKORD **⌘ V** / **Strg + V** – wird importiert und transkribiert. Auch ein kopierter Dateipfad geht.
+- **Importieren** öffnet direkt im Ordner *Downloads*.
+- Kann REKORD eine Datei nicht lesen (macOS sperrt *Downloads*, Datei weg), sagt es das jetzt – statt still nichts zu tun. Nach einem Update wird auch die *Downloads*-Erlaubnis frisch abgefragt.
+
 ### Neu in 1.3.5 – Mac: „alles erlaubt, aber REKORD darf nicht aufnehmen“ behoben
 - **Der Fehler:** Unter *Datenschutz & Sicherheit* stand REKORD auf „an“, trotzdem meldete REKORD, macOS erlaube Mikrofon bzw. Call-Ton nicht. Grund: Die Mac-App hat kein kostenpflichtiges Apple-Zertifikat, jede Version hat deshalb eine neue Signatur – und macOS hängt die Erlaubnis an die Signatur der **alten** Version. Der Schalter sieht an aus, gilt aber nicht mehr.
 - **Automatisch:** Beim ersten Start einer neuen Version setzt REKORD seine alten Schalter selbst zurück. macOS fragt dann bei der nächsten Aufnahme sauber neu – erlauben, beim Call-Ton danach REKORD einmal neu starten.

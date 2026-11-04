@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import "."
 
@@ -11,6 +12,7 @@ Page {
     required property var app
     property string rid: ""
     property var rec: null
+    function appendFiles() { appendDialog.open() }
     // progress of the running analysis: kept apart from rec, so a tick doesn't rebuild transcript, players and charts
     property string jobStage: ""
     property real jobProgress: 0
@@ -88,6 +90,14 @@ Page {
         }
     }
 
+    FileDialog {  // more audio for this recording (part 2 of a meeting, voice memos …) – analysed again as a whole
+        id: appendDialog
+        title: "An diese Aufnahme anhängen"
+        fileMode: FileDialog.OpenFiles
+        currentFolder: library.downloadsUrl
+        nameFilters: [library.mediaFilter, "Alle Dateien (*)"]  // every audio/video format – others work too, if there's sound
+        onAccepted: library.appendFiles(page.rid, selectedFiles)
+    }
     SpeakerDialog { id: speakerDlg; objectName: "speakerDlg"; page: page }
     AssignDialog { id: assignDlg; objectName: "assignDlg"; page: page }
 
@@ -102,6 +112,18 @@ Page {
             Layout.fillWidth: true
             Btn { kind: "ghost"; small: true; iconName: "back"; text: "Aufnahmen"; onClicked: page.app.go("library") }
             Item { Layout.fillWidth: true }
+            Btn {  // more audio for this recording, one click – not hidden in •••
+                objectName: "appendButton"
+                small: true
+                iconName: "import"
+                text: "Audio anhängen"
+                enabled: !!page.rec && page.rec.status === "done"
+                onClicked: page.appendFiles()
+                ToolTip.visible: hovered
+                ToolTip.delay: 400
+                ToolTip.text: enabled ? "Weitere Datei hinten an diese Aufnahme (z. B. Teil 2) – danach wird alles zusammen transkribiert. Oder Datei einfach auf die Aufnahme ziehen."
+                                      : "Geht, sobald die Aufnahme fertig ausgewertet ist."
+            }
             Btn {
                 id: moreBtn
                 small: true
@@ -110,6 +132,11 @@ Page {
                 Menu {
                     id: more
                     MenuItem { text: "Neu verarbeiten (andere Einstellungen/Modell)"; onTriggered: page.app.call("POST", "/api/recordings/" + page.rid + "/reprocess", null, () => { page.app.toast("Wird neu verarbeitet …"); page.reload() }) }
+                    MenuItem {
+                        text: "Dateien anhängen …"
+                        enabled: !!page.rec && page.rec.status === "done"
+                        onTriggered: page.appendFiles()
+                    }
                     MenuItem { text: "Personen neu erkennen"; onTriggered: page.app.call("POST", "/api/recordings/" + page.rid + "/reidentify", null, (r) => { page.app.toast(r.renamed + " Person(en) erkannt"); page.reload() }) }
                     MenuItem { text: "Umbenennen"; onTriggered: page.app.prompt("Titel", page.rec.title, (t) => page.app.call("PATCH", "/api/recordings/" + page.rid, { title: t }, () => { page.reload(); library.refresh() })) }
                     MenuSeparator {}

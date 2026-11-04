@@ -10,8 +10,11 @@ Sheet {
     property string okLabel: "Löschen"
     property bool danger: true
     property var onOk: null
-    function ask(title, text, label, fn, isDanger) {
+    property string altLabel: ""   // optional second choice (e.g. "Als neue Aufnahme")
+    property var onAlt: null
+    function ask(title, text, label, fn, isDanger, alt, altFn) {
         heading = title; body = text || ""; okLabel = label || "Löschen"; onOk = fn; danger = isDanger !== false
+        altLabel = alt || ""; onAlt = altFn || null
         open()
     }
     width: Math.min(parent ? parent.width - 48 : 480, 480)
@@ -30,6 +33,7 @@ Sheet {
             Layout.topMargin: 6
             Item { Layout.fillWidth: true }
             Btn { text: "Abbrechen"; onClicked: d.close() }
+            Btn { visible: d.altLabel !== ""; text: d.altLabel; onClicked: { const fn = d.onAlt; d.close(); if (fn) fn() } }
             Btn {
                 kind: d.danger ? "danger" : "primary"
                 text: d.okLabel

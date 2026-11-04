@@ -110,6 +110,44 @@ Rectangle {
             HoverHandler { cursorShape: Qt.PointingHandCursor }
         }
 
+        // ---- a file instead of a recording: same place, every page – pick it, and its recording opens
+        Button {
+            id: fileBtn
+            objectName: "fileButton"
+            Layout.fillWidth: true
+            Layout.preferredHeight: 42
+            Layout.topMargin: -4
+            hoverEnabled: true
+            focusPolicy: Qt.TabFocus
+            onClicked: side.app.importFiles()
+            ToolTip.visible: hovered
+            ToolTip.delay: 400
+            ToolTip.text: "Audio oder Video transkribieren – MP3, MP4, M4A, WAV … (Strg+I). Oder einfach ins Fenster ziehen."
+            scale: down ? 0.97 : 1
+            Behavior on scale { NumberAnimation { duration: 90 } }
+            background: Rectangle {
+                radius: 12
+                color: fileBtn.hovered ? Theme.card2 : "transparent"
+                border.width: 1.5
+                border.color: fileBtn.hovered ? Theme.accent : Theme.line2
+                Behavior on color { ColorAnimation { duration: Theme.fast } }
+            }
+            contentItem: Item {
+                RowLayout {
+                    anchors.centerIn: parent
+                    spacing: 8
+                    Icon { name: "import"; width: 17; height: 17; color: Theme.fg }
+                    Text {
+                        visible: !side.narrow
+                        text: "Datei transkribieren"
+                        font.family: Theme.text; font.pixelSize: 14; font.weight: Font.Bold
+                        color: Theme.fg
+                    }
+                }
+            }
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
+        }
+
         // ---- navigation
         Item {
             Layout.fillWidth: true

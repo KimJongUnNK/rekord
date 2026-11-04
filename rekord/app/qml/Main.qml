@@ -71,7 +71,7 @@ ApplicationWindow {
         _cb[id] = { ok: ok, fail: fail }
         return id
     }
-    function confirm(title, text, okLabel, fn, danger) { confirmDlg.ask(title, text, okLabel, fn, danger) }
+    function confirm(title, text, okLabel, fn, danger, alt, altFn) { confirmDlg.ask(title, text, okLabel, fn, danger, alt, altFn) }
     function prompt(title, value, fn) { promptDlg.ask(title, value, fn) }
     Connections {
         target: api
@@ -91,6 +91,15 @@ ApplicationWindow {
         who.openFresh()
     }
     function importFiles() { importDialog.open() }
+    // every way in (button, dialog, drop, ⌘V, menu bar) ends the same: one file → its recording opens right away
+    function importUrls(urls) {
+        const n = library.importFiles(urls)
+        const rid = n === 1 ? library.lastImportedId() : ""
+        if (rid) win.openRecording(rid, 0)
+        else if (n > 0) win.go("library")
+        return n
+    }
+    function appendToOpen() { detailPage.appendFiles() }
     function welcome(force) { welcomeWiz.start(force) }
     function quitApp() { if (live.state !== "idle") quitDialog.open(); else rekord.quit() }
     function toast(msg) { toasts.show(msg) }
@@ -126,6 +135,16 @@ ApplicationWindow {
     Shortcut { sequences: ["Ctrl+R", "Ctrl+N"]; onActivated: win.startRecording() }
     Shortcut { sequences: [StandardKey.Find]; onActivated: { win.go("library"); libraryPage.focusSearch() } }
     Shortcut { sequence: "Ctrl+I"; onActivated: win.importFiles() }
+    Shortcut {  // ⌘V / Strg+V: files copied in Finder or Explorer are imported – text fields keep their own paste
+        sequences: [StandardKey.Paste]
+        enabled: !(win.activeFocusItem && win.activeFocusItem.cursorPosition !== undefined)
+        onActivated: {
+            const n = library.pasteFiles()
+            const rid = n === 1 ? library.lastImportedId() : ""
+            if (rid) win.openRecording(rid, 0)
+            else if (n > 0) win.go("library")
+        }
+    }
     Shortcut { sequence: "Ctrl+1"; onActivated: win.go("library") }
     Shortcut { sequence: "Ctrl+2"; onActivated: win.go("live") }
     Shortcut { sequence: "Ctrl+3"; onActivated: win.go("ask") }
@@ -172,7 +191,18 @@ ApplicationWindow {
         id: drop
         anchors.fill: parent
         keys: ["text/uri-list"]
-        onDropped: (ev) => { library.importFiles(ev.urls); win.go("library") }
+        onDropped: (ev) => {
+            const urls = ev.urls
+            const rec = detailPage.rec
+            if (win.shownPage === "detail" && detailPage.rid && rec && rec.status === "done") {  // an open recording: add to it?
+                win.confirm("An „" + rec.title + "“ anhängen?",
+                            "Die Datei" + (urls.length > 1 ? "en kommen" : " kommt") + " hinten an diese Aufnahme – danach wird alles zusammen neu transkribiert. Oder als eigene Aufnahme importieren.",
+                            "Anhängen", () => library.appendFiles(detailPage.rid, urls), false,
+                            "Als neue Aufnahme", () => win.importUrls(urls))
+                return
+            }
+            win.importUrls(urls)
+        }
     }
     Rectangle {
         anchors.fill: parent
@@ -197,8 +227,9 @@ ApplicationWindow {
         id: importDialog
         title: "Aufnahmen importieren"
         fileMode: FileDialog.OpenFiles
-        nameFilters: ["Audio & Video (*.m4a *.mp3 *.wav *.webm *.ogg *.opus *.flac *.aac *.mp4 *.mov *.mkv *.caf *.amr *.3gp)", "Alle Dateien (*)"]
-        onAccepted: { library.importFiles(selectedFiles); win.go("library") }
+        currentFolder: library.downloadsUrl
+        nameFilters: [library.mediaFilter, "Alle Dateien (*)"]  // every audio/video format – others work too, if there's sound
+        onAccepted: win.importUrls(selectedFiles)
     }
 
     EnrollDialog { id: enrollDlg; objectName: "enrollDlg"; app: win }

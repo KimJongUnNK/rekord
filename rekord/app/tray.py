@@ -41,6 +41,7 @@ class Tray(QObject):
         self._menu = QMenu()
         self._menu.addAction("REKORD öffnen", self.show_window)
         self._rec = self._menu.addAction("Aufnehmen", self._record)
+        self._menu.addAction("Datei transkribieren …", self._import)
         self._menu.addSeparator()
         self._menu.addAction("REKORD beenden", self._quit)
         self._tray.setContextMenu(self._menu)
@@ -80,6 +81,10 @@ class Tray(QObject):
             return
         self.show_window()
         QMetaObject.invokeMethod(self._win, "startRecording")  # "Wer ist dabei?" first, as always
+
+    def _import(self) -> None:
+        self.show_window()
+        QMetaObject.invokeMethod(self._win, "importFiles")  # pick the file – its recording opens right away
 
     def _quit(self) -> None:
         if self._live.property("state") != "idle":

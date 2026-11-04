@@ -139,6 +139,14 @@ Page {
             font.family: Theme.text; font.pixelSize: 13; color: live.error ? Theme.err : Theme.fg3
         }
         MacFix { Layout.alignment: Qt.AlignHCenter }
+        Btn {  // already recorded elsewhere? one click to the file, its recording opens
+            Layout.alignment: Qt.AlignHCenter
+            kind: "ghost"
+            small: true
+            iconName: "import"
+            text: "Schon aufgenommen? Datei transkribieren"
+            onClicked: page.app.importFiles()
+        }
     }
 
     // ================================================================ during the recording
