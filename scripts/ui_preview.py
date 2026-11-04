@@ -153,9 +153,26 @@ def main(out: Path) -> int:
         QMetaObject.invokeMethod(obj, fn, *[Q_ARG("QVariant", a) for a in args])
 
     shot("library")
+    # a file from outside, the short way: one pick → its recording is open (no searching the list)
+    side_file = win.findChild(QObject, "fileButton")
+    if side_file is None or not side_file.property("visible"):
+        problems_extra.append("sidebar: no visible 'Datei transkribieren' button")
+    import tempfile
+    from PySide6.QtCore import QUrl
+    ext = Path(tempfile.mkdtemp()) / "Sprachmemo Kunde.mp3"
+    ext.write_bytes(b"\0" * 64)
+    QMetaObject.invokeMethod(win, "importUrls", Q_ARG("QVariant", [QUrl.fromLocalFile(str(ext)).toString()]))
+    wait(0.8)
+    shot("import-opens-recording")
+    opened_rid = win.findChild(QObject, "detailPage").property("rid")
+    if win.property("page") != "detail" or not opened_rid or db.get_recording(opened_rid)["title"] != "Sprachmemo Kunde":
+        problems_extra.append(f"import: the imported file's recording didn't open (page {win.property('page')})")
     call(win, "openRecording", ids["rid"], 0)
     wait(1.5)
     detail = win.findChild(QObject, "detailPage")
+    append_btn = detail.findChild(QObject, "appendButton")
+    if append_btn is None or not append_btn.property("visible") or not append_btn.property("enabled"):
+        problems_extra.append("detail: no usable 'Audio anhängen' button on a finished recording")
     for i, name in enumerate(["detail", "detail-transcript", "detail-mindmap", "detail-ask", "detail-notes", "detail-export"]):
         detail.setProperty("tab", i)
         shot(name)

@@ -170,6 +170,7 @@ class Library(QObject):
         """Audio/video files (file dialog, dropped on the window, or pasted with ⌘V / Strg+V) → recordings, processed in
         the background. MP3, MP4, M4A, WAV, MOV … – from video only the sound is used."""
         n, skipped, unreadable = 0, [], []
+        self._last_ids = []
         config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
         for u in urls:
             p = Path(QUrl(u).toLocalFile() if not isinstance(u, QUrl) else u.toLocalFile()) if "://" in str(u) or isinstance(u, QUrl) else Path(str(u))
@@ -188,6 +189,7 @@ class Library(QObject):
                 continue
             db.create_recording(p.stem, str(dest), source="import", rec_id=rid)
             jobs.enqueue(rid)
+            self._last_ids.append(rid)
             n += 1
         if n:
             self.toast.emit(f"{n} {'Datei wird' if n == 1 else 'Dateien werden'} verarbeitet")
@@ -202,6 +204,12 @@ class Library(QObject):
                 else " – keine Berechtigung, die Datei zu lesen." if denied else " – Datei nicht lesbar oder nicht mehr da."))
         self.refresh()
         return n
+
+    @Slot(result=str)
+    def lastImportedId(self) -> str:  # noqa: N802 - QML API
+        """The recording the last import created (one file: the window opens it right away – no searching the list)."""
+        ids = getattr(self, "_last_ids", [])
+        return ids[0] if len(ids) == 1 else ""
 
     @Slot(str, "QVariantList", result=int)
     def appendFiles(self, rid: str, urls) -> int:  # noqa: N802 - QML API

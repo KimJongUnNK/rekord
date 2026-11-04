@@ -195,6 +195,20 @@ def test_append_failure_is_said_not_swallowed(qt, tmp_path, monkeypatch):
     assert pump(lambda: any("Anhängen fehlgeschlagen: Datei enthält keine Audiospur" in t for t in toasts)), toasts
 
 
+def test_one_imported_file_is_opened_right_away(qt, tmp_path, monkeypatch):
+    """Fewer steps: after importing one file the window opens its recording – lastImportedId names it."""
+    lib = bridge.Library()
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": None)
+    (tmp_path / "a.mp3").write_bytes(b"\0")
+    (tmp_path / "b.mp3").write_bytes(b"\0")
+    assert lib.importFiles([str(tmp_path / "a.mp3")]) == 1
+    rid = lib.lastImportedId()
+    assert rid and db.get_recording(rid)["title"] == "a"
+    assert lib.importFiles([str(tmp_path / "a.mp3"), str(tmp_path / "b.mp3")]) == 2
+    assert lib.lastImportedId() == ""  # several: the list shows them
+    assert lib.importFiles([str(tmp_path / "notiz.txt")]) == 0 and lib.lastImportedId() == ""
+
+
 def test_import_dialog_opens_in_downloads(qt):
     url = bridge.Library().downloadsUrl
     assert url == "" or url.startswith("file://")

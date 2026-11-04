@@ -12,6 +12,7 @@ Page {
     required property var app
     property string rid: ""
     property var rec: null
+    function appendFiles() { appendDialog.open() }
     // progress of the running analysis: kept apart from rec, so a tick doesn't rebuild transcript, players and charts
     property string jobStage: ""
     property real jobProgress: 0
@@ -111,6 +112,18 @@ Page {
             Layout.fillWidth: true
             Btn { kind: "ghost"; small: true; iconName: "back"; text: "Aufnahmen"; onClicked: page.app.go("library") }
             Item { Layout.fillWidth: true }
+            Btn {  // more audio for this recording, one click – not hidden in •••
+                objectName: "appendButton"
+                small: true
+                iconName: "import"
+                text: "Audio anhängen"
+                enabled: !!page.rec && page.rec.status === "done"
+                onClicked: page.appendFiles()
+                ToolTip.visible: hovered
+                ToolTip.delay: 400
+                ToolTip.text: enabled ? "Weitere Datei hinten an diese Aufnahme (z. B. Teil 2) – danach wird alles zusammen transkribiert. Oder Datei einfach auf die Aufnahme ziehen."
+                                      : "Geht, sobald die Aufnahme fertig ausgewertet ist."
+            }
             Btn {
                 id: moreBtn
                 small: true
@@ -122,7 +135,7 @@ Page {
                     MenuItem {
                         text: "Dateien anhängen …"
                         enabled: !!page.rec && page.rec.status === "done"
-                        onTriggered: appendDialog.open()
+                        onTriggered: page.appendFiles()
                     }
                     MenuItem { text: "Personen neu erkennen"; onTriggered: page.app.call("POST", "/api/recordings/" + page.rid + "/reidentify", null, (r) => { page.app.toast(r.renamed + " Person(en) erkannt"); page.reload() }) }
                     MenuItem { text: "Umbenennen"; onTriggered: page.app.prompt("Titel", page.rec.title, (t) => page.app.call("PATCH", "/api/recordings/" + page.rid, { title: t }, () => { page.reload(); library.refresh() })) }

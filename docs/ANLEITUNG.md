@@ -247,7 +247,7 @@ Der **rote Knopf** unten rechts (in Aufnahmen, Fragen, Personen und Vorlagen) sp
 ### Aufnahmen
 - **Noch ein Schritt:** Solange keine KI gewählt ist, steht hier die Auswahl **Lokal · gratis**, **Claude**, **ChatGPT** oder **Ohne KI weiter**.
 - **Suchen:** findet Titel *und* alles, was gesagt wurde.
-- **Importieren:** Audio- oder Videodateien wählen (der Dialog startet in **Downloads**), ins Fenster ziehen oder im Finder/Explorer kopieren und in REKORD mit **⌘ V** / **Strg + V** einfügen – MP3, MP4, M4A, WAV, MOV und mehr (Sprachmemos, Zoom, WhatsApp, Diktiergerät). Bei Videos zählt nur der Ton. Kann REKORD eine Datei nicht lesen, sagt es warum.
+- **Datei transkribieren** (links unter *Aufnehmen*, auf jeder Seite – auch im Menüleisten-Symbol): Audio- oder Videodatei wählen (der Dialog startet in **Downloads**) – die Aufnahme öffnet sich sofort und wird ausgewertet. Genauso: ins Fenster ziehen oder im Finder/Explorer kopieren und in REKORD mit **⌘ V** / **Strg + V** einfügen – MP3, MP4, M4A, WAV, MOV und mehr (Sprachmemos, Zoom, WhatsApp, Diktiergerät). Bei Videos zählt nur der Ton. Kann REKORD eine Datei nicht lesen, sagt es warum.
 - **Ordner:** erscheinen oben als Filter, sobald eine Aufnahme einen Ordner hat (vergibst du unter *Notizen*).
 - Eine Aufnahme anklicken öffnet sie:
   - **Titel** antippen zum Umbenennen.
@@ -265,7 +265,7 @@ Der **rote Knopf** unten rechts (in Aufnahmen, Fragen, Personen und Vorlagen) sp
 | **Notizen** | eigene Notizen (fließen in Zusammenfassungen ein) · **Ordner** vergeben |
 | **Export** | Markdown, Word, Text, Untertitel als SRT oder WebVTT, JSON, Zwischenablage, PDF (übers Drucken), Original-Audio |
 
-  - **„…“ oben rechts:** *Dateien anhängen …* (z. B. Teil 2 des Meetings oder Sprachmemos dazu: kommen hinten an die Aufnahme, danach wird alles zusammen neu transkribiert – Sprecher über alle Teile hinweg; ★-Momente behalten ihre Zeit) · *Neu verarbeiten* (z. B. nach Modellwechsel) · *Personen neu erkennen* (nach dem Anlernen neuer Leute) · *Umbenennen* · *Löschen*. Eine Datei auf die offene Aufnahme ziehen fragt: **Anhängen** oder **Als neue Aufnahme**.
+  - **Audio anhängen** (oben rechts, neben „…“) bzw. *„…“ → Dateien anhängen …* (z. B. Teil 2 des Meetings oder Sprachmemos dazu: kommen hinten an die Aufnahme, danach wird alles zusammen neu transkribiert – Sprecher über alle Teile hinweg; ★-Momente behalten ihre Zeit) · *Neu verarbeiten* (z. B. nach Modellwechsel) · *Personen neu erkennen* (nach dem Anlernen neuer Leute) · *Umbenennen* · *Löschen*. Eine Datei auf die offene Aufnahme ziehen fragt: **Anhängen** oder **Als neue Aufnahme**.
 
 ### Live
 - Oben: **Vor Ort**, **Online** oder **Vorlesung**.

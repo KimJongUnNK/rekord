@@ -91,6 +91,15 @@ ApplicationWindow {
         who.openFresh()
     }
     function importFiles() { importDialog.open() }
+    // every way in (button, dialog, drop, ⌘V, menu bar) ends the same: one file → its recording opens right away
+    function importUrls(urls) {
+        const n = library.importFiles(urls)
+        const rid = n === 1 ? library.lastImportedId() : ""
+        if (rid) win.openRecording(rid, 0)
+        else if (n > 0) win.go("library")
+        return n
+    }
+    function appendToOpen() { detailPage.appendFiles() }
     function welcome(force) { welcomeWiz.start(force) }
     function quitApp() { if (live.state !== "idle") quitDialog.open(); else rekord.quit() }
     function toast(msg) { toasts.show(msg) }
@@ -129,7 +138,12 @@ ApplicationWindow {
     Shortcut {  // ⌘V / Strg+V: files copied in Finder or Explorer are imported – text fields keep their own paste
         sequences: [StandardKey.Paste]
         enabled: !(win.activeFocusItem && win.activeFocusItem.cursorPosition !== undefined)
-        onActivated: if (library.pasteFiles() > 0) win.go("library")
+        onActivated: {
+            const n = library.pasteFiles()
+            const rid = n === 1 ? library.lastImportedId() : ""
+            if (rid) win.openRecording(rid, 0)
+            else if (n > 0) win.go("library")
+        }
     }
     Shortcut { sequence: "Ctrl+1"; onActivated: win.go("library") }
     Shortcut { sequence: "Ctrl+2"; onActivated: win.go("live") }
@@ -184,10 +198,10 @@ ApplicationWindow {
                 win.confirm("An „" + rec.title + "“ anhängen?",
                             "Die Datei" + (urls.length > 1 ? "en kommen" : " kommt") + " hinten an diese Aufnahme – danach wird alles zusammen neu transkribiert. Oder als eigene Aufnahme importieren.",
                             "Anhängen", () => library.appendFiles(detailPage.rid, urls), false,
-                            "Als neue Aufnahme", () => { library.importFiles(urls); win.go("library") })
+                            "Als neue Aufnahme", () => win.importUrls(urls))
                 return
             }
-            library.importFiles(urls); win.go("library")
+            win.importUrls(urls)
         }
     }
     Rectangle {
@@ -215,7 +229,7 @@ ApplicationWindow {
         fileMode: FileDialog.OpenFiles
         currentFolder: library.downloadsUrl
         nameFilters: ["Audio & Video (*.m4a *.mp3 *.wav *.webm *.ogg *.opus *.flac *.aac *.mp4 *.mov *.mkv *.caf *.amr *.3gp)", "Alle Dateien (*)"]
-        onAccepted: { library.importFiles(selectedFiles); win.go("library") }
+        onAccepted: win.importUrls(selectedFiles)
     }
 
     EnrollDialog { id: enrollDlg; objectName: "enrollDlg"; app: win }
