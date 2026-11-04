@@ -251,7 +251,8 @@ def fake_live(qt, monkeypatch):
     monkeypatch.setattr(bridge.Mic, "start", lambda self, device_id="": True)
     monkeypatch.setattr(bridge.Mic, "stop", lambda self: None)
     monkeypatch.setattr(bridge.Live, "callAvailable", property(lambda self: True))
-    return bridge.Live()
+    yield bridge.Live()
+    live._sessions.clear()  # a test that failed mid-recording must not leave its session to the next ones
 
 
 def test_live_recording_from_start_to_saved(fake_live):
@@ -278,7 +279,8 @@ def test_live_recording_from_start_to_saved(fake_live):
                                               {"key": 3, "name": pipeline.UNKNOWN, "color": pipeline.UNKNOWN_COLOR, "known": False, "talk": 10, "voices": 2}]}):
         threading.Thread(target=s.emit, args=(ev,)).start()
     assert pump(lambda: len(lv.roster) == 2 and lv.lines.count == 1)
-    assert lv.speaking["name"] == "Lisa"
+    # the events come from separate threads – their order isn't guaranteed, so wait for this one too
+    assert pump(lambda: lv.speaking.get("name") == "Lisa"), lv.speaking
     assert lv.lines.items()[0]["time"] == "1:01"
     assert [(r["name"], r["share"], r["voices"]) for r in lv.roster] == [("Lisa", 0.75, 0), (pipeline.UNKNOWN, 0.25, 2)]
     lv.nameSpeaker(3, " Tom ")
