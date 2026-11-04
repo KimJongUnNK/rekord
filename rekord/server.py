@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import tempfile
 import socket
 import subprocess
 import sys
@@ -800,6 +801,32 @@ def reprocess(rid: str):
         raise HTTPException(404)
     jobs.enqueue(rid)
     return {"ok": True}
+
+
+@app.post("/api/recordings/{rid}/append")
+async def append_audio(rid: str, files: list[UploadFile] = File(...)):
+    """Add audio/video files to an existing recording; it's analysed again as a whole."""
+    if db.get_recording(rid) is None:
+        raise HTTPException(404)
+    tmp = Path(tempfile.mkdtemp(prefix="rekord-append-"))
+    try:
+        paths = []
+        for f in files:
+            ext = Path(f.filename or "").suffix.lower()
+            if ext not in AUDIO_EXT:
+                raise HTTPException(400, f"Nicht unterstützt: {f.filename}")
+            dest = tmp / f"{len(paths)}{ext}"
+            with dest.open("wb") as out:
+                shutil.copyfileobj(f.file, out)
+            paths.append(str(dest))
+        try:
+            added = await asyncio.to_thread(pipeline.append_files, rid, paths)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    jobs.enqueue(rid)
+    return {"ok": True, "added": round(added, 1), "duration": db.get_recording(rid)["duration"]}
 
 
 @app.get("/api/recordings/{rid}/audio")

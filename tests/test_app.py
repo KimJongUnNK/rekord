@@ -157,6 +157,44 @@ def test_paste_imports_files_copied_in_finder_or_explorer(qt, tmp_path, monkeypa
     assert lib.pasteFiles() == 0 and len(queued) == 2  # ordinary text: nothing happens
 
 
+def test_append_files_to_an_open_recording(qt, tmp_path, monkeypatch):
+    from rekord import pipeline
+    lib = bridge.Library()
+    added, queued, toasts = [], [], []
+    monkeypatch.setattr(pipeline, "append_files", lambda rid, paths: added.append((rid, [Path(p).name for p in paths])) or 95.0)
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append(rid))
+    lib.toast.connect(toasts.append)
+    rec = db.create_recording("Workshop", "", source="import")
+    (tmp_path / "Teil 2.mp4").write_bytes(b"\0")
+    (tmp_path / "liste.pdf").write_bytes(b"\0")
+    db.update_recording(rec["id"], status="processing")
+    assert lib.appendFiles(rec["id"], [str(tmp_path / "Teil 2.mp4")]) == 0  # not while it's being analysed
+    assert "sobald" in toasts[-1] and added == []
+    db.update_recording(rec["id"], status="done")
+    assert lib.appendFiles(rec["id"], [(tmp_path / "Teil 2.mp4").as_uri(), str(tmp_path / "liste.pdf")]) == 1
+    assert pump(lambda: queued == [rec["id"]])
+    assert added == [(rec["id"], ["Teil 2.mp4"])]
+    assert any("Nicht unterstützt: liste.pdf" in t for t in toasts)
+    assert pump(lambda: any("Angehängt (+1:35)" in t and "neu transkribiert" in t for t in toasts)), toasts
+
+
+def test_append_failure_is_said_not_swallowed(qt, tmp_path, monkeypatch):
+    from rekord import pipeline
+    lib = bridge.Library()
+    toasts = []
+    lib.toast.connect(toasts.append)
+
+    def broken(rid, paths):
+        raise ValueError("Datei enthält keine Audiospur")
+    monkeypatch.setattr(pipeline, "append_files", broken)
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": pytest.fail("must not reprocess"))
+    rec = db.create_recording("X", "", source="import")
+    db.update_recording(rec["id"], status="done")
+    (tmp_path / "leer.mp4").write_bytes(b"\0")
+    assert lib.appendFiles(rec["id"], [str(tmp_path / "leer.mp4")]) == 1
+    assert pump(lambda: any("Anhängen fehlgeschlagen: Datei enthält keine Audiospur" in t for t in toasts)), toasts
+
+
 def test_import_dialog_opens_in_downloads(qt):
     url = bridge.Library().downloadsUrl
     assert url == "" or url.startswith("file://")

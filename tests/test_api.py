@@ -429,3 +429,18 @@ def test_live_socket_passes_the_microphone_choice(client, monkeypatch):
     phone = TestClient(app, client=("192.168.1.77", 5000))
     ev = started(phone, f"/ws/live?token={tok}", call_audio=True, mic=False)
     assert (made[-1].call_audio, made[-1].mic) == (False, True) and ev["call_audio"] is False
+
+
+def test_append_files_over_the_api(client, monkeypatch):
+    from rekord import jobs
+    queued = []
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append(rid))
+    r = client.post("/api/recordings", files=[("files", ("teil1.wav", _wav(2.0), "audio/wav"))], data={"title": "Workshop"})
+    rid = r.json()["items"][0]["id"]
+    queued.clear()
+    r = client.post(f"/api/recordings/{rid}/append", files=[("files", ("teil2.wav", _wav(1.5), "audio/wav"))])
+    assert r.status_code == 200, r.text
+    assert 1.4 < r.json()["added"] < 1.6 and 4.3 < r.json()["duration"] < 4.7  # 2 s + 1 s pause + 1.5 s
+    assert queued == [rid]  # analysed again as a whole
+    assert client.post(f"/api/recordings/{rid}/append", files=[("files", ("notiz.txt", b"x", "text/plain"))]).status_code == 400
+    assert client.post("/api/recordings/gibtsnicht/append", files=[("files", ("a.wav", _wav(1), "audio/wav"))]).status_code == 404

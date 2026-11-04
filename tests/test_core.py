@@ -2,6 +2,7 @@
 import json
 import threading
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -482,3 +483,45 @@ def test_mac_opens_the_exact_privacy_pane(monkeypatch):
     assert system.mac_open_privacy("ScreenCapture") and system.mac_open_privacy("Microphone")
     assert calls == [["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"],
                      ["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"]]
+
+
+# ------------------------------------------------------------------ add files to a recording afterwards
+
+def _clip(path, seconds, start=0):
+    from rekord import audio as a
+    x = a.load(Path(__file__).parent / "fixtures" / "meeting1.wav")[int(16000 * start):int(16000 * (start + seconds))]
+    a.write_wav(path, x)
+    return path
+
+
+def test_append_files_puts_audio_behind_the_recording(tmp_path):
+    from rekord import audio as a
+    from rekord import config, db, pipeline
+    config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    first = _clip(config.AUDIO_DIR / "teil1.wav", 3)
+    rec = db.create_recording("Workshop", str(first), source="import")
+    db.update_recording(rec["id"], highlights=[1.5])
+    added = pipeline.append_files(rec["id"], [str(_clip(tmp_path / "teil2.wav", 2, start=10)),
+                                               str(_clip(tmp_path / "teil3.wav", 1, start=20))])
+    r = db.get_recording(rec["id"])
+    assert 2.9 < added < 3.1
+    assert abs(r["duration"] - (3 + 1 + 2 + 1 + 1)) < 0.2  # 3 s + pause + 2 s + pause + 1 s
+    assert r["audio_path"].endswith(".m4a") and Path(r["audio_path"]).is_file() and r["peaks"]
+    assert abs(len(a.load(r["audio_path"])) / 16000 - r["duration"]) < 0.2
+    assert not first.exists()  # REKORD's own old copy is replaced …
+    assert (tmp_path / "teil2.wav").exists()  # … the user's files are never touched
+    assert r["highlights"] == [1.5]  # earlier marks keep their times
+
+
+def test_append_files_refuses_what_has_no_sound(tmp_path):
+    import pytest as _pt
+
+    from rekord import config, db, pipeline
+    config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    rec = db.create_recording("X", str(_clip(config.AUDIO_DIR / "x.wav", 1)), source="import")
+    (tmp_path / "kaputt.mp3").write_bytes(b"keine Musik")
+    with _pt.raises(Exception):
+        pipeline.append_files(rec["id"], [str(tmp_path / "kaputt.mp3")])
+    assert db.get_recording(rec["id"])["audio_path"].endswith("x.wav")  # nothing changed
+    with _pt.raises(KeyError):
+        pipeline.append_files("gibtsnicht", [str(tmp_path / "kaputt.mp3")])

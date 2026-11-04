@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import "."
 
@@ -88,6 +89,14 @@ Page {
         }
     }
 
+    FileDialog {  // more audio for this recording (part 2 of a meeting, voice memos …) – analysed again as a whole
+        id: appendDialog
+        title: "An diese Aufnahme anhängen"
+        fileMode: FileDialog.OpenFiles
+        currentFolder: library.downloadsUrl
+        nameFilters: ["Audio & Video (*.m4a *.mp3 *.wav *.webm *.ogg *.opus *.flac *.aac *.mp4 *.mov *.mkv *.caf *.amr *.3gp)", "Alle Dateien (*)"]
+        onAccepted: library.appendFiles(page.rid, selectedFiles)
+    }
     SpeakerDialog { id: speakerDlg; objectName: "speakerDlg"; page: page }
     AssignDialog { id: assignDlg; objectName: "assignDlg"; page: page }
 
@@ -110,6 +119,11 @@ Page {
                 Menu {
                     id: more
                     MenuItem { text: "Neu verarbeiten (andere Einstellungen/Modell)"; onTriggered: page.app.call("POST", "/api/recordings/" + page.rid + "/reprocess", null, () => { page.app.toast("Wird neu verarbeitet …"); page.reload() }) }
+                    MenuItem {
+                        text: "Dateien anhängen …"
+                        enabled: !!page.rec && page.rec.status === "done"
+                        onTriggered: appendDialog.open()
+                    }
                     MenuItem { text: "Personen neu erkennen"; onTriggered: page.app.call("POST", "/api/recordings/" + page.rid + "/reidentify", null, (r) => { page.app.toast(r.renamed + " Person(en) erkannt"); page.reload() }) }
                     MenuItem { text: "Umbenennen"; onTriggered: page.app.prompt("Titel", page.rec.title, (t) => page.app.call("PATCH", "/api/recordings/" + page.rid, { title: t }, () => { page.reload(); library.refresh() })) }
                     MenuSeparator {}

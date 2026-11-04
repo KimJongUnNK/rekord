@@ -71,7 +71,7 @@ ApplicationWindow {
         _cb[id] = { ok: ok, fail: fail }
         return id
     }
-    function confirm(title, text, okLabel, fn, danger) { confirmDlg.ask(title, text, okLabel, fn, danger) }
+    function confirm(title, text, okLabel, fn, danger, alt, altFn) { confirmDlg.ask(title, text, okLabel, fn, danger, alt, altFn) }
     function prompt(title, value, fn) { promptDlg.ask(title, value, fn) }
     Connections {
         target: api
@@ -177,7 +177,18 @@ ApplicationWindow {
         id: drop
         anchors.fill: parent
         keys: ["text/uri-list"]
-        onDropped: (ev) => { library.importFiles(ev.urls); win.go("library") }
+        onDropped: (ev) => {
+            const urls = ev.urls
+            const rec = detailPage.rec
+            if (win.shownPage === "detail" && detailPage.rid && rec && rec.status === "done") {  // an open recording: add to it?
+                win.confirm("An „" + rec.title + "“ anhängen?",
+                            "Die Datei" + (urls.length > 1 ? "en kommen" : " kommt") + " hinten an diese Aufnahme – danach wird alles zusammen neu transkribiert. Oder als eigene Aufnahme importieren.",
+                            "Anhängen", () => library.appendFiles(detailPage.rid, urls), false,
+                            "Als neue Aufnahme", () => { library.importFiles(urls); win.go("library") })
+                return
+            }
+            library.importFiles(urls); win.go("library")
+        }
     }
     Rectangle {
         anchors.fill: parent

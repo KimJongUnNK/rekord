@@ -140,6 +140,40 @@ def process(rid: str, on_event=None) -> dict:
 MERGE_THRESHOLD = 0.65
 
 
+APPEND_GAP = 1.0  # seconds of silence between the parts: a clear boundary for the speech detection
+
+
+def append_files(rid: str, paths: list[str]) -> float:
+    """More audio for an existing recording – e.g. the second half of a meeting recorded separately, or voice memos
+    that belong to it. The files are put behind the recording (with a short pause in between), stored as one file,
+    and the recording is analysed again as a whole. Returns the seconds added. Highlights keep their times."""
+    rec = db.get_recording(rid)
+    if rec is None:
+        raise KeyError(rid)
+    old = Path(rec["audio_path"]) if rec.get("audio_path") else None
+    parts = [audio.load(old)] if old and old.is_file() else []
+    added = 0.0
+    for p in paths:
+        x = audio.load(p)  # ValueError: no sound in it
+        if not len(x):
+            raise ValueError(f"{Path(p).name}: enthält keinen Ton")
+        if parts:
+            parts.append(np.zeros(int(audio.SR * APPEND_GAP), dtype=np.float32))
+        parts.append(x)
+        added += len(x) / audio.SR
+    if not added:
+        return 0.0
+    samples = np.concatenate(parts)
+    config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    new = config.AUDIO_DIR / f"{rid}-{int(time.time() * 1000)}.m4a"
+    audio.encode_m4a(samples, new)
+    db.update_recording(rid, audio_path=str(new), duration=len(samples) / audio.SR, peaks=audio.peaks(samples))
+    if old and old.is_file() and old.parent == config.AUDIO_DIR and old != new:
+        old.unlink(missing_ok=True)  # REKORD's own copy – an imported original elsewhere stays untouched
+    log.info("appended %d file(s), %.0f s, to %s", len(paths), added, rid)
+    return added
+
+
 def _voiceprints(samples, turns, emb):
     by_label: dict[int, list[tuple[float, float]]] = {}
     for a, b, spk in turns:

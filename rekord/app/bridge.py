@@ -203,6 +203,44 @@ class Library(QObject):
         self.refresh()
         return n
 
+    @Slot(str, "QVariantList", result=int)
+    def appendFiles(self, rid: str, urls) -> int:  # noqa: N802 - QML API
+        """Add files to an existing recording (e.g. part 2 of a meeting): put behind it, analysed again as a whole.
+        Runs in the background; returns how many files are being added."""
+        rec = db.get_recording(rid)
+        if rec is None:
+            return 0
+        if rec.get("status") in ("recording", "queued", "processing"):
+            self.toast.emit("Anhängen geht, sobald die Aufnahme fertig ausgewertet ist.")
+            return 0
+        paths, skipped = [], []
+        for u in urls:
+            p = Path(QUrl(u).toLocalFile() if not isinstance(u, QUrl) else u.toLocalFile()) if "://" in str(u) or isinstance(u, QUrl) else Path(str(u))
+            (paths if p.suffix.lower() in AUDIO_EXT and not p.is_dir() else skipped).append(p)
+        if skipped:
+            self.toast.emit("Nicht unterstützt: " + ", ".join(p.name for p in skipped[:3]) + " – Audio oder Video, z. B. MP3, MP4, M4A, WAV, MOV")
+        if not paths:
+            return 0
+        self.toast.emit(f"{len(paths)} {'Datei wird' if len(paths) == 1 else 'Dateien werden'} an „{rec['title']}“ angehängt …")
+
+        def work():
+            from .. import pipeline
+            try:
+                added = pipeline.append_files(rid, [str(p) for p in paths])
+            except PermissionError as e:
+                self.toast.emit(f"Kein Zugriff auf {Path(e.filename or '').name or 'die Datei'}" + (
+                    " – macOS sperrt den Ordner: Datenschutz & Sicherheit → Dateien und Ordner → REKORD erlauben."
+                    if sys.platform == "darwin" else "."))
+                return
+            except Exception as e:  # noqa: BLE001 - no sound in it, unreadable, disk full …
+                log.warning("append to %s: %s", rid, e)
+                self.toast.emit(f"Anhängen fehlgeschlagen: {e}")
+                return
+            jobs.enqueue(rid)  # the whole recording again: speakers and transcript across all parts
+            self.toast.emit(f"Angehängt (+{fmt_dur(added)}) – „{rec['title']}“ wird jetzt komplett neu transkribiert.")
+        threading.Thread(target=work, daemon=True, name=f"append-{rid}").start()
+        return len(paths)
+
     @Slot(result=int)
     def pasteFiles(self) -> int:  # noqa: N802 - QML API
         """⌘V / Strg+V with files copied in Finder or Explorer (e.g. from Downloads): import them. 0 = nothing to paste."""
