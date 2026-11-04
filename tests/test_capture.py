@@ -74,7 +74,7 @@ class _FakeCall:
 
 def _session(call, paused=False):
     s = live.LiveSession.__new__(live.LiveSession)  # no models needed: only the mixing is under test
-    s.sr_in, s.call, s.paused, s._fed = 16000, call, paused, []
+    s.sr_in, s.call, s.paused, s._fed, s.mic = 16000, call, paused, [], True
     s._rs = audio.Resampler(16000)
     s.feed = s._fed.append
     return s
@@ -106,6 +106,104 @@ def test_in_person_is_just_the_microphone():
     s = _session(None)
     s.feed_pcm16(_pcm(0.5))
     assert np.allclose(s._fed[0], 0.5, atol=1e-3)
+
+
+# ------------------------------------------------------------------ "Nur Call-Ton": without your microphone
+
+def test_call_only_leaves_the_microphone_out():
+    call = _FakeCall(0.25)
+    s = _session(call)
+    s.mic = False
+    s.feed_pcm16(_pcm(0.5))  # a client still sends its microphone: ignored
+    assert s._fed == [] and call.asked == []
+
+
+def _pumping(call, paused=False):
+    import threading
+    s = _session(call, paused)
+    s.mic, s._pump_stop = False, threading.Event()
+    s._pump = threading.Thread(target=s._run_pump, daemon=True)
+    return s
+
+
+def test_call_only_runs_on_its_own_clock(monkeypatch):
+    """Nobody feeds the session: the call's sound is read in 100 ms blocks at the pace of the clock."""
+    import time
+    call = _FakeCall(0.25)
+    s = _pumping(call)
+    s._pump.start()
+    time.sleep(0.55)
+    s._pump_stop.set()
+    s._pump.join(2)
+    assert not s._pump.is_alive()
+    assert 4 <= len(s._fed) <= 8, len(s._fed)  # ~5–6 blocks in 0.55 s – real time, not as fast as possible
+    assert all(len(x) == 1600 and np.allclose(x, 0.25) for x in s._fed)  # only the call, nothing mixed in
+    assert call.asked == [1600] * len(s._fed)
+
+
+def test_call_only_survives_a_bad_block():
+    import time
+    call = _FakeCall(0.25)
+    s = _pumping(call)
+    calls = []
+
+    def flaky(x):
+        calls.append(x)
+        if len(calls) == 1:
+            raise ValueError("kaputt")
+    s.feed = flaky
+    s._pump.start()
+    time.sleep(0.35)
+    s._pump_stop.set()
+    s._pump.join(2)
+    assert len(calls) >= 3  # the recording goes on after one failing block
+
+
+class _Call:
+    """capture.SystemAudio stand-in: starts or fails like the real one."""
+    works, made = True, []
+
+    def __init__(self):
+        self.error = "" if _Call.works else "Call-Ton braucht macOS 13 oder neuer."
+        self.stopped = False
+        _Call.made.append(self)
+
+    def start(self, timeout=8):
+        return _Call.works
+
+    def stop(self):
+        self.stopped = True
+
+
+def _opened(monkeypatch, works, meeting="online", call_audio=True, mic=True):
+    monkeypatch.setattr(capture, "SystemAudio", _Call)
+    _Call.works, _Call.made = works, []
+    s = live.LiveSession.__new__(live.LiveSession)
+    s.meeting = meeting
+    s._open_call(call_audio, mic)
+    return s
+
+
+def test_open_call_with_and_without_microphone(monkeypatch):
+    s = _opened(monkeypatch, True, mic=True)
+    assert s.call is _Call.made[0] and s.mic is True and s.notes == []
+    s = _opened(monkeypatch, True, mic=False)
+    assert s.call is _Call.made[0] and s.mic is False  # only the call
+
+
+def test_open_call_fails_loudly_when_only_the_call_is_wanted(monkeypatch):
+    with pytest.raises(RuntimeError, match="ohne Mikrofon gibt es nichts aufzunehmen"):
+        _opened(monkeypatch, False, mic=False)
+    s = _opened(monkeypatch, False, mic=True)  # with the microphone: it goes on, the UI says why there's no call sound
+    assert s.call is None and s.mic is True and s.notes == ["Call-Ton braucht macOS 13 oder neuer."]
+
+
+def test_microphone_off_only_counts_online(monkeypatch):
+    for meeting in ("person", "lecture"):
+        s = _opened(monkeypatch, True, meeting=meeting, mic=False)
+        assert s.call is None and s.mic is True and _Call.made == []  # in the room the microphone is all there is
+    s = _opened(monkeypatch, True, call_audio=False, mic=False)
+    assert s.call is None and s.mic is True
 
 
 def test_status_tells_the_ui_what_works():

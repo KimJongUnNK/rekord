@@ -177,7 +177,7 @@ Page {
                     anchors.centerIn: parent
                     spacing: 6
                     Icon { name: "wave"; width: 16; height: 16; color: Theme.ok }
-                    Text { text: "Call-Ton läuft mit"; font.family: Theme.text; font.pixelSize: 13; font.weight: Font.Bold; color: Theme.ok }
+                    Text { text: live.micOn ? "Call-Ton läuft mit" : "Nur Call-Ton · Mikro aus"; font.family: Theme.text; font.pixelSize: 13; font.weight: Font.Bold; color: Theme.ok }
                 }
             }
             Text {
@@ -265,6 +265,7 @@ Page {
                     tint: page.someone ? page.sp.color : Theme.line2
                     initial: !page.someone ? "" : page.sp.name === "Nicht erkannte Stimme" ? "?" : page.sp.name.charAt(0).toUpperCase()
                     level: live.state === "recording" ? live.level : 0
+                    icon: live.micOn ? "mic" : "wave"
                     active: page.someone && live.state === "recording"
                     busy: live.state === "starting" || live.state === "stopping"
                     clickable: page.canName

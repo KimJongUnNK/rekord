@@ -386,3 +386,42 @@ def test_no_summary_of_the_half_finished_transcript(client, monkeypatch):
     jobs.enqueue(rid)
     assert jobs.wait_idle(60)
     assert order == ["analysis", "summary:meeting"]  # on the complete transcript
+
+
+def test_live_socket_passes_the_microphone_choice(client, monkeypatch):
+    """Online "Nur Call-Ton" from the browser on this computer: the hub records the call without the microphone.
+    From another device (iPhone) the call sound of THIS computer isn't offered – there the microphone stays on."""
+    from rekord import live
+    made = []
+
+    class Fake:
+        def __init__(self, emit, title, source, sr, participants, guests, meeting, call_audio, mic=True):
+            self.emit, self.call_audio = emit, call_audio
+            self.mic = mic or not call_audio
+            self.call = object() if call_audio else None
+            self.rid, self.title, self.notes, self.paused, self._closed = f"r{len(made)}", title, [], False, False
+            made.append(self)
+
+        def stop(self):
+            self._closed = True
+            self.emit({"type": "stopped", "id": self.rid})
+            return self.rid
+
+    monkeypatch.setattr(live, "LiveSession", Fake)
+
+    def started(c, path, **ctl):
+        with c.websocket_connect(path) as ws:
+            ws.send_json({"type": "start", "sample_rate": 16000, "title": "Webinar", "meeting": "online", **ctl})
+            ev = ws.receive_json()
+            assert ev["type"] == "started", ev
+            ws.send_json({"type": "stop"})
+            return ev
+
+    ev = started(client, "/ws/live", call_audio=True, mic=False)
+    assert (made[-1].call_audio, made[-1].mic) == (True, False) and ev["mic"] is False and ev["call_audio"] is True
+    ev = started(client, "/ws/live", call_audio=True)  # old clients: microphone on, as before
+    assert made[-1].mic is True and ev["mic"] is True
+    tok = config.load()["pair_token"]
+    phone = TestClient(app, client=("192.168.1.77", 5000))
+    ev = started(phone, f"/ws/live?token={tok}", call_audio=True, mic=False)
+    assert (made[-1].call_audio, made[-1].mic) == (False, True) and ev["call_audio"] is False

@@ -10,6 +10,7 @@ Item {
     property bool active: false
     property bool busy: false
     property bool clickable: false
+    property string icon: "mic"   // "wave" while only the call's sound is recorded
     signal clicked()
     implicitWidth: 300
     implicitHeight: 300
@@ -81,7 +82,7 @@ Item {
             visible: !orb.busy && orb.initial === ""
             width: core.width * 0.3
             height: width
-            name: "mic"
+            name: orb.icon
             stroke: 1.6
             color: "#FFFFFF"
             opacity: 0.9

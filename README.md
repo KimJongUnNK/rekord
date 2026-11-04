@@ -101,7 +101,7 @@ Die KI liest den Text deines Meetings und schreibt daraus das Protokoll. Du hast
 
 1. Großer **roter Knopf** (oder **Strg + R**, am Mac **⌘ R**).
 2. REKORD fragt **„Wer ist dabei?“**:
-   - **Vor Ort** (alle im selben Raum) oder **Online** (Teams, Zoom, Meet …). Bei *Online* nimmt REKORD auch die Stimmen der anderen aus dem Call auf – direkt am Computer, auch mit Kopfhörern.
+   - **Vor Ort** (alle im selben Raum) oder **Online** (Teams, Zoom, Meet …). Bei *Online* nimmt REKORD auch die Stimmen der anderen aus dem Call auf – direkt am Computer, auch mit Kopfhörern. Dein eigenes Mikrofon nimmst du mit (**Call + mein Mikro**) oder lässt es weg (**Nur Call-Ton**).
    - **Wie viele sprechen?** (dich mitgezählt)
    - **Wer davon ist bekannt?** – Namen antippen.
 3. **Aufnahme starten** – und ganz normal reden.
@@ -125,6 +125,7 @@ Eine Art Passwort, mit dem REKORD die KI von Claude oder ChatGPT benutzen darf. 
 
 **Geht das mit Teams, Zoom, Google Meet?**
 Ja. Vor der Aufnahme **Online** wählen. Am Mac fragt macOS beim ersten Mal nach *„Bildschirm- & Systemaudioaufnahme“* – erlauben. Es wird nur der Ton aufgenommen, kein Bild.
+Dazu wählst du: **Call + mein Mikro** (das ganze Meeting, du inklusive) oder **Nur Call-Ton** (nur die anderen im Call – dein Mikrofon bleibt aus, z. B. bei Webinaren).
 
 **Kann ich mit dem iPhone aufnehmen?**
 Ja, mit der **REKORD-App** fürs iPhone (eine echte App, keine Webseite – Installation siehe [Anleitung](docs/ANLEITUNG.md#3-iphone-optional)). Koppeln: In REKORD am Computer *Einstellungen → iPhone & Geräte* → in der App den QR-Code scannen oder den **6-stelligen Code** eintippen. iPhone und Computer müssen im selben WLAN sein.
@@ -178,7 +179,7 @@ Alles ab hier brauchst du zum Benutzen **nicht**.
 | „Ask Plaud" | ja | **Fragen** pro Aufnahme und über alle Aufnahmen, mit klickbaren Quellen [mm:ss] |
 | Mind Map | ja | ja (SVG/PNG-Export) |
 | Highlight-Knopf | Hardware-Taste | ★-Button, Taste `H`, Live Activity, Siri, Action Button |
-| Call-Aufnahme | Vibrationssensor | **Online-Modus**: Mikro + Ton des Calls direkt am Computer (Teams, Zoom, Meet – auch als App) |
+| Call-Aufnahme | Vibrationssensor | **Online-Modus**: Ton des Calls direkt am Computer (Teams, Zoom, Meet – auch als App), wahlweise mit oder ohne dein Mikro |
 | Export | PDF, Word, TXT … | Markdown, Word, TXT, SRT, VTT, JSON, PDF, Audio |
 | Claude-Anbindung | – | **MCP-Server**: Claude Desktop/Claude Code liest deine Bibliothek, läuft mit normalem Claude-Abo |
 | Lockscreen | – | **Live Activity + Dynamic Island** (aktueller Sprecher), Sperrbildschirm-Widgets, Kontrollzentrum-Button |

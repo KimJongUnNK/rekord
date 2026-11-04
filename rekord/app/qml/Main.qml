@@ -205,6 +205,7 @@ ApplicationWindow {
 
     WhoDialog {
         id: who
+        objectName: "whoDlg"
         app: win
         onOpened: win.whoOpen = true
         onClosed: win.whoOpen = false

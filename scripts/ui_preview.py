@@ -71,10 +71,13 @@ class FakeSession:
     """Stands in for live.LiveSession: no models, no microphone – the preview sends the events itself."""
     last: "FakeSession | None" = None
 
-    def __init__(self, emit, title, source, sample_rate, participants, guests, meeting, call_audio):
+    def __init__(self, emit, title, source, sample_rate, participants, guests, meeting, call_audio, mic=True):
         self.emit, self.title, self.meeting, self.guests, self.participants = emit, title, meeting, guests, participants
+        self.mic = mic
         self.rid = db.create_recording(title, "", source=source, status="recording")["id"]
         self.call, self.notes, self.paused, self._closed, self.fed = None, [], False, False, 0
+        if meeting == "online" and call_audio:
+            self.call = object()  # the call's sound "runs" (the badge on the live page)
         FakeSession.last = self
 
     def feed_pcm16(self, data: bytes) -> None:
@@ -200,6 +203,16 @@ def main(out: Path) -> int:
     shot("live")
     win.setProperty("whoOpen", True)
     shot("who")
+    who = win.findChild(QObject, "whoDlg")
+    who.setProperty("meeting", "online")
+    who.setProperty("withMic", True)
+    shot("who-online")
+    who.setProperty("withMic", False)
+    shot("who-online-call-only")
+    if o["live"].callAvailable and not who.property("callOnly"):
+        problems_extra.append("who: 'Nur Call-Ton' was picked but the dialog doesn't know")
+    who.setProperty("meeting", "person")
+    who.setProperty("withMic", True)
     win.setProperty("whoOpen", False)
     o["live"].start("Team-Meeting Launch", "person", [ids["lisa"], ids["max"]], 3)
     for _ in range(200):
@@ -249,6 +262,22 @@ def main(out: Path) -> int:
             break
     shot("after-stop")
     opened = win.property("page") == "detail" and sess is not None and detail.property("rid") == sess.rid
+    if o["live"].callAvailable:  # online, "Nur Call-Ton": the microphone stays closed, the badge says so
+        o["live"].start("Webinar Q3-Zahlen", "online", [], 2, False)
+        for _ in range(200):
+            wait(0.02)
+            if o["live"].state == "recording":
+                break
+        o["live"]._event.emit({"type": "level", "rms": 0.08, "t": 1.0})
+        win.setProperty("page", "live")
+        shot("live-call-only")
+        if o["live"].micOn or not o["live"].callAudio:
+            problems_extra.append("live: 'Nur Call-Ton' recording still uses the microphone")
+        o["live"].stop()
+        for _ in range(300):
+            wait(0.02)
+            if o["live"].state == "idle":
+                break
     win.setProperty("page", "library")
     shot("library-light")
     o["rekord"].setTheme("system")

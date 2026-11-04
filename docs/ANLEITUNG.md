@@ -180,7 +180,7 @@ Danach kannst du Claude direkt fragen: *„Was haben wir im letzten Meeting ents
 
 1. **Leute einmal anlernen:** *Personen* → **Person einsprechen** → Text vorlesen, einfach reden lassen oder aus einer Aufnahme lernen (siehe [Einsprechen](#erster-start-die-einführung)). Ab dann erkennt REKORD die Person mit Namen.
 2. **Roter Knopf** → REKORD fragt **„Wer ist dabei?“** – das ist Pflicht, sonst startet keine Aufnahme:
-   - **Wo findet das Meeting statt?** – **Vor Ort**, **Online (Teams, Zoom, Meet …)** oder **Vorlesung**. Bei Online nimmt REKORD den Ton des Calls mit auf. Bei Vorlesung musst du nicht mitzählen (siehe unten).
+   - **Wo findet das Meeting statt?** – **Vor Ort**, **Online (Teams, Zoom, Meet …)** oder **Vorlesung**. Bei Online nimmt REKORD den Ton des Calls mit auf – und fragt **Dein Mikrofon auch aufnehmen?**: **Call + mein Mikro** oder **Nur Call-Ton**. Bei Vorlesung musst du nicht mitzählen (siehe unten).
    - **Wie viele sprechen?** – dich mitgezählt (Zahl antippen oder **−/+**).
    - **Wer davon ist bekannt?** – die Leute antippen, die REKORD schon kennt.
    - Alle anderen zählen als neu. Am besten gleich **„… jetzt einsprechen“** – jede neue Person liest ihren Text, dann ist sie ab sofort bekannt.
@@ -270,6 +270,8 @@ Der **rote Knopf** unten rechts (in Aufnahmen, Fragen, Personen und Vorlagen) sp
 - Oben: **Vor Ort**, **Online** oder **Vorlesung**.
   - **Vor Ort** – alle sitzen im Raum, das Mikrofon reicht.
   - **Online** – Teams, Zoom, Meet …: REKORD nimmt am Computer zusätzlich den **Ton des Calls** auf, also die anderen Teilnehmer, direkt aus dem Lautsprecher-Signal. Kopfhörer sind kein Problem. Nur Ton, kein Bild. Am Mac fragt macOS beim ersten Mal nach **Bildschirm- & Systemaudioaufnahme** → REKORD erlauben (macOS 13 oder neuer). Am iPhone geht das nicht – dort das iPhone neben den Lautsprecher legen.
+    - **Call + mein Mikro** – die anderen im Call **und du**. Das ganze Meeting.
+    - **Nur Call-Ton** – nur, was Teams, Zoom, Meet … am Computer abspielen. Dein Mikrofon wird **gar nicht geöffnet**: du bist nicht auf der Aufnahme, Tippen und Hintergrund bei dir auch nicht. Gut für Webinare, Vorträge und Calls, in denen du nur zuhörst. Bei „Wie viele?“ zählst du dich dann nicht mit. Geht der Call-Ton auf dem Computer nicht, startet REKORD nicht stumm, sondern sagt warum.
   - **Vorlesung** – eine Person trägt vor (Uni, Schulung, Vortrag). Mitzählen musst du nicht: REKORD erkennt die vortragende Person an der Stimme – bekannt mit Namen, sonst **„Vortragende Person“** – und sammelt alle anderen Stimmen unter **„Publikum“**. Danach wird automatisch ein **Lernzettel** geschrieben: Kernaussagen, Definitionen, Prüfungsrelevantes, Fragen aus dem Hörsaal. Mit **„Wer ist das?“** gibst du der vortragenden Person einen Namen.
 - **Titel** eingeben (optional).
 - **Wer ist dabei?** Die Karte zeigt, wer angekündigt ist; **Festlegen** ändert es. **Vorstellungsrunde** lässt eine neue Person ihren Text einsprechen.
