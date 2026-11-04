@@ -264,3 +264,35 @@ def test_microphone_audio_is_converted_cleanly_in_any_chunk_size(chunk):
     n = min(len(y), len(ref)) - 1000
     snr = max(10 * np.log10(np.sum(ref[500:n] ** 2) / np.sum((y[500 + lag:n + lag] - ref[500:n]) ** 2)) for lag in range(40))
     assert snr > 60, snr
+
+
+# ------------------------------------------------------------------ macOS: say what ScreenCaptureKit really answered
+
+class _NSError:
+    def __init__(self, domain, code, text):
+        self._d, self._c, self._t = domain, code, text
+
+    def domain(self):
+        return self._d
+
+    def code(self):
+        return self._c
+
+    def localizedDescription(self):  # noqa: N802 - Cocoa name
+        return self._t
+
+
+def test_mac_refusal_names_the_real_error():
+    """Only a refusal is a permission problem – everything else shows macOS' own error instead of a misleading
+    "allow REKORD" (the switch was on, and the user was sent there again and again)."""
+    declined = capture.MacCapture.explain(_NSError("com.apple.ScreenCaptureKit.SCStreamErrorDomain", -3801,
+                                                   "The user declined TCCs for application, window, display capture"), "Bildschirm-Inhalte")
+    assert declined.startswith(capture.MacCapture.PERMISSION) and "-3801" in declined
+    other = capture.MacCapture.explain(_NSError("com.apple.ScreenCaptureKit.SCStreamErrorDomain", -3805,
+                                                "Failed to start stream due to audio/video capture failure"), "Aufnahme-Start")
+    assert "keine fehlende Erlaubnis" in other and "-3805" in other and "audio/video capture failure" in other
+    assert "Call-Ton" in other and "macOS" in other  # the live page still offers its buttons
+    none = capture.MacCapture.explain(None, "kein Bildschirm gemeldet")
+    assert "kein Bildschirm gemeldet" in none and "keine fehlende Erlaubnis" in none
+    plain = capture.MacCapture.explain(RuntimeError("Permission denied"), "Aufnahme-Start")
+    assert plain.startswith(capture.MacCapture.PERMISSION)

@@ -215,6 +215,26 @@ class MacCapture:
                   "schon an? Dann gehört er zu einer älteren REKORD-Version – „Rechte neu setzen“, beim nächsten Start "
                   "erlauben, REKORD neu starten.")
 
+    DECLINED = -3801  # SCStreamErrorUserDeclined: the privacy switch (or a stale one) says no
+
+    @classmethod
+    def explain(cls, err, step: str) -> str:
+        """What macOS really answered – not only "no permission". Every other failure used to read like a missing
+        permission, so a switch that was on led nowhere. The exact error (domain, code, text) is shown and logged."""
+        if err is None:
+            detail, code = step, None
+        else:
+            try:
+                domain, code, text = str(err.domain()), int(err.code()), str(err.localizedDescription())
+            except Exception:  # noqa: BLE001 - not an NSError
+                domain, code, text = "", None, str(err)
+            detail = f"{step}: {text} [{domain} {code}]" if domain else f"{step}: {text}"
+        log.warning("ScreenCaptureKit refused – %s", detail)
+        if code == cls.DECLINED or (err is not None and any(w in str(err).lower() for w in ("declined", "permission", "tcc"))):
+            return f"{cls.PERMISSION} (macOS meldet: {detail})"
+        return (f"Call-Ton startet nicht – macOS meldet: {detail}. Das ist keine fehlende Erlaubnis – bitte diese Meldung "
+                "weitergeben (steht auch in rekord.log).")
+
     def __init__(self, on_audio):
         self.on_audio = on_audio
         self.stream = None
@@ -238,7 +258,7 @@ class MacCapture:
 
         content, err = self._wait(SCK.SCShareableContent.getShareableContentWithCompletionHandler_, "Bildschirm-Inhalte")
         if err is not None or content is None or not content.displays():
-            raise RuntimeError(self.PERMISSION)
+            raise RuntimeError(self.explain(err, "Bildschirm-Inhalte" if err is not None else "kein Bildschirm gemeldet"))
         display = content.displays()[0]
         filt = SCK.SCContentFilter.alloc().initWithDisplay_excludingWindows_(display, [])
         cfg = SCK.SCStreamConfiguration.alloc().init()
@@ -260,8 +280,7 @@ class MacCapture:
                 raise RuntimeError(f"ScreenCaptureKit: {err}")
         (err,) = self._wait(self.stream.startCaptureWithCompletionHandler_, "Aufnahme-Start")
         if err is not None:
-            raise RuntimeError(self.PERMISSION if "permission" in str(err).lower() or "declined" in str(err).lower()
-                               else f"ScreenCaptureKit: {err}")
+            raise RuntimeError(self.explain(err, "Aufnahme-Start"))
 
     def stop(self) -> None:
         if self._out is not None:

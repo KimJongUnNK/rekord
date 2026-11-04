@@ -19,8 +19,9 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
-### Neu in 1.3.6 – Mac: Signatur repariert · Dateien einfügen
-- **Mac: „Schalter ist an, aber es geht trotzdem nicht“ – die eigentliche Ursache.** Die Release-Pipeline hat die Mac-App für ihre Tests gestartet und erst danach verpackt. Beim Start schreibt die App in sich selbst – damit war ihre Signatur ungültig, und macOS wendet Mikrofon- und Systemaudio-Erlaubnis auf eine App mit ungültiger Signatur nie an, egal wie der Schalter steht. Jetzt wird die App nach den Tests frisch signiert und streng geprüft; die Installations-Zeile und das In-App-Update signieren die App auf deinem Mac zusätzlich selbst.
+### Neu in 1.3.6 – Mac: der echte Fehler statt „nicht erlaubt“ · Dateien einfügen
+- **Mac: REKORD sagt jetzt, was macOS wirklich meldet.** Bisher klang jeder Fehler beim Call-Ton wie eine fehlende Erlaubnis – auch wenn der Schalter längst an war. Jetzt steht die echte Antwort von macOS (Text und Fehlercode) in der Meldung und in *rekord.log*. Nur eine echte Ablehnung zeigt weiter die Knöpfe zum Erlauben.
+- **Mac-App: Signatur wird nach jedem Build geprüft.** Die Release-Pipeline prüft die Signatur der Mac-App streng und bricht ab, wenn sie ungültig ist; die Installations-Zeile und das In-App-Update signieren die App auf deinem Mac zusätzlich selbst (ad hoc) – damit macOS die Erlaubnisse immer einer gültigen App zuordnen kann.
 - **Dateien einfügen:** Audio- oder Videodatei im Finder/Explorer kopieren (z. B. aus *Downloads*) und in REKORD **⌘ V** / **Strg + V** – wird importiert und transkribiert. Auch ein kopierter Dateipfad geht.
 - **Importieren** öffnet direkt im Ordner *Downloads*.
 - Kann REKORD eine Datei nicht lesen (macOS sperrt *Downloads*, Datei weg), sagt es das jetzt – statt still nichts zu tun. Nach einem Update wird auch die *Downloads*-Erlaubnis frisch abgefragt.
