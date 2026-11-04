@@ -16,8 +16,8 @@ jobs:
         include:
           - os: windows-latest
             asset: REKORD-Windows-x64.zip
-          - os: macos-latest
-            asset: REKORD-macOS-AppleSilicon.zip
+          - os: macos-15  # pinned: on 2026-11-04 GitHub's macos-latest pool left jobs unassigned until they were cancelled,
+            asset: REKORD-macOS-AppleSilicon.zip  # while macos-15 (the iPhone build) ran at once
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -165,7 +165,9 @@ jobs:
 
   publish:
     needs: [desktop, ios, linux-package]
-    if: ${{ !cancelled() }}  # publish whatever built, even if one platform failed
+    # never a release without the desktop apps: "latest" would then have no Mac (or Windows) download, and the one-line
+    # installer would fail. Linux and the iPhone app may be missing (then they're added by a re-run of the failed jobs).
+    if: ${{ !cancelled() && needs.desktop.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
