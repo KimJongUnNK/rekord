@@ -182,6 +182,62 @@ def keep_awake(on: bool) -> bool:
 
 # ------------------------------------------------------------------ Linux firewall (iPhone needs the ports)
 
+# ------------------------------------------------------------------ macOS privacy switches (TCC)
+
+MAC_BUNDLE_ID = "app.rekord.desktop"  # desktop/rekord.spec
+MAC_SERVICES = ("ScreenCapture", "Microphone")  # Bildschirm- & Systemaudioaufnahme (the call's sound), Mikrofon
+
+
+def mac_reset_permissions(services: tuple[str, ...] = MAC_SERVICES) -> bool:
+    """Clear REKORD's entries under Datenschutz & Sicherheit, so macOS asks again on the next recording.
+
+    Why this is needed: the Mac app has no paid Apple certificate, so every build carries a new (ad-hoc) signature.
+    macOS ties a permission to the signature it was given to – after an update the switch in System Settings
+    still shows REKORD as allowed, but it belongs to the previous build, and the new one is silently refused.
+    A reset removes the stale entry; the next request shows macOS' own question again. Own app only, no admin."""
+    if sys.platform != "darwin":
+        return False
+    ok = True
+    for service in services:
+        r = _run(["tccutil", "reset", service, MAC_BUNDLE_ID], timeout=15)
+        if r is None or r.returncode != 0:
+            ok = False
+            log.warning("tccutil reset %s: %s", service, (r.stderr or "").strip() if r else "nicht ausführbar")
+    return ok
+
+
+MAC_PANES = {"ScreenCapture": "Privacy_ScreenCapture", "Microphone": "Privacy_Microphone"}
+
+
+def mac_open_privacy(service: str) -> bool:
+    """Open System Settings right at REKORD's switch: Datenschutz & Sicherheit → Bildschirm- & Systemaudioaufnahme
+    (ScreenCapture) or → Mikrofon (Microphone)."""
+    if sys.platform != "darwin":
+        return False
+    pane = MAC_PANES.get(service, MAC_PANES["ScreenCapture"])
+    r = _run(["open", f"x-apple.systempreferences:com.apple.preference.security?{pane}"], timeout=15)
+    return r is not None and r.returncode == 0
+
+
+def mac_fresh_permissions(version: str) -> bool:
+    """First start of a new version of the Mac app: the old build's permissions don't count any more (see
+    mac_reset_permissions) – clear them once, so macOS asks instead of refusing while the switch shows "on".
+    True when they were reset."""
+    if sys.platform != "darwin" or not frozen():
+        return False
+    from . import config
+    try:
+        if config.load().get("mac_permissions_for") == version:
+            return False
+        config.save({"mac_permissions_for": version})
+    except Exception as e:  # noqa: BLE001 - e.g. data drive missing: then not now
+        log.warning("mac permissions: %s", e)
+        return False
+    done = mac_reset_permissions()
+    log.info("new version %s: macOS permissions reset (%s)", version, "ok" if done else "failed")
+    return done
+
+
 def run(cmd: list[str], timeout: float = 30) -> subprocess.CompletedProcess:
     """subprocess.run that can't hang: on timeout the whole process group is killed (a grandchild holding
     our pipes would otherwise block forever), stdin is closed, no console window on Windows."""

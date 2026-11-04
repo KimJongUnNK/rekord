@@ -225,6 +225,35 @@ def test_live_call_only_failure_is_shown(fake_live, monkeypatch):
     assert "ohne Mikrofon" in fake_live.error
 
 
+def test_mac_refusal_comes_with_buttons_that_fix_it(fake_live, monkeypatch):
+    """macOS refuses although the switch may show "on": the page names which permission and offers to open exactly
+    that switch or to reset it – no "go to … → … → …" text alone."""
+    import sys
+
+    from rekord import capture, system
+    lv = fake_live
+    opened, resets = [], []
+    monkeypatch.setattr(system, "mac_open_privacy", lambda s: opened.append(s) or True)
+    monkeypatch.setattr(system, "mac_reset_permissions", lambda: resets.append(1) or True)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert lv.isMac and lv.macBlocked == ""
+    lv._notes = capture.MacCapture.PERMISSION  # recording with the microphone, but no call sound
+    assert lv.macBlocked == "ScreenCapture"
+    lv.openMacPrivacy(lv.macBlocked)
+    assert opened == ["ScreenCapture"]
+    lv._notes, lv._error = "", "Live-Start fehlgeschlagen: " + capture.MacCapture.PERMISSION + " – ohne Mikrofon …"
+    assert lv.macBlocked == "ScreenCapture"  # "Nur Call-Ton" couldn't start
+    lv._error = "macOS lässt REKORD nicht ans Mikrofon. …"
+    assert lv.macBlocked == "Microphone"
+    toasts = []
+    lv.toast.connect(toasts.append)
+    lv.resetMacPermissions()
+    assert resets == [1] and lv.error == "" and lv.macBlocked == "" and "erlaube" in toasts[-1]
+    monkeypatch.setattr(sys, "platform", "win32")
+    lv._error = "macOS lässt REKORD nicht ans Mikrofon."
+    assert lv.macBlocked == ""  # only on a Mac
+
+
 def test_live_lecture_counts_nobody_and_room_without_call(fake_live, monkeypatch):
     lv = fake_live
     lv.start("VO Statistik", "lecture", [], 0)

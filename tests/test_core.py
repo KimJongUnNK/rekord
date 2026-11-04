@@ -435,3 +435,49 @@ def test_local_ai_context_fits_the_request():
     assert fit_context("System", [{"role": "user", "content": meeting}]) == 16384
     assert fit_context("System", [{"role": "user", "content": "x" * 400000}]) == 32768  # never above the setting
     assert fit_context("System", [{"role": "user", "content": meeting}], 8192) == 8192
+
+
+# ------------------------------------------------------------------ macOS: stale privacy switches after an update
+
+def _mac(monkeypatch, frozen=True):
+    import subprocess as sp
+    import sys
+
+    from rekord import system
+    calls = []
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(system, "frozen", lambda: frozen)
+    monkeypatch.setattr(system, "_run", lambda cmd, timeout=10: calls.append(cmd) or sp.CompletedProcess(cmd, 0, "", ""))
+    return system, calls
+
+
+def test_mac_reset_clears_screen_and_microphone_of_this_app_only(monkeypatch):
+    system, calls = _mac(monkeypatch)
+    assert system.mac_reset_permissions() is True
+    assert calls == [["tccutil", "reset", "ScreenCapture", "app.rekord.desktop"],
+                     ["tccutil", "reset", "Microphone", "app.rekord.desktop"]]
+
+
+def test_mac_new_version_resets_once(monkeypatch):
+    """Every build has a new ad-hoc signature: the old build's "on" switches don't count – reset once per version."""
+    from rekord import config
+    system, calls = _mac(monkeypatch)
+    config.save({"mac_permissions_for": "1.3.3"})
+    assert system.mac_fresh_permissions("1.3.4") is True and len(calls) == 2
+    assert system.mac_fresh_permissions("1.3.4") is False and len(calls) == 2  # next start: nothing
+    assert config.load()["mac_permissions_for"] == "1.3.4"
+
+
+def test_mac_reset_not_from_source_and_not_elsewhere(monkeypatch):
+    system, calls = _mac(monkeypatch, frozen=False)
+    assert system.mac_fresh_permissions("9.9.9") is False and calls == []  # running from source: Terminal's rights
+    import sys
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert system.mac_reset_permissions() is False and system.mac_open_privacy("Microphone") is False and calls == []
+
+
+def test_mac_opens_the_exact_privacy_pane(monkeypatch):
+    system, calls = _mac(monkeypatch)
+    assert system.mac_open_privacy("ScreenCapture") and system.mac_open_privacy("Microphone")
+    assert calls == [["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"],
+                     ["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"]]

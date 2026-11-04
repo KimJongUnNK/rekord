@@ -19,6 +19,11 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.3.5 – Mac: „alles erlaubt, aber REKORD darf nicht aufnehmen“ behoben
+- **Der Fehler:** Unter *Datenschutz & Sicherheit* stand REKORD auf „an“, trotzdem meldete REKORD, macOS erlaube Mikrofon bzw. Call-Ton nicht. Grund: Die Mac-App hat kein kostenpflichtiges Apple-Zertifikat, jede Version hat deshalb eine neue Signatur – und macOS hängt die Erlaubnis an die Signatur der **alten** Version. Der Schalter sieht an aus, gilt aber nicht mehr.
+- **Automatisch:** Beim ersten Start einer neuen Version setzt REKORD seine alten Schalter selbst zurück. macOS fragt dann bei der nächsten Aufnahme sauber neu – erlauben, beim Call-Ton danach REKORD einmal neu starten.
+- **Knöpfe statt Wegbeschreibung:** Verweigert macOS trotzdem etwas, stehen direkt in der Meldung **Systemaudio-Einstellung öffnen** bzw. **Mikrofon-Einstellung öffnen** (springt genau zum Schalter von REKORD) und **Rechte neu setzen**.
+
 ### Neu in 1.3.4 – Online-Meetings: mit oder ohne dein Mikrofon
 - **Du entscheidest, ob du mit drauf bist.** Bei *Online* fragt „Wer ist dabei?“ jetzt: **Call + mein Mikro** (wie bisher: die anderen im Call und du) oder **Nur Call-Ton** – dann nimmt REKORD nur auf, was Teams, Zoom, Meet … am Computer abspielen.
 - **Nur Call-Ton heißt wirklich: Mikrofon aus.** Es wird gar nicht erst geöffnet – kein Tippen, Husten oder Hintergrund von dir auf der Aufnahme, keine Mikrofon-Abfrage. Ideal für Webinare, Vorträge und Calls, in denen du nur zuhörst. Der Pegel zeigt dann den Call-Ton, oben steht *Nur Call-Ton · Mikro aus*.

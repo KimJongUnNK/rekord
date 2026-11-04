@@ -211,8 +211,9 @@ def output_class():
 
 class MacCapture:
     """An SCStream for the call sound. ScreenCaptureKit always delivers a picture too: the smallest possible, ignored."""
-    PERMISSION = ("macOS erlaubt die Aufnahme noch nicht: Systemeinstellungen → Datenschutz & Sicherheit → "
-                  "Bildschirm- & Systemaudioaufnahme → REKORD einschalten, dann REKORD neu starten.")
+    PERMISSION = ("macOS lässt REKORD den Call-Ton nicht aufnehmen (Bildschirm- & Systemaudioaufnahme). Schalter "
+                  "schon an? Dann gehört er zu einer älteren REKORD-Version – „Rechte neu setzen“, beim nächsten Start "
+                  "erlauben, REKORD neu starten.")
 
     def __init__(self, on_audio):
         self.on_audio = on_audio

@@ -332,7 +332,7 @@ Gibt es eine neue Version, steht links unter dem Status **„Update auf … →�
 | **REKORD zweimal geöffnet** | Es kommt das offene Fenster nach vorne – kein zweites. |
 | **Eine alte Kopie gestartet** (alte Verknüpfung, Kopie in *Downloads*) | Sie startet stattdessen die neueste installierte Version. |
 | **Linux mit Paket** (deb, rpm, pacman) | Linux fragt einmal nach deinem Passwort. AUR (*rekord-bin*): über deinen AUR-Helfer aktualisieren. |
-| **Mac** | Nach dem Update fragt macOS evtl. nochmal nach Mikrofon bzw. *Bildschirm- & Systemaudioaufnahme* – erlauben. |
+| **Mac** | Nach jedem Update fragt macOS nochmal nach Mikrofon bzw. *Bildschirm- & Systemaudioaufnahme* – erlauben (beim Systemaudio danach REKORD einmal neu starten). Grund: Ohne kostenpflichtiges Apple-Zertifikat hat jede Version eine neue Signatur, und macOS hängt die Erlaubnis an die alte. REKORD setzt die alten Schalter deshalb beim ersten Start einer neuen Version selbst zurück. |
 
 *Automatisch nach Updates suchen* (an): REKORD fragt beim Start und alle 6 Stunden bei GitHub nach. Installiert wird nur auf Klick.
 Die Installations-Zeile von oben funktioniert weiterhin auch als Update.
@@ -344,7 +344,8 @@ Die Installations-Zeile von oben funktioniert weiterhin auch als Update.
 | Problem | Lösung |
 |---|---|
 | **Mac:** *„REKORD ist beschädigt“* | Terminal öffnen, `xattr -dr com.apple.quarantine /Applications/REKORD.app` eingeben, REKORD nochmal öffnen |
-| **Kein Mikrofon** | *Live* → unter dem Aufnahmeknopf das richtige **Mikrofon** wählen. Mac: *Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon* → REKORD an |
+| **Kein Mikrofon** | *Live* → unter dem Aufnahmeknopf das richtige **Mikrofon** wählen. Mac: in der Fehlermeldung **Mikrofon-Einstellung öffnen** → REKORD an |
+| **Mac: alles erlaubt, aber REKORD sagt, es darf nicht aufnehmen** | Der Schalter gehört noch zu einer älteren REKORD-Version (jede Version hat eine neue Signatur). In der Fehlermeldung **Rechte neu setzen** tippen, Aufnahme neu starten, erlauben, wenn macOS fragt – beim Call-Ton danach REKORD einmal neu starten. **Systemaudio-Einstellung öffnen** bzw. **Mikrofon-Einstellung öffnen** springt direkt zum Schalter. Ohne Knopf, im Terminal: `tccutil reset ScreenCapture app.rekord.desktop` und `tccutil reset Microphone app.rekord.desktop` |
 | **iPhone findet den Computer nicht** | Gleiches WLAN? (Gäste-WLANs trennen Geräte.) Ist REKORD am Computer offen? (Tipp: *Speicher & Datenschutz* → **Mit dem Computer starten**.) Windows: Firewall „Private Netzwerke“ erlaubt? Linux: *iPhone & Geräte* → **Für iPhone freigeben** |
 | **Lokal einrichten hängt oder bricht ab** | Internet prüfen, nochmal **Lokal einrichten** – fertige Teile werden nicht neu geladen. |
 | **„Modelle werden geladen“ geht nicht weiter** | Internet prüfen → *Einstellungen → Modelle* → **Laden** |
@@ -382,7 +383,7 @@ Oder von Hand – alle Dateien liegen auf der [Release-Seite](https://github.com
 | **Jede** (AppImage) | `chmod +x REKORD-*.AppImage && ./REKORD-*.AppImage` |
 | Debian, Ubuntu, Mint, Pop!_OS | `sudo apt install ./rekord_*_amd64.deb` |
 | Fedora, RHEL/Alma/Rocky 9 | `sudo dnf install ./rekord-*.x86_64.rpm` |
-| openSUSE | `sudo zypper in ./rekord-*.x86_64.rpm` |
+| openSUSE | `sudo zypper in --allow-unsigned-rpm ./rekord-*.x86_64.rpm` |
 | Arch, Manjaro, EndeavourOS | `sudo pacman -U rekord-*.pkg.tar.zst` |
 | Ohne root | `tar xzf REKORD-*-Linux-x86_64.tar.gz && ./rekord-*/install.sh` |
 
