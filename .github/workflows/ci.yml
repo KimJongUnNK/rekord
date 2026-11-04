@@ -69,6 +69,10 @@ jobs:
         run: |
           cd desktop
           pyinstaller rekord.spec --noconfirm > build.log 2>&1 || { echo "::error title=pyinstaller::$(tail -c 3000 build.log | tr '\n' ' ')"; exit 1; }
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            touch "$RUNNER_TEMP/built.stamp"
+            echo "signature right after the build:"; codesign --verify --deep --strict --verbose=2 dist/REKORD.app 2>&1 | tail -3 || true
+          fi
           du -sh dist/* | tr '\n' ' '
       - name: the packaged app opens its native window (double-click start, every page, screenshots)
         shell: bash
@@ -94,8 +98,9 @@ jobs:
         shell: bash
         run: |
           cd desktop/dist
-          echo "files written into the app after the build:"; find REKORD.app -newer REKORD.app/Contents/Info.plist -type f | head -20
-          echo "signature before sealing:"; codesign --verify --deep --strict --verbose=2 REKORD.app 2>&1 | tail -4 || true
+          echo "files the test runs wrote into the app:"; find REKORD.app -newer "$RUNNER_TEMP/built.stamp" -type f | sed -n '1,20p'
+          echo "($(find REKORD.app -newer "$RUNNER_TEMP/built.stamp" -type f | wc -l | tr -d ' ') files)"
+          echo "signature after the test runs, before sealing:"; codesign --verify --deep --strict --verbose=2 REKORD.app 2>&1 | tail -4 || true
           find REKORD.app -name "__pycache__" -type d -prune -exec rm -rf {} +
           codesign --force --deep --sign - --identifier app.rekord.desktop REKORD.app
           codesign --verify --deep --strict --verbose=2 REKORD.app || { echo "::error title=signature::invalid after sealing"; exit 1; }
