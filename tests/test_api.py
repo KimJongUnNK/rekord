@@ -444,3 +444,31 @@ def test_append_files_over_the_api(client, monkeypatch):
     assert queued == [rid]  # analysed again as a whole
     assert client.post(f"/api/recordings/{rid}/append", files=[("files", ("notiz.txt", b"x", "text/plain"))]).status_code == 400
     assert client.post("/api/recordings/gibtsnicht/append", files=[("files", ("a.wav", _wav(1), "audio/wav"))]).status_code == 404
+
+
+def test_any_format_upload_and_video_stills_in_the_recording(client, monkeypatch, tmp_path):
+    import sys
+    from pathlib import Path
+
+    from rekord import frames, jobs
+    sys.path.insert(0, str(Path(__file__).parent))
+    from media import slides_video
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": None)
+    # an unknown ending with sound inside: accepted; without sound: refused
+    r = client.post("/api/recordings", files=[("files", ("memo.weird", _wav(1.0), "application/octet-stream"))])
+    assert r.status_code == 200, r.text
+    r = client.post("/api/recordings", files=[("files", ("notiz.weird", b"kein ton", "application/octet-stream"))])
+    assert r.status_code == 400 and "Kein Ton" in r.json()["detail"]
+    # a video: its stills come with the recording, each with its line
+    vid = slides_video(tmp_path / "call.mp4").read_bytes()
+    rid = client.post("/api/recordings", files=[("files", ("call.mp4", vid, "video/mp4"))]).json()["items"][0]["id"]
+    rec = db.get_recording(rid)
+    assert frames.extract(rec["audio_path"], rid) == 3
+    full = client.get(f"/api/recordings/{rid}").json()
+    assert [f["t"] for f in full["frames"]] == [0.0, 5.0, 10.0] and full["frames"][0]["file"].startswith("file://")
+    img = client.get(full["frames"][1]["url"])
+    assert img.status_code == 200 and img.headers["content-type"] == "image/jpeg" and img.content[:2] == b"\xff\xd8"
+    assert client.get(f"/api/recordings/{rid}/frames/..%2F..%2Fconfig.json").status_code == 404
+    assert client.get(f"/api/recordings/{rid}/frames/x.jpg").status_code == 404
+    client.delete(f"/api/recordings/{rid}")
+    assert not frames.folder(rid).exists()  # gone with the recording

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import audio, config, db
+from . import audio, config, db, frames
 from .engines import asr, voiceprint
 from .engines.diarize import clean_turns, diarize, refine_turns
 
@@ -50,6 +50,9 @@ def process(rid: str, on_event=None) -> dict:
             on_event({"type": "progress", "id": rid, "stage": name, "progress": p})
 
     stage("Audio laden", 0.01)
+    if not frames.has(rid) and audio.probe(rec["audio_path"])["video"]:
+        stage("Standbilder aus dem Video", 0.02)  # what was on screen, next to what was said
+        frames.extract(rec["audio_path"], rid)
     samples = audio.load(rec["audio_path"])
     duration = len(samples) / audio.SR
     db.update_recording(rid, duration=duration, peaks=audio.peaks(samples))
@@ -152,13 +155,21 @@ def append_files(rid: str, paths: list[str]) -> float:
         raise KeyError(rid)
     old = Path(rec["audio_path"]) if rec.get("audio_path") else None
     parts = [audio.load(old)] if old and old.is_file() else []
-    added = 0.0
-    for p in paths:
+    loaded = []
+    for p in paths:  # all of them first: one without sound changes nothing
         x = audio.load(p)  # ValueError: no sound in it
         if not len(x):
             raise ValueError(f"{Path(p).name}: enthält keinen Ton")
+        loaded.append((p, x))
+    if old and old.is_file() and not frames.has(rid) and audio.probe(old)["video"]:
+        frames.extract(old, rid)  # the video is about to become sound only: keep its stills first
+    added = 0.0
+    for p, x in loaded:
         if parts:
             parts.append(np.zeros(int(audio.SR * APPEND_GAP), dtype=np.float32))
+        at = sum(len(q) for q in parts) / audio.SR
+        if audio.probe(p)["video"]:
+            frames.extract(p, rid, offset=at)  # its stills at their place in the whole recording
         parts.append(x)
         added += len(x) / audio.SR
     if not added:

@@ -525,3 +525,47 @@ def test_append_files_refuses_what_has_no_sound(tmp_path):
     assert db.get_recording(rec["id"])["audio_path"].endswith("x.wav")  # nothing changed
     with _pt.raises(KeyError):
         pipeline.append_files("gibtsnicht", [str(tmp_path / "kaputt.mp3")])
+
+
+# ------------------------------------------------------------------ every format · stills from videos
+
+def test_any_audio_or_video_counts_whatever_its_name(tmp_path):
+    import shutil
+
+    from rekord import audio as a
+    odd = tmp_path / "aufnahme.xyz"  # an unusual ending – there's sound inside, so it's fine
+    shutil.copy(Path(__file__).parent / "fixtures" / "meeting1.wav", odd)
+    assert a.accepted(odd) and a.probe(odd) == {"audio": True, "video": False}
+    (tmp_path / "liste.txt").write_text("kein Ton")
+    assert not a.accepted(tmp_path / "liste.txt") and not a.accepted(tmp_path)
+    assert a.accepted(tmp_path / "egal.mkv")  # known endings are taken without a look inside
+    assert ".mkv" in a.MEDIA_EXT and ".aiff" in a.MEDIA_EXT and ".avi" in a.MEDIA_EXT and "*.wmv" in a.DIALOG_FILTER
+
+
+def test_stills_at_each_new_slide_not_for_the_pointer(tmp_path):
+    from media import slides_video
+
+    from rekord import audio as a
+    from rekord import frames
+    vid = slides_video(tmp_path / "praesentation.mp4")
+    assert a.probe(vid) == {"audio": True, "video": True}
+    assert frames.extract(vid, "r1") == 3
+    assert [f["t"] for f in frames.items("r1")] == [0.0, 5.0, 10.0]  # exactly the three slide changes
+    assert all(Path(f["path"]).read_bytes()[:2] == b"\xff\xd8" for f in frames.items("r1"))  # real JPEGs
+    assert frames.extract(vid, "r2", offset=61.0) == 3 and frames.items("r2")[0]["t"] == 61.0
+    assert frames.extract(Path(__file__).parent / "fixtures" / "meeting1.wav", "r3") == 0 and not frames.has("r3")
+    segs = [{"id": 7, "start": 0, "end": 4}, {"id": 8, "start": 5.5, "end": 9}, {"id": 9, "start": 10.5, "end": 14}]
+    assert [(f["t"], f["seg"]) for f in frames.attach("r1", segs)] == [(0.0, 7), (5.0, 8), (10.0, 9)]
+    frames.remove("r1")
+    assert frames.items("r1") == []
+
+
+def test_appended_video_keeps_its_stills_in_place(tmp_path):
+    from media import slides_video
+
+    from rekord import config, db, frames, pipeline
+    config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    rec = db.create_recording("Webinar", str(_clip(config.AUDIO_DIR / "intro.wav", 4)), source="import")
+    pipeline.append_files(rec["id"], [str(slides_video(tmp_path / "teil2.mp4"))])
+    assert [f["t"] for f in frames.items(rec["id"])] == [5.0, 10.0, 15.0]  # 4 s intro + 1 s pause, then its slides
+    assert db.get_recording(rec["id"])["audio_path"].endswith(".m4a")

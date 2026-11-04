@@ -22,7 +22,7 @@ from PySide6.QtCore import (Property, QAbstractListModel, QByteArray, QModelInde
 from .. import __version__, audio, config, db, jobs, live
 
 log = logging.getLogger("rekord.app")
-AUDIO_EXT = {".m4a", ".mp3", ".wav", ".webm", ".ogg", ".opus", ".flac", ".aac", ".mp4", ".mov", ".mkv", ".caf", ".amr", ".3gp"}
+AUDIO_EXT = audio.MEDIA_EXT  # known endings; anything else counts when FFmpeg finds sound in it
 WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 
 
@@ -175,7 +175,7 @@ class Library(QObject):
         for u in urls:
             p = Path(QUrl(u).toLocalFile() if not isinstance(u, QUrl) else u.toLocalFile()) if "://" in str(u) or isinstance(u, QUrl) else Path(str(u))
             ext = p.suffix.lower()
-            if p.is_dir() or ext not in AUDIO_EXT:
+            if not audio.accepted(p):  # every audio/video format FFmpeg reads – the ending doesn't matter
                 skipped.append(p.name or str(p))
                 continue
             rid = uuid.uuid4().hex[:12]
@@ -194,7 +194,7 @@ class Library(QObject):
         if n:
             self.toast.emit(f"{n} {'Datei wird' if n == 1 else 'Dateien werden'} verarbeitet")
         if skipped:
-            self.toast.emit("Nicht unterstützt: " + ", ".join(skipped[:3]) + " – Audio oder Video, z. B. MP3, MP4, M4A, WAV, MOV")
+            self.toast.emit("Kein Ton gefunden: " + ", ".join(skipped[:3]) + " – jede Audio- oder Videodatei geht, solange Ton drin ist.")
         if unreadable:
             names = ", ".join(name for name, _ in unreadable[:3])
             denied = any(d for _, d in unreadable)
@@ -224,9 +224,9 @@ class Library(QObject):
         paths, skipped = [], []
         for u in urls:
             p = Path(QUrl(u).toLocalFile() if not isinstance(u, QUrl) else u.toLocalFile()) if "://" in str(u) or isinstance(u, QUrl) else Path(str(u))
-            (paths if p.suffix.lower() in AUDIO_EXT and not p.is_dir() else skipped).append(p)
+            (paths if audio.accepted(p) else skipped).append(p)
         if skipped:
-            self.toast.emit("Nicht unterstützt: " + ", ".join(p.name for p in skipped[:3]) + " – Audio oder Video, z. B. MP3, MP4, M4A, WAV, MOV")
+            self.toast.emit("Kein Ton gefunden: " + ", ".join(p.name for p in skipped[:3]) + " – jede Audio- oder Videodatei geht, solange Ton drin ist.")
         if not paths:
             return 0
         self.toast.emit(f"{len(paths)} {'Datei wird' if len(paths) == 1 else 'Dateien werden'} an „{rec['title']}“ angehängt …")
@@ -260,9 +260,14 @@ class Library(QObject):
         urls = [u for u in data.urls() if u.isLocalFile()]
         if not urls and data.hasText():  # a copied path, e.g. "Pfad kopieren" / "Als Pfad kopieren"
             text = data.text().strip().strip('"')
-            if text and "\n" not in text and Path(text).suffix.lower() in AUDIO_EXT and Path(text).is_file():
+            if text and "\n" not in text and Path(text).is_file() and audio.accepted(text):
                 urls = [QUrl.fromLocalFile(text)]
         return self.importFiles(urls) if urls else 0
+
+    @Property(str, constant=True)
+    def mediaFilter(self):  # noqa: N802 - QML API
+        """The file dialogs' filter: every audio/video ending REKORD knows (others work too – "Alle Dateien")."""
+        return audio.DIALOG_FILTER
 
     @Property(str, constant=True)
     def downloadsUrl(self):  # noqa: N802 - QML API

@@ -83,7 +83,7 @@ def test_import_copies_and_queues(qt, tmp_path, monkeypatch):
     rec = db.get_recording(queued[0])
     assert rec["title"] == "Interview" and rec["source"] == "import" and Path(rec["audio_path"]).is_file()
     assert Path(rec["audio_path"]).parent == config.AUDIO_DIR
-    assert toasts[0] == "1 Datei wird verarbeitet" and toasts[1].startswith("Nicht unterstützt: notizen.txt – Audio oder Video")
+    assert toasts[0] == "1 Datei wird verarbeitet" and toasts[1].startswith("Kein Ton gefunden: notizen.txt")
 
 
 def test_import_mp3_and_mp4_from_downloads(qt, tmp_path, monkeypatch):
@@ -174,7 +174,7 @@ def test_append_files_to_an_open_recording(qt, tmp_path, monkeypatch):
     assert lib.appendFiles(rec["id"], [(tmp_path / "Teil 2.mp4").as_uri(), str(tmp_path / "liste.pdf")]) == 1
     assert pump(lambda: queued == [rec["id"]])
     assert added == [(rec["id"], ["Teil 2.mp4"])]
-    assert any("Nicht unterstützt: liste.pdf" in t for t in toasts)
+    assert any("Kein Ton gefunden: liste.pdf" in t for t in toasts)
     assert pump(lambda: any("Angehängt (+1:35)" in t and "neu transkribiert" in t for t in toasts)), toasts
 
 
@@ -207,6 +207,9 @@ def test_one_imported_file_is_opened_right_away(qt, tmp_path, monkeypatch):
     assert lib.importFiles([str(tmp_path / "a.mp3"), str(tmp_path / "b.mp3")]) == 2
     assert lib.lastImportedId() == ""  # several: the list shows them
     assert lib.importFiles([str(tmp_path / "notiz.txt")]) == 0 and lib.lastImportedId() == ""
+    import shutil
+    shutil.copy(Path(__file__).parent / "fixtures" / "meeting1.wav", tmp_path / "Diktat.dss2")  # any ending, sound inside
+    assert lib.importFiles([str(tmp_path / "Diktat.dss2")]) == 1 and lib.lastImportedId()
 
 
 def test_import_dialog_opens_in_downloads(qt):

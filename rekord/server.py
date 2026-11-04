@@ -23,13 +23,13 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, Web
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, audio, config, db, export, jobs, live, models, pipeline, summarize, updater
+from . import __version__, audio, config, db, export, frames, jobs, live, models, pipeline, summarize, updater
 from .engines import asr
 from .llm import providers, templates
 
 log = logging.getLogger("rekord.server")
 WEB = Path(__file__).parent / "web"
-AUDIO_EXT = {".wav", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".flac", ".webm", ".mp4", ".mov", ".mkv", ".wma", ".amr", ".caf", ".3gp"}
+AUDIO_EXT = audio.MEDIA_EXT  # known endings; uploads with others are accepted when FFmpeg finds sound
 
 
 # ------------------------------------------------------------------ lifecycle
@@ -735,6 +735,9 @@ def _full(rid: str) -> dict:
     rec["speakers"] = db.list_speakers(rid)
     rec["segments"] = db.list_segments(rid)
     rec["summaries"] = db.list_summaries(rid)
+    # stills from a video, each with the line it belongs to: url for the iPhone app, file for the window
+    rec["frames"] = [{"t": f["t"], "seg": f["seg"], "url": f"/api/recordings/{rid}/frames/{f['file']}",
+                      "file": Path(f["path"]).as_uri()} for f in frames.attach(rid, rec["segments"])]
     return rec
 
 
@@ -749,13 +752,15 @@ async def upload(files: list[UploadFile] = File(...), title: str = Form(""), hig
     out = []
     for f in files:
         ext = Path(f.filename or "a.webm").suffix.lower() or ".webm"
-        if ext not in AUDIO_EXT:
-            raise HTTPException(400, f"Format {ext} nicht unterstützt")
         rid = uuid.uuid4().hex[:12]
+        config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
         dest = config.AUDIO_DIR / f"{rid}{ext}"
         with open(dest, "wb") as w:
             while chunk := await f.read(1 << 20):
                 w.write(chunk)
+        if ext not in AUDIO_EXT and not audio.probe(dest)["audio"]:  # any format – as long as there's sound in it
+            dest.unlink(missing_ok=True)
+            raise HTTPException(400, f"Kein Ton in {f.filename} gefunden")
         name = title if (title and len(files) == 1) else Path(f.filename or "Aufnahme").stem
         rec = db.create_recording(name or time.strftime("Aufnahme %d.%m.%Y %H:%M"), str(dest), source=source,
                                   highlights=json.loads(highlights or "[]"), rec_id=rid)
@@ -791,6 +796,7 @@ def delete_recording(rid: str):
         raise HTTPException(404)
     if rec.get("audio_path"):
         Path(rec["audio_path"]).unlink(missing_ok=True)
+    frames.remove(rid)
     db.delete_recording(rid)
     return {"ok": True}
 
@@ -813,11 +819,11 @@ async def append_audio(rid: str, files: list[UploadFile] = File(...)):
         paths = []
         for f in files:
             ext = Path(f.filename or "").suffix.lower()
-            if ext not in AUDIO_EXT:
-                raise HTTPException(400, f"Nicht unterstützt: {f.filename}")
             dest = tmp / f"{len(paths)}{ext}"
             with dest.open("wb") as out:
                 shutil.copyfileobj(f.file, out)
+            if ext not in AUDIO_EXT and not audio.probe(dest)["audio"]:
+                raise HTTPException(400, f"Kein Ton in {f.filename} gefunden")
             paths.append(str(dest))
         try:
             added = await asyncio.to_thread(pipeline.append_files, rid, paths)
@@ -827,6 +833,13 @@ async def append_audio(rid: str, files: list[UploadFile] = File(...)):
         shutil.rmtree(tmp, ignore_errors=True)
     jobs.enqueue(rid)
     return {"ok": True, "added": round(added, 1), "duration": db.get_recording(rid)["duration"]}
+
+
+@app.get("/api/recordings/{rid}/frames/{name}")
+def rec_frame(rid: str, name: str):
+    if not frames._NAME.match(name) or not (frames.folder(rid) / name).is_file():
+        raise HTTPException(404)
+    return FileResponse(frames.folder(rid) / name, media_type="image/jpeg")
 
 
 @app.get("/api/recordings/{rid}/audio")

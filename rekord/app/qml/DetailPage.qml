@@ -95,7 +95,7 @@ Page {
         title: "An diese Aufnahme anhängen"
         fileMode: FileDialog.OpenFiles
         currentFolder: library.downloadsUrl
-        nameFilters: ["Audio & Video (*.m4a *.mp3 *.wav *.webm *.ogg *.opus *.flac *.aac *.mp4 *.mov *.mkv *.caf *.amr *.3gp)", "Alle Dateien (*)"]
+        nameFilters: [library.mediaFilter, "Alle Dateien (*)"]  // every audio/video format – others work too, if there's sound
         onAccepted: library.appendFiles(page.rid, selectedFiles)
     }
     SpeakerDialog { id: speakerDlg; objectName: "speakerDlg"; page: page }

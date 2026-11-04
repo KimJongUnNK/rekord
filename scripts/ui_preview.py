@@ -50,6 +50,19 @@ def seed() -> dict:
         w.writeframes((np.sin(np.arange(8000 * 70) / 8000 * 2 * np.pi * 220) * 800).astype("<i2").tobytes())
     db.update_recording(rec["id"], audio_path=str(wav), duration=70, highlights=[22.0, 48.0], notes="Budget nochmal mit Anna klären.",
                         peaks=[round(float(abs(np.sin(i / 7)) * 0.7 + rng.random() * 0.3), 3) for i in range(400)])
+    # it was a screen-shared call: stills from the video next to the lines (two "slides")
+    from rekord import frames
+    import av
+    for t, (title, colour) in ((0.0, ("LAUNCH", (255, 90, 31))), (14.5, ("LANDINGPAGE", (59, 130, 246)))):
+        img = np.zeros((360, 640, 3), np.uint8)
+        img[:] = (24, 24, 27)
+        img[40:70, 40:40 + 22 * len(title)] = colour  # a title bar
+        img[110:300, 40:600] = (52, 52, 58)  # the slide's content area
+        img[130:150, 60:400] = (200, 200, 205)
+        img[170:190, 60:520] = (150, 150, 155)
+        img[210:230, 60:360] = (150, 150, 155)
+        frames.folder(rec["id"]).mkdir(parents=True, exist_ok=True)
+        (frames.folder(rec["id"]) / frames._name(t)).write_bytes(frames._jpeg(av.VideoFrame.from_ndarray(img, format="rgb24")))
     db.add_summary(rec["id"], "mindmap", "Mind Map", "# Launch\n- Termin\n  - Freitag\n  - Plan B: Montag\n- Landingpage\n  - Texte bis Mittwoch\n"
                    "- Recht\n  - Freigabe bis Donnerstag\n  - Tom fragen")
     db.add_chat(rec["id"], "user", "Wer kümmert sich um die Freigabe?")
