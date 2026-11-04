@@ -167,26 +167,63 @@ class Library(QObject):
 
     @Slot("QVariantList", result=int)
     def importFiles(self, urls) -> int:  # noqa: N802 - QML API
-        """Audio/video files (from the file dialog or dropped on the window) → recordings, processed in the background."""
-        n, skipped = 0, []
+        """Audio/video files (file dialog, dropped on the window, or pasted with ⌘V / Strg+V) → recordings, processed in
+        the background. MP3, MP4, M4A, WAV, MOV … – from video only the sound is used."""
+        n, skipped, unreadable = 0, [], []
+        config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
         for u in urls:
             p = Path(QUrl(u).toLocalFile() if not isinstance(u, QUrl) else u.toLocalFile()) if "://" in str(u) or isinstance(u, QUrl) else Path(str(u))
             ext = p.suffix.lower()
-            if not p.is_file() or ext not in AUDIO_EXT:
-                skipped.append(p.name)
+            if p.is_dir() or ext not in AUDIO_EXT:
+                skipped.append(p.name or str(p))
                 continue
             rid = uuid.uuid4().hex[:12]
             dest = config.AUDIO_DIR / f"{rid}{ext}"
-            shutil.copyfile(p, dest)
+            try:  # e.g. macOS refuses the Downloads folder, or the file is gone / on a disconnected drive
+                shutil.copyfile(p, dest)
+            except OSError as e:
+                log.warning("import %s: %s", p, e)
+                dest.unlink(missing_ok=True)
+                unreadable.append((p.name, isinstance(e, PermissionError)))
+                continue
             db.create_recording(p.stem, str(dest), source="import", rec_id=rid)
             jobs.enqueue(rid)
             n += 1
         if n:
             self.toast.emit(f"{n} {'Datei wird' if n == 1 else 'Dateien werden'} verarbeitet")
         if skipped:
-            self.toast.emit("Nicht unterstützt: " + ", ".join(skipped[:3]))
+            self.toast.emit("Nicht unterstützt: " + ", ".join(skipped[:3]) + " – Audio oder Video, z. B. MP3, MP4, M4A, WAV, MOV")
+        if unreadable:
+            names = ", ".join(name for name, _ in unreadable[:3])
+            denied = any(d for _, d in unreadable)
+            self.toast.emit(f"Kein Zugriff auf {names}" + (
+                " – macOS sperrt den Ordner: Systemeinstellungen → Datenschutz & Sicherheit → Dateien und Ordner → REKORD "
+                "erlauben, oder die Datei über „Importieren“ auswählen." if denied and sys.platform == "darwin"
+                else " – keine Berechtigung, die Datei zu lesen." if denied else " – Datei nicht lesbar oder nicht mehr da."))
         self.refresh()
         return n
+
+    @Slot(result=int)
+    def pasteFiles(self) -> int:  # noqa: N802 - QML API
+        """⌘V / Strg+V with files copied in Finder or Explorer (e.g. from Downloads): import them. 0 = nothing to paste."""
+        from PySide6.QtGui import QGuiApplication
+        app = QGuiApplication.instance()
+        data = app.clipboard().mimeData() if app else None
+        if data is None:
+            return 0
+        urls = [u for u in data.urls() if u.isLocalFile()]
+        if not urls and data.hasText():  # a copied path, e.g. "Pfad kopieren" / "Als Pfad kopieren"
+            text = data.text().strip().strip('"')
+            if text and "\n" not in text and Path(text).suffix.lower() in AUDIO_EXT and Path(text).is_file():
+                urls = [QUrl.fromLocalFile(text)]
+        return self.importFiles(urls) if urls else 0
+
+    @Property(str, constant=True)
+    def downloadsUrl(self):  # noqa: N802 - QML API
+        """Where the import dialog opens: the Downloads folder (that's where files from mails and chats land)."""
+        from PySide6.QtCore import QStandardPaths
+        path = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DownloadLocation)
+        return QUrl.fromLocalFile(path).toString() if path and Path(path).is_dir() else ""
 
     @Slot(object)
     def _apply_job(self, ev: dict) -> None:

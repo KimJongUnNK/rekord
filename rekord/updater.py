@@ -297,6 +297,9 @@ def _apply_mac(file: Path, root: Path, work: Path, v: str) -> list[str]:
     if r.returncode != 0 or not (new / "Contents/MacOS/REKORD").exists():
         raise RuntimeError(f"Entpacken fehlgeschlagen: {r.stderr.strip()[:200]}")
     system.run(["xattr", "-dr", "com.apple.quarantine", str(new)], timeout=60)
+    # a valid (ad-hoc) signature for exactly this copy: macOS applies Mikrofon / Bildschirm- & Systemaudio
+    # permissions only to an app whose signature checks out
+    system.run(["codesign", "--force", "--deep", "--sign", "-", "--identifier", "app.rekord.desktop", str(new)], timeout=300)
     try:
         _swap(root, new, work)
     except PermissionError as e:

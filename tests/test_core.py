@@ -455,7 +455,8 @@ def test_mac_reset_clears_screen_and_microphone_of_this_app_only(monkeypatch):
     system, calls = _mac(monkeypatch)
     assert system.mac_reset_permissions() is True
     assert calls == [["tccutil", "reset", "ScreenCapture", "app.rekord.desktop"],
-                     ["tccutil", "reset", "Microphone", "app.rekord.desktop"]]
+                     ["tccutil", "reset", "Microphone", "app.rekord.desktop"],
+                     ["tccutil", "reset", "SystemPolicyDownloadsFolder", "app.rekord.desktop"]]
 
 
 def test_mac_new_version_resets_once(monkeypatch):
@@ -463,8 +464,8 @@ def test_mac_new_version_resets_once(monkeypatch):
     from rekord import config
     system, calls = _mac(monkeypatch)
     config.save({"mac_permissions_for": "1.3.3"})
-    assert system.mac_fresh_permissions("1.3.4") is True and len(calls) == 2
-    assert system.mac_fresh_permissions("1.3.4") is False and len(calls) == 2  # next start: nothing
+    assert system.mac_fresh_permissions("1.3.4") is True and len(calls) == 3
+    assert system.mac_fresh_permissions("1.3.4") is False and len(calls) == 3  # next start: nothing
     assert config.load()["mac_permissions_for"] == "1.3.4"
 
 

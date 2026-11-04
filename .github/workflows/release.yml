@@ -43,6 +43,17 @@ jobs:
           "./$BIN" > smoke.log 2>&1 &
           for i in $(seq 1 60); do curl -sf localhost:8799/api/status > /dev/null && break; sleep 2; done
           curl -sf localhost:8799/ | grep -q REKORD || { echo "::error title=smoke::$(tail -c 2500 smoke.log | tr '\n' ' ')"; exit 1; }
+      - name: macOS – seal the app (the test runs above wrote into it; a broken signature means macOS never applies its permissions)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cd desktop/dist
+          echo "files written into the app after the build:"; find REKORD.app -newer REKORD.app/Contents/Info.plist -type f | head -20
+          echo "signature before sealing:"; codesign --verify --deep --strict --verbose=2 REKORD.app 2>&1 | tail -4 || true
+          find REKORD.app -name "__pycache__" -type d -prune -exec rm -rf {} +
+          codesign --force --deep --sign - --identifier app.rekord.desktop REKORD.app
+          codesign --verify --deep --strict --verbose=2 REKORD.app || { echo "::error title=signature::REKORD.app signature invalid after sealing"; exit 1; }
+          codesign -d -r- REKORD.app 2>&1 | tail -2
       - name: package
         shell: bash
         run: |

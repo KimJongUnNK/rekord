@@ -83,7 +83,83 @@ def test_import_copies_and_queues(qt, tmp_path, monkeypatch):
     rec = db.get_recording(queued[0])
     assert rec["title"] == "Interview" and rec["source"] == "import" and Path(rec["audio_path"]).is_file()
     assert Path(rec["audio_path"]).parent == config.AUDIO_DIR
-    assert toasts == ["1 Datei wird verarbeitet", "Nicht unterstützt: notizen.txt"]
+    assert toasts[0] == "1 Datei wird verarbeitet" and toasts[1].startswith("Nicht unterstützt: notizen.txt – Audio oder Video")
+
+
+def test_import_mp3_and_mp4_from_downloads(qt, tmp_path, monkeypatch):
+    """MP3 and MP4 (a video: only its sound counts) are real recordings – decodable and queued for transcription."""
+    import av
+
+    from rekord import audio
+    lib = bridge.Library()
+    queued = []
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append(rid))
+    x = (audio.load(Path(__file__).parent / "fixtures" / "meeting1.wav")[:16000 * 3] * 32767).astype(np.int16)
+    for name, fmt, codec in (("Sprachnachricht.mp3", "mp3", "libmp3lame"), ("Zoom Aufzeichnung.mp4", "mp4", "aac")):
+        with av.open(str(tmp_path / name), "w", format=fmt) as out:
+            st = out.add_stream(codec, rate=16000)
+            st.layout = "mono"
+            fr = av.AudioFrame.from_ndarray(x.reshape(1, -1), format="s16", layout="mono")
+            fr.sample_rate = 16000
+            for pk in [*st.encode(fr), *st.encode(None)]:
+                out.mux(pk)
+    assert lib.importFiles([(tmp_path / "Sprachnachricht.mp3").as_uri(), (tmp_path / "Zoom Aufzeichnung.mp4").as_uri()]) == 2
+    recs = [db.get_recording(r) for r in queued]
+    assert [r["title"] for r in recs] == ["Sprachnachricht", "Zoom Aufzeichnung"]
+    for r in recs:
+        assert 2.9 < len(audio.load(r["audio_path"])) / 16000 < 3.2  # the pipeline reads it like any recording
+
+
+def test_import_says_why_a_file_cant_be_read(qt, tmp_path, monkeypatch):
+    """macOS refusing the Downloads folder (or a file that's gone) must not end the import silently."""
+    import shutil
+    import sys
+    lib = bridge.Library()
+    queued, toasts = [], []
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append(rid))
+    lib.toast.connect(toasts.append)
+    (tmp_path / "ok.mp3").write_bytes(b"\0" * 64)
+    (tmp_path / "gesperrt.mp4").write_bytes(b"\0" * 64)
+    real = shutil.copyfile
+
+    def copy(src, dst):
+        if Path(src).name == "gesperrt.mp4":
+            raise PermissionError(1, "Operation not permitted")
+        return real(src, dst)
+    monkeypatch.setattr(bridge.shutil, "copyfile", copy)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    before = set(config.AUDIO_DIR.iterdir())
+    assert lib.importFiles([str(tmp_path / "gesperrt.mp4"), str(tmp_path / "ok.mp3"), str(tmp_path / "weg.mp3")]) == 1
+    assert len(queued) == 1  # the readable one goes through
+    assert any("Kein Zugriff auf gesperrt.mp4, weg.mp3" in t and "Dateien und Ordner" in t for t in toasts), toasts
+    new = set(config.AUDIO_DIR.iterdir()) - before
+    assert [p.suffix for p in new] == [".mp3"]  # only the readable one – no half-copied leftovers
+
+
+def test_paste_imports_files_copied_in_finder_or_explorer(qt, tmp_path, monkeypatch):
+    from PySide6.QtCore import QMimeData, QUrl
+    from PySide6.QtGui import QGuiApplication
+    lib = bridge.Library()
+    queued = []
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append(rid))
+    (tmp_path / "Podcast.mp3").write_bytes(b"\0" * 64)
+    cb = QGuiApplication.clipboard()
+    data = QMimeData()
+    data.setUrls([QUrl.fromLocalFile(str(tmp_path / "Podcast.mp3"))])
+    cb.setMimeData(data)
+    if not cb.mimeData().urls():
+        pytest.skip("no clipboard on this platform/session")
+    assert lib.pasteFiles() == 1 and db.get_recording(queued[0])["title"] == "Podcast"
+    cb.setText(str(tmp_path / "Podcast.mp3"))  # "Als Pfad kopieren" (Windows) / ⌥⌘C (Mac)
+    assert lib.pasteFiles() == 1 and len(queued) == 2
+    cb.setText("nur ein Satz, keine Datei")
+    assert lib.pasteFiles() == 0 and len(queued) == 2  # ordinary text: nothing happens
+
+
+def test_import_dialog_opens_in_downloads(qt):
+    url = bridge.Library().downloadsUrl
+    assert url == "" or url.startswith("file://")
 
 
 class FakeSession:

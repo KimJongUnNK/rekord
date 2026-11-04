@@ -197,7 +197,7 @@ REKORD ist am Computer ein **echtes Programm** – kein Browser, keine Webseite 
 
 | Bereich | Was geht |
 |---|---|
-| **Aufnahmen** | Liste mit Sprecher-Punkten und Fortschritt der Auswertung · **Suchen** (auch im Gesagten) · **Ordner** als Filter · **Importieren** oder Dateien einfach ins Fenster ziehen |
+| **Aufnahmen** | Liste mit Sprecher-Punkten und Fortschritt der Auswertung · **Suchen** (auch im Gesagten) · **Ordner** als Filter · **Importieren**, Dateien ins Fenster ziehen oder im Finder/Explorer kopieren und mit **⌘ V** / **Strg + V** einfügen |
 | **Aufnahme ansehen** | **Player** mit Wellenform, farbiger Sprecher-Leiste und ★, **−15/+15**, Tempo **1×–2×** · **Titel** anklicken zum Umbenennen · **Sprecher** antippen: umbenennen, **Stimme merken**, zusammenführen · **Wer ist das?** für unbekannte Stimmen (anhören, Namen, **Merken**) · Reiter **Zusammenfassung** (Vorlage wählen, KI schreibt live mit; läuft die genaue Auswertung noch, heißt der Knopf **Nach der Auswertung** und merkt die Vorlage vor – das Protokoll entsteht dann automatisch aus dem vollständigen Transkript; To-dos abhaken, Zeitstempel springen ins Audio, kopieren, bearbeiten, löschen), **Transkript** (Text direkt korrigieren, Namen antippen → **Wer sagt das?**, suchen, **Suchen & Ersetzen**, **Mitscrollen**), **Mind Map** (erstellen, als SVG/PNG speichern), **Fragen** (Chat nur über diese Aufnahme), **Notizen** und **Ordner**, **Export** (Markdown, Word, PDF, Text, SRT, WebVTT, JSON, Audio, Zwischenablage) · **•••**: neu verarbeiten, Personen neu erkennen, umbenennen, löschen |
 | **Live** | großer Aufnahmeknopf · **Mikrofon** wählen (darunter) · **Wer ist dabei?** mit **Vor Ort**, **Online** und **Vorlesung** · groß in der Farbe der Person, wer gerade spricht · Redeanteile · **Nicht erkannte Stimme** antippen → Namen eingeben → **Merken** · **Mitschrift** live · **Markieren**, **Pause**, **Stopp & speichern** · kommt vom Mikrofon kein Ton an, sagt REKORD das und lässt dich **während der Aufnahme das Mikrofon wechseln**; setzt es aus (AirPods raus, USB abgesteckt), startet REKORD es von selbst neu · bei einem Bluetooth-Mikrofon (AirPods …) ein Hinweis zur Klangqualität |
 | **Personen** | alle bekannten Stimmen mit Aufnahmen und Stimmproben · **Person einsprechen** mit drei Wegen: **Text vorlesen** (eigener Text pro Name, **↻ Anderer Text**), **Einfach reden lassen** (**💬 Gesprächsidee**), **Aus Aufnahme lernen** (Aufnahme wählen, Stimme anhören ▶, auswählen, **Stimme lernen**) · Sekundenzähler zählt nur echte Sprache (mind. 25, ideal ~45 s) · **…oder eine Datei mit nur dieser Person** · Stift-Symbol: Name, Farbe, **Stimmabdruck löschen** · bei **Wer ist dabei?** gleich **Neue Person jetzt einsprechen** |
@@ -217,6 +217,7 @@ REKORD ist am Computer ein **echtes Programm** – kein Browser, keine Webseite 
 | **H** | Wichtigen Moment markieren (★) |
 | **Strg + F** (Mac: **⌘ F**) | Suchen |
 | **Strg + I** (Mac: **⌘ I**) | Importieren |
+| **Strg + V** (Mac: **⌘ V**) | kopierte Audio-/Videodateien importieren |
 | **Strg + 1** … **Strg + 5** (Mac: **⌘ 1** … **⌘ 5**) | Aufnahmen / Live / Fragen / Personen / Vorlagen – wie links in der Leiste |
 | **Strg + ,** (Mac: **⌘ ,**) | Einstellungen |
 
@@ -246,7 +247,7 @@ Der **rote Knopf** unten rechts (in Aufnahmen, Fragen, Personen und Vorlagen) sp
 ### Aufnahmen
 - **Noch ein Schritt:** Solange keine KI gewählt ist, steht hier die Auswahl **Lokal · gratis**, **Claude**, **ChatGPT** oder **Ohne KI weiter**.
 - **Suchen:** findet Titel *und* alles, was gesagt wurde.
-- **Importieren:** Audio- oder Videodateien wählen oder einfach ins Fenster ziehen (Sprachmemos, Zoom, Diktiergerät).
+- **Importieren:** Audio- oder Videodateien wählen (der Dialog startet in **Downloads**), ins Fenster ziehen oder im Finder/Explorer kopieren und in REKORD mit **⌘ V** / **Strg + V** einfügen – MP3, MP4, M4A, WAV, MOV und mehr (Sprachmemos, Zoom, WhatsApp, Diktiergerät). Bei Videos zählt nur der Ton. Kann REKORD eine Datei nicht lesen, sagt es warum.
 - **Ordner:** erscheinen oben als Filter, sobald eine Aufnahme einen Ordner hat (vergibst du unter *Notizen*).
 - Eine Aufnahme anklicken öffnet sie:
   - **Titel** antippen zum Umbenennen.
@@ -345,7 +346,7 @@ Die Installations-Zeile von oben funktioniert weiterhin auch als Update.
 |---|---|
 | **Mac:** *„REKORD ist beschädigt“* | Terminal öffnen, `xattr -dr com.apple.quarantine /Applications/REKORD.app` eingeben, REKORD nochmal öffnen |
 | **Kein Mikrofon** | *Live* → unter dem Aufnahmeknopf das richtige **Mikrofon** wählen. Mac: in der Fehlermeldung **Mikrofon-Einstellung öffnen** → REKORD an |
-| **Mac: alles erlaubt, aber REKORD sagt, es darf nicht aufnehmen** | Der Schalter gehört noch zu einer älteren REKORD-Version (jede Version hat eine neue Signatur). In der Fehlermeldung **Rechte neu setzen** tippen, Aufnahme neu starten, erlauben, wenn macOS fragt – beim Call-Ton danach REKORD einmal neu starten. **Systemaudio-Einstellung öffnen** bzw. **Mikrofon-Einstellung öffnen** springt direkt zum Schalter. Ohne Knopf, im Terminal: `tccutil reset ScreenCapture app.rekord.desktop` und `tccutil reset Microphone app.rekord.desktop` |
+| **Mac: alles erlaubt, aber REKORD sagt, es darf nicht aufnehmen** | Der Schalter gehört noch zu einer älteren REKORD-Version (jede Version hat eine neue Signatur). In der Fehlermeldung **Rechte neu setzen** tippen, Aufnahme neu starten, erlauben, wenn macOS fragt – beim Call-Ton danach REKORD einmal neu starten. **Systemaudio-Einstellung öffnen** bzw. **Mikrofon-Einstellung öffnen** springt direkt zum Schalter. Ohne Knopf, im Terminal (REKORD vorher beenden): `codesign --force --deep --sign - /Applications/REKORD.app`, dann `tccutil reset ScreenCapture app.rekord.desktop` und `tccutil reset Microphone app.rekord.desktop` |
 | **iPhone findet den Computer nicht** | Gleiches WLAN? (Gäste-WLANs trennen Geräte.) Ist REKORD am Computer offen? (Tipp: *Speicher & Datenschutz* → **Mit dem Computer starten**.) Windows: Firewall „Private Netzwerke“ erlaubt? Linux: *iPhone & Geräte* → **Für iPhone freigeben** |
 | **Lokal einrichten hängt oder bricht ab** | Internet prüfen, nochmal **Lokal einrichten** – fertige Teile werden nicht neu geladen. |
 | **„Modelle werden geladen“ geht nicht weiter** | Internet prüfen → *Einstellungen → Modelle* → **Laden** |

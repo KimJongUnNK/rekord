@@ -19,6 +19,12 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.3.6 – Mac: Signatur repariert · Dateien einfügen
+- **Mac: „Schalter ist an, aber es geht trotzdem nicht“ – die eigentliche Ursache.** Die Release-Pipeline hat die Mac-App für ihre Tests gestartet und erst danach verpackt. Beim Start schreibt die App in sich selbst – damit war ihre Signatur ungültig, und macOS wendet Mikrofon- und Systemaudio-Erlaubnis auf eine App mit ungültiger Signatur nie an, egal wie der Schalter steht. Jetzt wird die App nach den Tests frisch signiert und streng geprüft; die Installations-Zeile und das In-App-Update signieren die App auf deinem Mac zusätzlich selbst.
+- **Dateien einfügen:** Audio- oder Videodatei im Finder/Explorer kopieren (z. B. aus *Downloads*) und in REKORD **⌘ V** / **Strg + V** – wird importiert und transkribiert. Auch ein kopierter Dateipfad geht.
+- **Importieren** öffnet direkt im Ordner *Downloads*.
+- Kann REKORD eine Datei nicht lesen (macOS sperrt *Downloads*, Datei weg), sagt es das jetzt – statt still nichts zu tun. Nach einem Update wird auch die *Downloads*-Erlaubnis frisch abgefragt.
+
 ### Neu in 1.3.5 – Mac: „alles erlaubt, aber REKORD darf nicht aufnehmen“ behoben
 - **Der Fehler:** Unter *Datenschutz & Sicherheit* stand REKORD auf „an“, trotzdem meldete REKORD, macOS erlaube Mikrofon bzw. Call-Ton nicht. Grund: Die Mac-App hat kein kostenpflichtiges Apple-Zertifikat, jede Version hat deshalb eine neue Signatur – und macOS hängt die Erlaubnis an die Signatur der **alten** Version. Der Schalter sieht an aus, gilt aber nicht mehr.
 - **Automatisch:** Beim ersten Start einer neuen Version setzt REKORD seine alten Schalter selbst zurück. macOS fragt dann bei der nächsten Aufnahme sauber neu – erlauben, beim Call-Ton danach REKORD einmal neu starten.

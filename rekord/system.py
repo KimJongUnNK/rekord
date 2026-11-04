@@ -185,7 +185,8 @@ def keep_awake(on: bool) -> bool:
 # ------------------------------------------------------------------ macOS privacy switches (TCC)
 
 MAC_BUNDLE_ID = "app.rekord.desktop"  # desktop/rekord.spec
-MAC_SERVICES = ("ScreenCapture", "Microphone")  # Bildschirm- & Systemaudioaufnahme (the call's sound), Mikrofon
+# Bildschirm- & Systemaudioaufnahme (the call's sound), Mikrofon, Downloads (importing files from there)
+MAC_SERVICES = ("ScreenCapture", "Microphone", "SystemPolicyDownloadsFolder")
 
 
 def mac_reset_permissions(services: tuple[str, ...] = MAC_SERVICES) -> bool:

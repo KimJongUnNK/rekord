@@ -126,6 +126,11 @@ ApplicationWindow {
     Shortcut { sequences: ["Ctrl+R", "Ctrl+N"]; onActivated: win.startRecording() }
     Shortcut { sequences: [StandardKey.Find]; onActivated: { win.go("library"); libraryPage.focusSearch() } }
     Shortcut { sequence: "Ctrl+I"; onActivated: win.importFiles() }
+    Shortcut {  // ⌘V / Strg+V: files copied in Finder or Explorer are imported – text fields keep their own paste
+        sequences: [StandardKey.Paste]
+        enabled: !(win.activeFocusItem && win.activeFocusItem.cursorPosition !== undefined)
+        onActivated: if (library.pasteFiles() > 0) win.go("library")
+    }
     Shortcut { sequence: "Ctrl+1"; onActivated: win.go("library") }
     Shortcut { sequence: "Ctrl+2"; onActivated: win.go("live") }
     Shortcut { sequence: "Ctrl+3"; onActivated: win.go("ask") }
@@ -197,6 +202,7 @@ ApplicationWindow {
         id: importDialog
         title: "Aufnahmen importieren"
         fileMode: FileDialog.OpenFiles
+        currentFolder: library.downloadsUrl
         nameFilters: ["Audio & Video (*.m4a *.mp3 *.wav *.webm *.ogg *.opus *.flac *.aac *.mp4 *.mov *.mkv *.caf *.amr *.3gp)", "Alle Dateien (*)"]
         onAccepted: { library.importFiles(selectedFiles); win.go("library") }
     }

@@ -89,6 +89,16 @@ jobs:
           cat job.log
           if [ $rc -ne 0 ]; then echo "::error title=analysis process ${{ runner.os }}::$(tail -c 2500 job.log | tr -d '\r' | tr '\n%' ' _')"; exit 1; fi
           echo "::notice title=analysis process ${{ runner.os }}::$(grep -E 'command:|exit code|OK' job.log | tr -d '\r' | tr '\n' ' ' | cut -c1-900)"
+      - name: macOS – the app's signature after the test runs, and sealed again (macOS applies permissions only to a valid one)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cd desktop/dist
+          echo "files written into the app after the build:"; find REKORD.app -newer REKORD.app/Contents/Info.plist -type f | head -20
+          echo "signature before sealing:"; codesign --verify --deep --strict --verbose=2 REKORD.app 2>&1 | tail -4 || true
+          find REKORD.app -name "__pycache__" -type d -prune -exec rm -rf {} +
+          codesign --force --deep --sign - --identifier app.rekord.desktop REKORD.app
+          codesign --verify --deep --strict --verbose=2 REKORD.app || { echo "::error title=signature::invalid after sealing"; exit 1; }
       - uses: actions/upload-artifact@v7
         if: always()
         with: { name: "window-shots-${{ runner.os }}", path: window-shots/, if-no-files-found: ignore }
