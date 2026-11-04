@@ -132,8 +132,9 @@ jobs:
                   -e APPIMAGE_EXTRACT_AND_RUN=1 "$1" bash /t.sh "$2" "$3" || { echo "::error title=$1::install/start failed"; exit 1; }; }
           t debian:bullseye      "dpkg -i /pkgs/rekord_${VER}_amd64.deb" 8801
           t ubuntu:24.04         "dpkg -i /pkgs/rekord_${VER}_amd64.deb" 8802
-          t fedora:latest        "rpm -i /pkgs/rekord-${VER}-1.x86_64.rpm" 8803
-          t opensuse/tumbleweed  "rpm -i /pkgs/rekord-${VER}-1.x86_64.rpm" 8804
+          # the commands the guide and install.sh give users (RPM 6 refuses unsigned packages with a bare rpm -i)
+          t fedora:latest        "dnf install -y /pkgs/rekord-${VER}-1.x86_64.rpm" 8803
+          t opensuse/tumbleweed  "zypper --non-interactive install --allow-unsigned-rpm /pkgs/rekord-${VER}-1.x86_64.rpm" 8804
           t archlinux:latest     "pacman -U --noconfirm /pkgs/rekord-${VER}-1-x86_64.pkg.tar.zst" 8805
           t fedora:latest        "install -m755 /pkgs/REKORD-${VER}-x86_64.AppImage /usr/local/bin/rekord" 8806
       - name: AUR PKGBUILD builds with makepkg

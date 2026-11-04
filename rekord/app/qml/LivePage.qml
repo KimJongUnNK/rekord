@@ -138,6 +138,7 @@ Page {
                 : "Strg+R startet von überall. Während der Aufnahme: Leertaste = Pause, H = Moment markieren."
             font.family: Theme.text; font.pixelSize: 13; color: live.error ? Theme.err : Theme.fg3
         }
+        MacFix { Layout.alignment: Qt.AlignHCenter }
     }
 
     // ================================================================ during the recording
@@ -207,19 +208,24 @@ Page {
             }
         }
 
-        Rectangle {  // e.g. the call sound couldn't be captured
+        Rectangle {  // e.g. the call sound couldn't be captured – on a Mac with the buttons that fix it
             visible: live.notes !== ""
             Layout.fillWidth: true
-            Layout.preferredHeight: noteText.implicitHeight + 20
+            Layout.preferredHeight: noteCol.implicitHeight + 20
             radius: 10
             color: Qt.rgba(0.96, 0.62, 0.04, 0.14)
-            Text {
-                id: noteText
-                anchors.fill: parent
-                anchors.margins: 10
-                wrapMode: Text.WordWrap
-                text: live.notes
-                font.family: Theme.text; font.pixelSize: 13; color: Theme.fg
+            ColumnLayout {
+                id: noteCol
+                x: 10; y: 10
+                width: parent.width - 20
+                spacing: 8
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: live.notes
+                    font.family: Theme.text; font.pixelSize: 13; color: Theme.fg
+                }
+                MacFix {}
             }
         }
 

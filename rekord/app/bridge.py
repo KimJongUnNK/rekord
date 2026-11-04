@@ -8,6 +8,7 @@ import logging
 import queue
 import re
 import shutil
+import sys
 import threading
 import time
 import uuid
@@ -369,7 +370,8 @@ def with_mic_permission(owner: QObject, then, fail) -> None:
     if st == Qt.PermissionStatus.Granted:
         then()
     elif st == Qt.PermissionStatus.Denied:
-        fail("Mikrofon ist gesperrt – Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon → REKORD erlauben.")
+        fail("macOS lässt REKORD nicht ans Mikrofon. Schalter schon an? Dann gehört er zu einer älteren "
+             "REKORD-Version – „Rechte neu setzen“ und beim nächsten Start erlauben.")
     else:
         app.requestPermission(perm, owner, lambda *_: then() if app.checkPermission(perm) == Qt.PermissionStatus.Granted
                               else fail("Ohne Mikrofon kann REKORD nicht aufnehmen."))
@@ -529,6 +531,41 @@ class Live(QObject):
     @Property("QVariantMap", notify=changed)
     def lastWho(self):  # noqa: N802 - QML API
         return dict(config.load()["desktop"]["who"])
+
+    @Property(bool, constant=True)
+    def isMac(self):  # noqa: N802 - QML API
+        return sys.platform == "darwin"
+
+    @Property(str, notify=changed)
+    def macBlocked(self):  # noqa: N802 - QML API
+        """Which macOS permission stops this recording: "ScreenCapture" (the call's sound), "Microphone" or ""."""
+        if sys.platform != "darwin":
+            return ""
+        text = self._notes + " " + self._error
+        if "macOS" not in text:
+            return ""
+        if "Call-Ton" in text:  # first: the "Nur Call-Ton" refusal also says "ohne Mikrofon …"
+            return "ScreenCapture"
+        return "Microphone" if "Mikrofon" in self._error else ""
+
+    @Slot(str)
+    def openMacPrivacy(self, service: str) -> None:  # noqa: N802 - QML API
+        from .. import system
+        if not system.mac_open_privacy(service or "ScreenCapture"):
+            self.toast.emit("Systemeinstellungen ließen sich nicht öffnen.")
+
+    @Slot()
+    def resetMacPermissions(self) -> None:  # noqa: N802 - QML API
+        """The switches in System Settings show "on", but macOS still refuses: they belong to an older build.
+        Clear them – macOS asks again on the next recording."""
+        from .. import system
+        ok = system.mac_reset_permissions()
+        self._error, self._notes = "", ""
+        self.toast.emit("Rechte zurückgesetzt. Starte die Aufnahme neu und erlaube, wenn macOS fragt – "
+                        "beim Call-Ton danach REKORD einmal neu starten." if ok else
+                        "Zurücksetzen hat nicht geklappt. Im Terminal: tccutil reset ScreenCapture app.rekord.desktop "
+                        "und tccutil reset Microphone app.rekord.desktop")
+        self.changed.emit()
 
     @Property(bool, constant=True)
     def callAvailable(self):  # noqa: N802 - QML API

@@ -136,7 +136,8 @@ def run(port: int) -> int:
     (the caller then falls back to the previous interface)."""
     from PySide6.QtCore import QTimer
 
-    from .. import desktop
+    from .. import __version__, desktop, system
+    system.mac_fresh_permissions(__version__)  # a new build: macOS asks again instead of silently refusing
     w = build(port)
     if w is None:
         return 1

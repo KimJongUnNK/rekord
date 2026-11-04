@@ -125,6 +125,7 @@ def main(out: Path) -> int:
     from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, QObject
 
     from rekord import app as rapp
+    from rekord import capture
     from rekord.app import bridge
     ids = seed()
     live.LiveSession = FakeSession
@@ -201,6 +202,17 @@ def main(out: Path) -> int:
     wait(0.3)
     win.setProperty("page", "live")
     shot("live")
+    # a Mac where macOS refuses although the switch shows "on": the buttons that fix it, in the message itself
+    import sys as _sys
+    real_platform, _sys.platform = _sys.platform, "darwin"
+    o["live"]._error = "Live-Start fehlgeschlagen: " + capture.MacCapture.PERMISSION
+    o["live"].changed.emit()
+    shot("live-mac-blocked")
+    if o["live"].macBlocked != "ScreenCapture":
+        problems_extra.append("live: macOS refusal without the buttons that fix it")
+    _sys.platform = real_platform
+    o["live"]._error = ""
+    o["live"].changed.emit()
     win.setProperty("whoOpen", True)
     shot("who")
     who = win.findChild(QObject, "whoDlg")
