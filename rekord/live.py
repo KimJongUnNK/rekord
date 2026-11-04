@@ -31,6 +31,7 @@ SPEAKING_EVERY = 0.5
 SPEAKING_WINDOW = 1.6
 QUIET_AFTER = 1.2  # "nobody speaks" only after this much real quiet – not in every breath between two words
 MERGE_MAX = 10.0  # behind with the transcript: short lines of one speaker in one go (saves whisper's fixed cost)
+PUMP_STEP = 0.1  # only the call's sound: it's read in blocks of this many seconds
 LAG_MAX = 20.0  # the live transcript never lags more than this: further behind, its preview skips to now
 
 
@@ -40,9 +41,12 @@ resample = audio.resample  # a whole signal; streams use audio.Resampler
 class LiveSession:
     def __init__(self, emit, title: str = "", source: str = "live", sample_rate: int = SR,
                  participants: list[int] | None = None, guests: int = 0, meeting: str = "person",
-                 call_audio: bool = False):
+                 call_audio: bool = False, mic: bool = True):
         """meeting="online": with call_audio the computer's sound (the other people in Teams/Zoom/Meet) is mixed
-        into the microphone – sound only, no picture."""
+        into the microphone – sound only, no picture. mic=False (online + call_audio only): ONLY the call's sound is
+        recorded – your own microphone is left out entirely, the call sound runs on its own clock and whatever
+        arrives through feed_pcm16 is ignored. Without the call sound there would be nothing to record: then the
+        start fails with the reason instead of silently recording silence."""
         import sherpa_onnx
         self.s = config.load()
         self.emit = emit
@@ -75,20 +79,13 @@ class LiveSession:
                 self.engine = asr.get_engine({**self.s, "threads": system.processing_threads(self.s["threads"], True)})
             except Exception as e:  # noqa: BLE001 - live works without words, too
                 log.warning("live ASR unavailable: %s", e)
+        # the call's sound first: without the microphone it's the only source – no recording without it
+        self._open_call(call_audio, mic)
         self.title = title or time.strftime("Meeting %d.%m.%Y %H:%M")
         self.rec = db.create_recording(self.title, "", source=source, status="recording")
         self.rid = self.rec["id"]
         if self.participants or self.guests or self.meeting != "person":
             db.update_recording(self.rid, participants={"ids": self.participants, "guests": self.guests, "meeting": self.meeting})
-        self.call = None
-        self.notes: list[str] = []
-        if self.meeting == "online" and call_audio:
-            from . import capture
-            self.call = capture.SystemAudio()
-            if not self.call.start():
-                self.notes.append(self.call.error)
-                self.call = None
-
         self.wav_path = config.AUDIO_DIR / f"{self.rid}.wav"
         self.wav = audio.WavAppender(self.wav_path)
         self.ring = np.zeros(0, dtype=np.float32)
@@ -113,9 +110,34 @@ class LiveSession:
         self._last_probe: dict | None = None
         self._lock = threading.RLock()  # clusters/segments are touched by the worker and by name_speaker()
         self._unclear_before = False
+        self._pump_stop = threading.Event()
+        self._pump = None
+        if not self.mic:  # only the call: nobody feeds us – the call sound itself drives the clock
+            self._pump = threading.Thread(target=self._run_pump, daemon=True, name=f"live-call-{self.rid}")
+            self._pump.start()
+
+    def _open_call(self, call_audio: bool, mic: bool = True) -> None:
+        """Sets self.call (the call's sound or None), self.mic (False = only the call, microphone left out) and
+        self.notes. Only the call wanted, but it can't be captured: RuntimeError with the reason (nothing to record)."""
+        self.call = None
+        self.mic = True
+        self.notes: list[str] = []
+        if self.meeting != "online" or not call_audio:
+            return
+        from . import capture
+        call = capture.SystemAudio()
+        if call.start():
+            self.call, self.mic = call, bool(mic)
+            return
+        if not mic:
+            raise RuntimeError(f"{call.error} – ohne Mikrofon gibt es nichts aufzunehmen. "
+                               "Mit Mikrofon starten oder den Call über die Lautsprecher mithören lassen.")
+        self.notes.append(call.error)
 
     # ------------------------------------------------------------ input
     def feed_pcm16(self, data: bytes) -> None:
+        if not self.mic:  # only the call's sound: the microphone stays out, even if a client still sends it
+            return
         x = self._rs(np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0)
         if self.call is not None:  # online: the others in the call, in step with the microphone
             call = self.call.read(len(x))
@@ -150,6 +172,20 @@ class LiveSession:
                     self._quiet_since = self.t
                 if self.t - self._quiet_since >= QUIET_AFTER:
                     self.emit({"type": "silence", "t": round(self.t, 2)})
+
+    def _run_pump(self) -> None:
+        """Only the call's sound: read it at the pace of the clock, 100 ms at a time (silence where nothing came)."""
+        n = int(SR * PUMP_STEP)
+        due = time.monotonic()
+        while not self._pump_stop.wait(max(0.0, due - time.monotonic())):
+            due += PUMP_STEP
+            if due < time.monotonic() - 1.0:  # the computer slept / stalled: continue from now, don't invent minutes
+                due = time.monotonic()
+            x = self.call.read(n)  # also while paused: what's said in the pause is dropped, like with the microphone
+            try:
+                self.feed(x)
+            except Exception as e:  # noqa: BLE001 - one bad block must not end the recording
+                log.warning("live call pump: %s", e)
 
     def _drain_vad(self) -> None:
         while not self.vad.empty():
@@ -199,6 +235,9 @@ class LiveSession:
         if self._closed:
             return self.rid
         self._closed = True
+        self._pump_stop.set()
+        if self._pump is not None:
+            self._pump.join(timeout=5)
         if self.call is not None:
             self.call.stop()
         self.vad.flush()

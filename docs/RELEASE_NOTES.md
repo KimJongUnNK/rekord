@@ -19,6 +19,12 @@
 **Installieren:** **[Schritt-für-Schritt-Anleitung für Mac, Windows, iPhone und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**. Erster Start: einmalig ~700 MB Sprachmodelle, danach offline.
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
+### Neu in 1.3.4 – Online-Meetings: mit oder ohne dein Mikrofon
+- **Du entscheidest, ob du mit drauf bist.** Bei *Online* fragt „Wer ist dabei?“ jetzt: **Call + mein Mikro** (wie bisher: die anderen im Call und du) oder **Nur Call-Ton** – dann nimmt REKORD nur auf, was Teams, Zoom, Meet … am Computer abspielen.
+- **Nur Call-Ton heißt wirklich: Mikrofon aus.** Es wird gar nicht erst geöffnet – kein Tippen, Husten oder Hintergrund von dir auf der Aufnahme, keine Mikrofon-Abfrage. Ideal für Webinare, Vorträge und Calls, in denen du nur zuhörst. Der Pegel zeigt dann den Call-Ton, oben steht *Nur Call-Ton · Mikro aus*.
+- **Ehrlich, wenn's nicht geht:** Kann der Computer den Call-Ton nicht abgreifen (z. B. macOS älter als 13, keine Erlaubnis für *Bildschirm- & Systemaudioaufnahme*), startet *Nur Call-Ton* nicht stumm, sondern sagt warum – mit Mikrofon geht's dann wie gewohnt.
+- REKORD merkt sich deine Wahl für die nächste Aufnahme. Auch in der Browser-Version (Einstellungen → Audio & Mikrofon und bei „Wer ist dabei?“).
+
 ### Neu in 1.3.3 – Live-Anzeige, Klang und Wiedergabe repariert
 - **„Ich rede, aber REKORD zeigt mich stumm“ – behoben.** Die Anzeige, wer gerade spricht, wartete hinter der Live-Transkription, und schon jede Atempause galt als Stille. Jetzt hat sie einen eigenen Ablauf, und „niemand spricht“ kommt erst nach 1,2 s echter Ruhe. Gemessen (Echtzeit, Test-Meeting): vorher 94 % der Sprechzeit fälschlich als stumm angezeigt, jetzt 1 %.
 - **Klang: nicht mehr „elektronisch“.** Die Umrechnung des Mikrofons auf 16 kHz passierte in kleinen Häppchen ohne Filter – Störgeräusche fast so laut wie die Stimme (Signal-Rausch-Abstand 0–11 dB). Jetzt ein durchgehender Filter: 95 dB, sauberer Klang in der Aufnahme und bessere Erkennung. Gilt für das Mikrofon im Fenster, *Person einsprechen*, den Call-Ton bei Online-Meetings und den Live-Stream vom iPhone.

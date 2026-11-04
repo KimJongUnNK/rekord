@@ -9,6 +9,8 @@ Sheet {
     required property var app
     signal started()
     property string meeting: "person"
+    property bool withMic: true   // online: your own microphone too – false = only the call's sound
+    readonly property bool callOnly: meeting === "online" && live.callAvailable && !withMic
     property var ids: []
     property int total: 0
     readonly property bool lecture: meeting === "lecture"
@@ -19,6 +21,7 @@ Sheet {
     function openFresh() {
         const w = live.lastWho
         meeting = w.meeting || "person"
+        withMic = w.mic !== false
         const have = people.items.map(p => p.id)
         ids = (w.ids || []).filter(i => have.indexOf(i) >= 0)
         total = Math.max(w.total || 0, ids.length)
@@ -36,7 +39,7 @@ Sheet {
     }
     function go() {
         if (!ready) return
-        live.start(titleField.text, meeting, ids, lecture ? ids.length : total)
+        live.start(titleField.text, meeting, ids, lecture ? ids.length : total, !callOnly)
         close()
         started()
     }
@@ -97,10 +100,29 @@ Sheet {
             Layout.topMargin: -6
             wrapMode: Text.WordWrap
             text: dlg.meeting === "person" ? "Alle im Raum – das Mikrofon reicht."
-                : dlg.meeting === "online" ? (live.callAvailable ? "Teams, Zoom, Meet …: REKORD nimmt den Ton vom Computer mit auf – nur Ton, kein Bild – plus dein Mikrofon."
-                                                                 : "Den Ton vom Computer kann REKORD hier nicht abgreifen – stell die Lautsprecher so, dass das Mikrofon mithört.")
+                : dlg.meeting === "online" ? (!live.callAvailable ? "Den Ton vom Computer kann REKORD hier nicht abgreifen – stell die Lautsprecher so, dass das Mikrofon mithört."
+                                              : dlg.withMic ? "Teams, Zoom, Meet …: REKORD nimmt den Ton vom Computer auf – nur Ton, kein Bild – plus dein Mikrofon. Du bist mit drauf."
+                                              : "Nur der Ton vom Computer – was Teams, Zoom, Meet … abspielen. Dein Mikrofon bleibt aus: du bist nicht drauf, Geräusche bei dir auch nicht.")
                 : "Eine Person trägt vor, Fragen aus dem Hörsaal sammelt REKORD unter „Publikum“. Mitzählen musst du nicht. Mikro Richtung Vortrag."
             font.family: Theme.text; font.pixelSize: 14; color: Theme.fg3
+        }
+
+        // ---- online: with or without your own microphone
+        ColumnLayout {
+            visible: dlg.meeting === "online" && live.callAvailable
+            Layout.fillWidth: true
+            spacing: 8
+            RowLayout {
+                spacing: 6
+                Text { text: "Dein Mikrofon auch aufnehmen?"; font.family: Theme.text; font.pixelSize: 15; font.weight: Font.Bold; color: Theme.fg }
+                Tip { key: "callmic" }
+            }
+            Segmented {
+                Layout.fillWidth: true
+                model: [{ value: "both", label: "Call + mein Mikro", icon: "mic" }, { value: "call", label: "Nur Call-Ton", icon: "wave" }]
+                value: dlg.withMic ? "both" : "call"
+                onPicked: (v) => dlg.withMic = v === "both"
+            }
         }
 
         // ---- how many
@@ -108,7 +130,7 @@ Sheet {
             visible: !dlg.lecture
             Layout.fillWidth: true
             spacing: 10
-            Text { text: "Wie viele seid ihr – dich mitgezählt?"; font.family: Theme.text; font.pixelSize: 15; font.weight: Font.Bold; color: Theme.fg }
+            Text { text: dlg.callOnly ? "Wie viele sind im Call zu hören – ohne dich?" : "Wie viele seid ihr – dich mitgezählt?"; font.family: Theme.text; font.pixelSize: 15; font.weight: Font.Bold; color: Theme.fg }
             RowLayout {
                 spacing: 8
                 Btn { small: true; iconName: "minus"; onClicked: dlg.total = Math.max(Math.max(1, dlg.ids.length), dlg.total - 1) }

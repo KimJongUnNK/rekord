@@ -196,6 +196,40 @@ print(json.dumps({{"segs": [e["name"] for e in ev if e["type"] == "segment"],
     assert r["participants"]["meeting"] == "online"
 
 
+def test_online_meeting_only_the_call_without_microphone(people, pulse, tmp_path):
+    """Online, "Nur Call-Ton": nobody feeds a microphone at all – REKORD records only what the computer plays,
+    on the call sound's own clock, and still knows who speaks."""
+    import json
+    import subprocess
+    import sys
+    script = f"""
+import json, subprocess, sys, time
+sys.path.insert(0, {str(Path(__file__).resolve().parent.parent)!r})
+from rekord import db, live
+ev = []
+s = live.LiveSession(ev.append, "Webinar", meeting="online", call_audio=True, mic=False)
+assert s.call is not None and s.mic is False, s.notes
+s.feed_pcm16(bytes([0, 127]) * 16000)  # a microphone that still sends: left out
+p = subprocess.Popen(["paplay", "--device=speakers", {str(FIX / "meeting1.wav")!r}])
+time.sleep(38)
+p.wait()
+rid = s.stop()
+rec = db.get_recording(rid)
+print(json.dumps({{"segs": [e["name"] for e in ev if e["type"] == "segment"],
+                  "text": " ".join(e.get("text", "") for e in ev if e["type"] == "segment"),
+                  "duration": rec["duration"], "levels": sum(1 for e in ev if e["type"] == "level")}}))
+"""
+    (tmp_path / "callonly.py").write_text(script)
+    out = subprocess.run([sys.executable, str(tmp_path / "callonly.py")], env=pulse, capture_output=True, text=True, timeout=240)
+    assert out.returncode == 0, out.stderr[-3000:]
+    r = json.loads(out.stdout.strip().splitlines()[-1])
+    assert len(r["segs"]) >= 5, r
+    assert {"Emil", "Lisa"} <= set(r["segs"]), r["segs"]
+    assert len(r["text"]) > 100
+    assert 34 <= r["duration"] <= 45, r["duration"]  # real time from the call's own clock – not more, not less
+    assert r["levels"] > 100  # the meter moves without a microphone
+
+
 def _write_wav(path, x):
     import wave as _wave
     with _wave.open(str(path), "wb") as w:

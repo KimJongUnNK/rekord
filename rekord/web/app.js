@@ -113,7 +113,7 @@ async function confirmBox(title, text, okLabel = "Löschen") {
 
 // ================================================================ per-device preferences (theme, accent, mic …)
 const DEVICE_DEFAULTS = { theme: "system", accent: "#FF5A1F", density: "comfortable", micId: "", echoCancellation: true, noiseSuppression: true,
-  autoGainControl: true, inputMode: "mic", liveDetect: true, participants: [], guests: 0, wakeLock: true, autoscroll: true, rate: 1, detailTab: "summary" };
+  autoGainControl: true, inputMode: "mic", callMic: true, liveDetect: true, participants: [], guests: 0, wakeLock: true, autoscroll: true, rate: 1, detailTab: "summary" };
 const prefs = (() => { try { return { ...DEVICE_DEFAULTS, ...JSON.parse(localStorage.getItem("rekord.device") || "{}") }; } catch (e) { return { ...DEVICE_DEFAULTS }; } })();
 function setPref(k, v) {
   prefs[k] = v;
@@ -385,6 +385,7 @@ registerProcessor("down16k", Down16k);`;
 class Capture {
   constructor({ onPcm, onLevel }) { this.onPcm = onPcm; this.onLevel = onLevel; this.streams = []; }
   async start(mode = prefs.inputMode) {
+    if (mode === "system") return this.startSystemOnly();
     const constraints = { audio: { deviceId: prefs.micId ? { exact: prefs.micId } : undefined, channelCount: 1,
       echoCancellation: prefs.echoCancellation, noiseSuppression: prefs.noiseSuppression, autoGainControl: prefs.autoGainControl } };
     let mic;
@@ -418,6 +419,27 @@ class Capture {
     const mute = this.ctx.createGain(); mute.gain.value = 0;
     this.node.connect(mute).connect(this.ctx.destination);
     this.mediaStream = mic;
+  }
+  // online, "Nur Call-Ton": only what the shared tab/screen plays – the microphone is never opened
+  async startSystemOnly() {
+    let sys;
+    try { sys = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: { echoCancellation: false, noiseSuppression: false }, systemAudio: "include" }); }
+    catch (e) { throw new Error("Call-Ton abgelehnt – ohne Mikrofon gibt es nichts aufzunehmen."); }
+    sys.getVideoTracks().forEach((t) => t.stop());
+    if (!sys.getAudioTracks().length) { sys.getTracks().forEach((t) => t.stop()); throw new Error("Kein Ton freigegeben – beim Teilen „Audio teilen“ anhaken."); }
+    this.streams.push(sys);
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.ctx.state === "suspended") await this.ctx.resume();
+    const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
+    await this.ctx.audioWorklet.addModule(url);
+    this.node = new AudioWorkletNode(this.ctx, "down16k");
+    this.node.port.onmessage = (e) => { if (e.data instanceof ArrayBuffer && this.onPcm) this.onPcm(e.data); };
+    const src = this.ctx.createMediaStreamSource(new MediaStream(sys.getAudioTracks()));
+    src.connect(this.node);
+    if (this.onLevel) this.meter(src);
+    const mute = this.ctx.createGain(); mute.gain.value = 0;
+    this.node.connect(mute).connect(this.ctx.destination);
+    this.mediaStream = sys;
   }
   // Level meter: dBFS from an AnalyserNode, read once per frame. Rises instantly, falls back smoothly,
   // so it can't get stuck at a peak (and doesn't depend on worklet messages, which WebKit throttles).
@@ -571,6 +593,7 @@ let liveUI = null;
 // online: the call's sound – natively on this computer (any app: Teams, Zoom …), otherwise via the browser's tab sharing
 const callNative = () => IS_LOCAL && !!(state.status && state.status.capture && state.status.capture.system_audio);
 const callBrowser = () => !!navigator.mediaDevices?.getDisplayMedia && !IS_MOBILE;
+const callCapturable = () => callNative() || callBrowser();
 function callHint() {
   if (callNative()) return `<span style="color:#22C55E">✓</span> REKORD nimmt den Ton des Calls direkt am Computer auf – auch wenn Teams oder Zoom als App läuft. Mit Kopfhörern am saubersten.`
     + (/Mac/.test(navigator.platform) ? " Beim ersten Mal fragt macOS nach „Bildschirm- & Systemaudioaufnahme“ – erlauben." : "");
@@ -589,12 +612,16 @@ async function askParticipants() {
   const ids = new Set(prefs.participants.filter((id) => people.some((p) => p.id === id)));
   let total = prefs.whoTotal ? Math.max(prefs.whoTotal, ids.size) : 0;  // 0 = not answered yet
   let meeting = prefs.inputMode === "mic+system" || prefs.inputMode === "lecture" ? prefs.inputMode : "mic";
+  let callMic = prefs.callMic !== false;
   const lecture = () => meeting === "lecture";
+  const callOnly = () => meeting === "mic+system" && !callMic && callCapturable();
   for (;;) {
     const r = await dialog(`<h2>Wer ist dabei?${tip("who")}</h2>
       <div><b>Wo findet das Meeting statt?</b>${tip("meeting")}</div>
       <div class="seg" id="w-meet" style="align-self:flex-start;flex-wrap:wrap"><button type="button" data-v="mic">Vor Ort</button><button type="button" data-v="mic+system">Online (Teams, Zoom, Meet …)</button><button type="button" data-v="lecture">Vorlesung</button></div>
       <div id="w-meet-hint" class="muted" style="font-size:13px;margin-top:-4px"></div>
+      <div id="w-micq"><div><b>Dein Mikrofon auch aufnehmen?</b>${tip("callmic")}</div>
+        <div class="seg" id="w-mic" style="align-self:flex-start;flex-wrap:wrap;margin-top:6px"><button type="button" data-v="1">Call + mein Mikro</button><button type="button" data-v="0">Nur Call-Ton</button></div></div>
       <p class="muted" style="margin:0" id="w-why">Damit REKORD weiß, wie viele Stimmen es trennen muss – und wen es schon kennt.</p>
       <div class="who-q" id="w-count"><div><b>Wie viele sprechen?</b>${tip("total")}<div class="muted" style="font-size:13px">dich mitgezählt</div></div>
         <div class="stepper"><button type="button" class="btn icon" id="w-minus" aria-label="weniger">−</button><b id="w-total">–</b>
@@ -609,7 +636,12 @@ async function askParticipants() {
       const draw = () => {
         $$("#w-meet button", b).forEach((x) => x.classList.toggle("on", x.dataset.v === meeting));
         $("#w-meet-hint", b).innerHTML = meeting === "mic" ? "Alle im Raum – das Mikrofon reicht."
-          : lecture() ? `Eine Person trägt vor, Fragen aus dem Hörsaal sammelt REKORD unter „Publikum“. Mitzählen musst du nicht. Mikro Richtung Vortrag.${tip("lecture")}` : callHint();
+          : lecture() ? `Eine Person trägt vor, Fragen aus dem Hörsaal sammelt REKORD unter „Publikum“. Mitzählen musst du nicht. Mikro Richtung Vortrag.${tip("lecture")}`
+          : callHint() + (callCapturable() ? (callMic ? " Dein Mikrofon läuft mit – du bist auf der Aufnahme." : " <b>Nur Call-Ton</b>: dein Mikrofon bleibt aus – du bist nicht auf der Aufnahme.") : "");
+        $("#w-micq", b).style.display = meeting === "mic+system" && callCapturable() ? "" : "none";
+        $$("#w-mic button", b).forEach((x) => x.classList.toggle("on", (x.dataset.v === "1") === callMic));
+        $("#w-count b", b).textContent = callOnly() ? "Wie viele sind im Call zu hören?" : "Wie viele sprechen?";
+        $("#w-count .muted", b).textContent = callOnly() ? "ohne dich" : "dich mitgezählt";
         $("#w-count", b).style.display = $("#w-quick", b).style.display = lecture() ? "none" : "";
         $("#w-why", b).textContent = lecture() ? "Ist die vortragende Person schon bekannt? Dann antippen – sonst einfach starten." : "Damit REKORD weiß, wie viele Stimmen es trennen muss – und wen es schon kennt.";
         $("#w-total", b).textContent = total || "–";
@@ -631,6 +663,7 @@ async function askParticipants() {
         if (intro) intro.onclick = () => { b.closest("dialog").close("intro"); };
       };
       $$("#w-meet button", b).forEach((x) => x.onclick = () => { meeting = x.dataset.v; draw(); });
+      $$("#w-mic button", b).forEach((x) => x.onclick = () => { callMic = x.dataset.v === "1"; draw(); });
       $("#w-minus", b).onclick = () => { total = Math.max(ids.size || 1, (total || 1) - 1); draw(); };
       $("#w-plus", b).onclick = () => { total = Math.min(30, (total || 0) + 1); draw(); };
       $$("#w-quick [data-n]", b).forEach((x) => x.onclick = () => { total = Math.max(Number(x.dataset.n), ids.size); draw(); });
@@ -655,6 +688,7 @@ async function askParticipants() {
     if (r !== "ok" || (!total && !lecture())) return false;
     setPref("participants", [...ids]);
     setPref("inputMode", meeting);
+    setPref("callMic", callMic);
     if (!lecture()) {
       setPref("guests", Math.max(0, total - ids.size));
       setPref("whoTotal", total);
@@ -700,34 +734,51 @@ async function startLive(title) {
     });
     s.online = prefs.inputMode === "mic+system";
     s.native = s.online && callNative();
-    await s.capture.start(s.online && !s.native && callBrowser() ? "mic+system" : "mic");
+    // "Nur Call-Ton": the microphone is never opened – natively the hub records the call itself, otherwise tab sharing
+    s.callOnly = s.online && prefs.callMic === false && callCapturable();
+    if (s.callOnly && s.native) s.capture = { stop() {} };
+    else await s.capture.start(s.callOnly ? "system" : s.online && !s.native && callBrowser() ? "mic+system" : "mic");
   } catch (e) {
     liveSession = null; liveUI && liveUI.render();
-    toast("Mikrofon nicht verfügbar: " + e.message, 5000);
+    toast((s.callOnly ? "" : "Mikrofon nicht verfügbar: ") + e.message, 6000);
     return;
   }
   if (prefs.wakeLock && navigator.wakeLock) { try { s.wake = await navigator.wakeLock.request("screen"); } catch (e) {} }
-  const goOffline = () => { s.offline = true; liveUI && liveUI.render(); };
-  if (!useWs) { goOffline(); return; }
+  // only the call, recorded by the hub itself: there's nothing here to keep offline – without the hub it ends
+  const hubOnly = s.callOnly && s.native;
+  const goOffline = () => {
+    if (hubOnly) {
+      if (liveSession === s && !s.savedId) { liveSession = null; if (s.wake) s.wake.release().catch(() => {}); }
+      liveUI && liveUI.render();
+      return;
+    }
+    s.offline = true; liveUI && liveUI.render();
+  };
+  if (!useWs && !hubOnly) { goOffline(); return; }
   s.ws = new WebSocket(wsUrl("/ws/live"));
   s.ws.binaryType = "arraybuffer";
   s.ws.onopen = () => s.ws.send(JSON.stringify({ type: "start", sample_rate: 16000, title: s.title, participants: s.participants, guests: s.guests,
-    meeting: s.online ? "online" : prefs.inputMode === "lecture" ? "lecture" : "person", call_audio: !!s.native }));
-  s.ws.onerror = () => { if (!s.started) { toast("Hub nicht erreichbar – nehme offline auf."); goOffline(); } };
+    meeting: s.online ? "online" : prefs.inputMode === "lecture" ? "lecture" : "person", call_audio: !!s.native, mic: !(s.callOnly && s.native) }));
+  s.ws.onerror = () => { if (!s.started) { toast(hubOnly ? "Hub nicht erreichbar – „Nur Call-Ton“ braucht ihn. Mit Mikrofon starten." : "Hub nicht erreichbar – nehme offline auf.", 6000); goOffline(); } };
   setTimeout(() => {  // hub too slow to answer: keep recording, evaluate afterwards
-    if (liveSession === s && !s.started && !s.offline && !s.stopping) { toast("Live-Erkennung startet nicht – nehme trotzdem auf, Auswertung danach.", 5000); goOffline(); try { s.ws.close(); } catch (e) {} }
+    if (liveSession === s && !s.started && !s.offline && !s.stopping) { toast(hubOnly ? "Live-Aufnahme startet nicht – bitte nochmal versuchen." : "Live-Erkennung startet nicht – nehme trotzdem auf, Auswertung danach.", 5000); goOffline(); try { s.ws.close(); } catch (e) {} }
   }, 45000);
-  s.ws.onclose = () => { if (!s.stopping && s.started) { toast("Verbindung verloren – Aufnahme wird lokal fortgesetzt."); goOffline(); } };
+  s.ws.onclose = () => { if (!s.stopping && s.started) { toast(hubOnly ? "Verbindung verloren – das Aufgenommene ist gespeichert." : "Verbindung verloren – Aufnahme wird lokal fortgesetzt."); goOffline(); } };
   s.ws.onmessage = (m) => {
     const ev = JSON.parse(m.data);
     if (ev.type === "started") {
       s.started = true; s.id = ev.id;
-      if (s.native) toast(ev.call_audio ? "Call-Ton läuft – die anderen im Call werden mit aufgenommen." : `Nur Mikrofon: ${(ev.notes || []).join(" ")}`, ev.call_audio ? 3500 : 9000);
+      if (s.native) toast(!ev.call_audio ? `Nur Mikrofon: ${(ev.notes || []).join(" ")}` : ev.mic === false ? "Nur Call-Ton – dein Mikrofon ist aus."
+        : "Call-Ton läuft – die anderen im Call werden mit aufgenommen.", ev.call_audio ? 3500 : 9000);
       if (!s.offline) { s.chunks.splice(0).forEach((b) => s.ws.send(b)); }  // what was said while the hub got ready
     }
     else if (ev.type === "error") { toast(ev.error, 6000); goOffline(); }
     else if (ev.type === "speaking") { s.now = ev; liveUI && (liveUI.now(ev), liveUI.roster()); }
     else if (ev.type === "silence") { s.now = { silence: true }; liveUI && liveUI.now(s.now); }
+    else if (ev.type === "level" && hubOnly) {  // only the call: the meter shows what the hub hears
+      const v = Math.max(0, Math.min(1, (20 * Math.log10((ev.rms || 0) + 1e-9) + 60) / 54));
+      const l = $("#lvl"); if (l) l.style.width = v * 100 + "%"; const r = $("#ring"); if (r) r.style.setProperty("--lvl", v.toFixed(2));
+    }
     else if (ev.type === "segment") {
       s.lines.push(ev);
       const sp = s.speakers.find((x) => x.key === ev.key); if (sp) sp.talk = (sp.talk || 0) + (ev.end - ev.start);
@@ -1987,7 +2038,8 @@ async function viewSettings() {
         <div class="level" style="flex:1"><i id="mic-lvl"></i></div></div></div></div>
       <div class="field"><div class="lbl">Meeting-Art${tip("meeting")}<span class="hint">Vorauswahl – wird vor jeder Aufnahme bei „Wer ist dabei?“ bestätigt.</span></div>
         <div><div class="seg" id="imode">${[["mic", "Vor Ort", "Alle im Raum – das Mikrofon reicht"], ["mic+system", "Online", "Teams, Zoom, Meet … – der Ton des Calls wird mit aufgenommen"], ["lecture", "Vorlesung", "Eine Person trägt vor, Fragen aus dem Hörsaal werden gesammelt"]].map(([k, n, t]) => `<button data-v="${k}" title="${t}" class="${prefs.inputMode === k ? "on" : ""}">${n}</button>`).join("")}</div>
-        <div class="hint" id="call-hint" style="margin-top:6px"></div></div></div>
+        <div class="hint" id="call-hint" style="margin-top:6px"></div>
+        <div class="row" style="margin-top:10px;gap:8px"><span>Online: dein Mikrofon${tip("callmic")}</span><div class="seg" id="cmic"><button data-v="1" class="${prefs.callMic !== false ? "on" : ""}">Call + mein Mikro</button><button data-v="0" class="${prefs.callMic === false ? "on" : ""}">Nur Call-Ton</button></div></div></div></div>
       <div class="field"><div class="lbl">Audio-Verarbeitung${tip("processing")}<span class="hint">Für Raum-Meetings meist alles an. Für Musik/Interviews mit gutem Mikro: aus.</span></div><div>
         ${[["noiseSuppression", "Rauschunterdrückung"], ["echoCancellation", "Echo-Unterdrückung"], ["autoGainControl", "Automatische Lautstärke"]].map(([k, n]) =>
           `<label class="row" style="margin-bottom:6px"><input type="checkbox" data-pref="${k}" ${prefs[k] ? "checked" : ""}> ${n}${tip(k)}</label>`).join("")}</div></div>
@@ -2087,6 +2139,7 @@ async function viewSettings() {
   };
   $$("#imode button").forEach((b) => b.onclick = () => { setPref("inputMode", b.dataset.v); $$("#imode button").forEach((x) => x.classList.toggle("on", x === b)); });
   $("#call-hint").innerHTML = "Online: " + callHint();
+  $$("#cmic button").forEach((b) => b.onclick = () => { setPref("callMic", b.dataset.v === "1"); $$("#cmic button").forEach((x) => x.classList.toggle("on", x === b)); });
   $$("[data-pref]").forEach((cb) => cb.onchange = () => setPref(cb.dataset.pref, cb.checked));
 
   // AI

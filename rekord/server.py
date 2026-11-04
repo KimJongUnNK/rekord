@@ -1136,13 +1136,15 @@ async def ws_live(ws: WebSocket):
                     sess = await asyncio.to_thread(live.LiveSession, emit, ctl.get("title", ""), ctl.get("source", "live"),
                                                    int(ctl.get("sample_rate", 16000)), ctl.get("participants") or [],
                                                    int(ctl.get("guests", 0) or 0), ctl.get("meeting") or "person",
-                                                   here and bool(ctl.get("call_audio")))
+                                                   here and bool(ctl.get("call_audio")),
+                                                   # "mic": false = only the call's sound (only where it's captured here)
+                                                   not (here and bool(ctl.get("call_audio"))) or ctl.get("mic", True) is not False)
                 except Exception as e:  # noqa: BLE001
                     await ws.send_json({"type": "error", "error": f"Live-Start fehlgeschlagen: {e}"})
                     continue
                 live.register(sess)
                 emit({"type": "started", "id": sess.rid, "title": sess.title,
-                      "call_audio": sess.call is not None, "notes": sess.notes})
+                      "call_audio": sess.call is not None, "mic": sess.mic, "notes": sess.notes})
                 emit({"type": "speakers", "items": []})
             elif sess is None:
                 continue

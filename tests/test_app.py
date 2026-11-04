@@ -89,9 +89,10 @@ def test_import_copies_and_queues(qt, tmp_path, monkeypatch):
 class FakeSession:
     made: list = []
 
-    def __init__(self, emit, title, source, sample_rate, participants, guests, meeting, call_audio):
+    def __init__(self, emit, title, source, sample_rate, participants, guests, meeting, call_audio, mic=True):
         self.emit, self.title, self.sample_rate = emit, title, sample_rate
         self.participants, self.guests, self.meeting, self.call_audio = participants, guests, meeting, call_audio
+        self.mic = mic or not (meeting == "online" and call_audio)  # like LiveSession: off only online with call sound
         self.rid = db.create_recording(title, "", source=source, status="recording")["id"]
         self.call, self.notes, self.paused, self._closed = None, [], False, False
         self.audio = bytearray()
@@ -134,7 +135,8 @@ def test_live_recording_from_start_to_saved(fake_live):
     assert pump(lambda: lv.state == "recording")
     s = FakeSession.made[-1]
     assert (s.title, s.meeting, s.participants, s.guests, s.call_audio) == ("Jour fixe", "online", [lisa], 3, True)
-    assert config.load()["desktop"]["who"] == {"meeting": "online", "ids": [lisa], "total": 4}
+    assert config.load()["desktop"]["who"] == {"meeting": "online", "ids": [lisa], "total": 4, "mic": True}
+    assert lv.micOn and s.mic
     lv._on_chunk(chunk, 16000)
     assert pump(lambda: len(s.audio) == 2 * len(chunk))
     assert lv.level > 0.1
@@ -162,6 +164,65 @@ def test_live_recording_from_start_to_saved(fake_live):
     lv.stop()
     assert pump(lambda: finished == [s.rid], timeout=5)
     assert lv.state == "idle" and s._closed and lv.speaking == {}
+
+
+def test_live_online_only_the_call_without_microphone(fake_live, monkeypatch):
+    """Online, "Nur Call-Ton": the microphone is never opened (no permission, no stall/silence warnings) – the
+    session gets mic=False and the meter follows the call's sound."""
+    lv = fake_live
+    opened = []
+    monkeypatch.setattr(bridge.Mic, "start", lambda self, device_id="": opened.append(device_id) or True)
+    asked = []
+    monkeypatch.setattr(bridge.Live, "_with_mic_permission", lambda self, then: (asked.append(1), then()))
+    lv.start("Webinar", "online", [], 3, False)
+    assert pump(lambda: lv.state == "recording")
+    s = FakeSession.made[-1]
+    assert (s.meeting, s.call_audio, s.mic) == ("online", True, False)
+    assert opened == [] and asked == [] and not lv.micOn  # not opened, not even asked for
+    assert config.load()["desktop"]["who"]["mic"] is False  # the next "Wer ist dabei?" starts from that
+    for rms in (0.1, 0.1, 0.1):
+        threading.Thread(target=s.emit, args=({"type": "level", "rms": rms, "t": 1.0},)).start()
+    assert pump(lambda: lv.level > 0.3)
+    lv._last_chunk = time.monotonic() - 60  # no microphone chunks ever: that's expected, not a stalled microphone
+    lv._quiet_from = time.monotonic() - 60
+    lv._check()
+    assert opened == [] and lv.micWarning == ""
+    lv.setMic("usb-mic")  # choosing a microphone meanwhile doesn't switch one on
+    assert opened == [] and config.load()["desktop"]["mic"] == "usb-mic"
+    lv.stop()
+    assert pump(lambda: lv.state == "idle", timeout=5)
+    # next time with the microphone again: it's opened as before
+    lv.start("Jour fixe", "online", [], 3, True)
+    assert pump(lambda: lv.state == "recording")
+    assert opened == ["usb-mic"] and asked == [1] and lv.micOn and FakeSession.made[-1].mic
+    lv.stop()
+    assert pump(lambda: lv.state == "idle", timeout=5)
+
+
+def test_live_microphone_choice_only_counts_online_with_call_sound(fake_live, monkeypatch):
+    lv = fake_live
+    lv.start("Raum", "person", [], 2, False)  # in the room the microphone is all there is
+    assert pump(lambda: lv.state == "recording")
+    assert lv.micOn and FakeSession.made[-1].mic
+    lv.stop()
+    assert pump(lambda: lv.state == "idle", timeout=5)
+    monkeypatch.setattr(bridge.Live, "callAvailable", property(lambda self: False))
+    lv.start("Call", "online", [], 2, False)  # no call sound on this computer: the microphone has to hear it
+    assert pump(lambda: lv.state == "recording")
+    assert lv.micOn and FakeSession.made[-1].call_audio is False
+    lv.stop()
+    assert pump(lambda: lv.state == "idle", timeout=5)
+
+
+def test_live_call_only_failure_is_shown(fake_live, monkeypatch):
+    def broken(*a, **kw):
+        raise RuntimeError("Call-Ton nicht verfügbar – ohne Mikrofon gibt es nichts aufzunehmen.")
+    monkeypatch.setattr(live, "LiveSession", broken)
+    toasts = []
+    fake_live.toast.connect(toasts.append)
+    fake_live.start("x", "online", [], 2, False)
+    assert pump(lambda: fake_live.state == "idle" and toasts)
+    assert "ohne Mikrofon" in fake_live.error
 
 
 def test_live_lecture_counts_nobody_and_room_without_call(fake_live, monkeypatch):

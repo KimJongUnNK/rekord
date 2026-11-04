@@ -407,6 +407,8 @@ class Live(QObject):
         self._notes = ""
         self._error = ""
         self._call = False
+        self._with_mic = True   # online: also your own microphone (False = only the call's sound)
+        self._mic_on = True     # this recording really uses the microphone
         self._highlights = 0
         self._q: "queue.Queue" = queue.Queue()
         self._pending: list[tuple[bytes, int]] = []  # audio before the engine is ready (first start loads models)
@@ -486,6 +488,11 @@ class Live(QObject):
     def callAudio(self):  # noqa: N802 - QML API
         return self._call
 
+    @Property(bool, notify=changed)
+    def micOn(self):  # noqa: N802 - QML API
+        """False while only the call's sound is recorded – your microphone is off for this recording."""
+        return self._mic_on
+
     @Property(int, notify=changed)
     def highlights(self):
         return self._highlights
@@ -511,7 +518,7 @@ class Live(QObject):
     def setMic(self, device_id: str) -> None:  # noqa: N802 - QML API
         config.save({"desktop": {"mic": device_id}})
         self.micsChanged.emit()
-        if self._state in ("recording", "paused"):  # switch right away – the recording continues with the new one
+        if self._state in ("recording", "paused") and self._mic_on:  # switch right away – the recording continues with the new one
             self._mic.stop()
             self._quiet_from, self._warning = None, ""
             if self._mic.start(device_id):
@@ -533,8 +540,10 @@ class Live(QObject):
 
     # ---------- control
     @Slot(str, str, "QVariantList", int)
-    def start(self, title: str, meeting: str, participants, total: int) -> None:
-        """total: how many people are there (known ones included) – the rest are new voices. Not asked in a lecture."""
+    @Slot(str, str, "QVariantList", int, bool)
+    def start(self, title: str, meeting: str, participants, total: int, with_mic: bool = True) -> None:
+        """total: how many people are there (known ones included) – the rest are new voices. Not asked in a lecture.
+        with_mic=False (online only): record only the call's sound – what Teams/Zoom/Meet play – not your microphone."""
         if self._state != "idle":
             return
         self._title = title.strip() or time.strftime("Meeting %d.%m.%Y %H:%M")
@@ -542,8 +551,9 @@ class Live(QObject):
         ids = [int(x) for x in (participants or [])]
         total = max(int(total or 0), len(ids))
         guests = 0 if self._meeting == "lecture" else max(0, total - len(ids))
+        self._with_mic = bool(with_mic)
         try:  # the next "Wer ist dabei?" starts from this
-            config.save({"desktop": {"who": {"meeting": self._meeting, "ids": ids, "total": total}}})
+            config.save({"desktop": {"who": {"meeting": self._meeting, "ids": ids, "total": total, "mic": self._with_mic}}})
         except Exception:  # noqa: BLE001 - e.g. data drive missing
             pass
         self._lines.set_items([])
@@ -551,8 +561,15 @@ class Live(QObject):
         self._pending, self._level = [], 0.0
         self._rs, self._quiet_from, self._warning, self._last_chunk = None, None, "", 0.0
         self._state = "starting"
+        self._mic_on = not self._call_only()
         self.changed.emit()
-        self._with_mic_permission(lambda: self._begin(ids, guests))
+        if self._mic_on:
+            self._with_mic_permission(lambda: self._begin(ids, guests))
+        else:  # only the call's sound: the microphone isn't opened, so no microphone permission is needed
+            self._begin(ids, guests)
+
+    def _call_only(self) -> bool:
+        return self._meeting == "online" and not self._with_mic and self.callAvailable
 
     def _with_mic_permission(self, then) -> None:
         with_mic_permission(self, then, self._fail)
@@ -565,7 +582,8 @@ class Live(QObject):
 
     def _begin(self, ids: list[int], guests: int) -> None:
         call = self._meeting == "online" and self.callAvailable
-        if not self._mic.start(config.load()["desktop"]["mic"]):
+        mic = self._mic_on
+        if mic and not self._mic.start(config.load()["desktop"]["mic"]):
             self._state = "idle"
             self.changed.emit()
             return
@@ -573,7 +591,8 @@ class Live(QObject):
         def make():
             try:
                 # always 16 kHz: the feeder converts whatever rate the microphone delivers (often 44.1/48 kHz)
-                sess = live.LiveSession(self._event.emit, self._title, "live", live.SR, ids, guests, self._meeting, call)
+                sess = live.LiveSession(self._event.emit, self._title, "live", live.SR, ids, guests, self._meeting, call,
+                                        mic=mic)
                 live.register(sess)
                 self._ready.emit(sess, "")
             except Exception as e:  # noqa: BLE001
@@ -588,6 +607,7 @@ class Live(QObject):
             return
         self._sess = sess
         self._call = sess.call is not None
+        self._mic_on = bool(getattr(sess, "mic", True))
         self._notes = " ".join(n for n in sess.notes if n)
         for item in self._pending:  # what was said while the models loaded
             self._q.put(item)
@@ -692,7 +712,7 @@ class Live(QObject):
     @Slot()
     def _check(self) -> None:
         """Every quarter second while recording: the clock, and whether the microphone still delivers."""
-        if self._state == "recording":
+        if self._state == "recording" and self._mic_on:
             now = time.monotonic()
             if self._last_chunk and now - self._last_chunk > MIC_STALL and now - self._restarted > 8:
                 # nothing for a while (AirPods taken out, USB microphone unplugged, the system took it away): again,
@@ -742,6 +762,11 @@ class Live(QObject):
                               "key": ev.get("key") if ev.get("key") is not None else -1}
         elif kind == "silence":
             self._speaking = {}
+        elif kind == "level":  # only the call's sound: the meter shows the call (no microphone chunks arrive)
+            if not self._mic_on:
+                self._level = 0.6 * self._level + 0.4 * min(1.0, float(ev.get("rms") or 0) * 6)
+                self.levelChanged.emit()
+            return
         elif kind == "speakers":
             total = sum(float(i.get("talk") or 0) for i in ev.get("items", [])) or 1
             self._roster = [{"name": i.get("name", ""), "color": i.get("color", "#8A877F"), "known": bool(i.get("known")),
