@@ -254,13 +254,17 @@ def test_storage_info_and_first_start_choice(client, monkeypatch):
     assert s["home"] == str(config.HOME) and s["drives"] and "usage" in s
     started = []
     monkeypatch.setattr(srv, "start_downloads", lambda: started.append(1))
-    monkeypatch.setattr(app.state, "auto_download", True, raising=False)
-    config.save({"storage_chosen": False})
-    assert client.get("/api/status").json()["storage_chosen"] is False
-    r = client.post("/api/storage/choose", json={"home": str(config.HOME)})  # keep the default → go
-    assert r.status_code == 200 and started == [1] and config.load()["storage_chosen"] is True
-    assert client.post("/api/storage/move", json={"what": "models", "target": "relativ/pfad"}).status_code == 400
-    monkeypatch.setattr(app.state, "auto_download", False, raising=False)
+    # set and restored by hand: monkeypatch's undo on starlette 1.x's State fails at teardown (KeyError 'auto_download')
+    before = getattr(app.state, "auto_download", False)
+    app.state.auto_download = True
+    try:
+        config.save({"storage_chosen": False})
+        assert client.get("/api/status").json()["storage_chosen"] is False
+        r = client.post("/api/storage/choose", json={"home": str(config.HOME)})  # keep the default → go
+        assert r.status_code == 200 and started == [1] and config.load()["storage_chosen"] is True
+        assert client.post("/api/storage/move", json={"what": "models", "target": "relativ/pfad"}).status_code == 400
+    finally:
+        app.state.auto_download = before
 
 
 def test_best_local_model_and_load_and_use(client, monkeypatch):
