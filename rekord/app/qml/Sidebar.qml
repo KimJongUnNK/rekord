@@ -263,6 +263,15 @@ Rectangle {
                     Layout.fillWidth: true
                     onClicked: rekord.installUpdate()
                 }
+                Text {
+                    visible: rekord.status.updateState === "error" && !!rekord.status.updateError
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: rekord.status.updateError || ""
+                    font.family: Theme.text
+                    font.pixelSize: 11
+                    color: Theme.err
+                }
             }
         }
 
@@ -323,14 +332,29 @@ Rectangle {
                 onClicked: rekord.setTheme(Theme.mode === "system" ? "light" : Theme.mode === "light" ? "dark" : "system")
             }
         }
-        Text {
+        RowLayout {  // the version – and „Nach Updates suchen“, always one click away
             visible: !side.narrow
             Layout.leftMargin: 8
-            text: "Version " + rekord.version
-            font.family: Theme.text
-            font.pixelSize: 12
-            color: Theme.fg3
-            opacity: 0.8
+            Layout.fillWidth: true
+            spacing: 6
+            Text {
+                text: "Version " + rekord.version
+                font.family: Theme.text
+                font.pixelSize: 12
+                color: Theme.fg3
+            }
+            Text {
+                id: checkUp
+                objectName: "checkUpdate"
+                visible: !rekord.status.update
+                text: "· <u>Nach Updates suchen</u>"
+                textFormat: Text.StyledText
+                font.family: Theme.text
+                font.pixelSize: 12
+                color: checkHover.hovered ? Theme.accent : Theme.fg3
+                HoverHandler { id: checkHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: rekord.checkUpdate() }
+            }
         }
     }
 }

@@ -111,7 +111,8 @@ def connect() -> sqlite3.Connection:
 
 
 MIGRATIONS = {"recordings": {"title_locked": "INTEGER DEFAULT 0", "participants": "TEXT DEFAULT '{}'",
-                             "context_fixes": "TEXT DEFAULT '[]'"},  # corrections from the Unterlagen: [{from,to,count,by,off}]
+                             "context_fixes": "TEXT DEFAULT '[]'",  # corrections from the Unterlagen
+                             "transcript_undo": "TEXT DEFAULT '{}'"},  # the lines before the last AI change  # corrections from the Unterlagen: [{from,to,count,by,off}]
               "speakers": {"voices": "INTEGER DEFAULT 1"},
               "segments": {"voice": "INTEGER",
                            "orig": "TEXT"}}  # what the recognizer wrote, while Unterlagen-corrections changed the line  # which unknown voice (cluster) a line in the bucket belongs to  # >1: the "Nicht erkannte Stimme" bucket holds several people
@@ -160,6 +161,8 @@ def _row(r: sqlite3.Row | None) -> dict | None:
     for k in ("tags", "highlights", "peaks", "context_fixes"):
         if k in d and isinstance(d[k], str):
             d[k] = json.loads(d[k] or "[]")
+    if isinstance(d.get("transcript_undo"), str):  # the edit history: {"undo": [...], "redo": [...]}
+        d["transcript_undo"] = json.loads(d["transcript_undo"] or "{}") or {}
     if isinstance(d.get("participants"), str):
         d["participants"] = json.loads(d["participants"] or "{}") or {}
     d.pop("embedding", None)
@@ -206,8 +209,8 @@ def list_recordings(q: str = "", folder: str | None = None, limit: int = 500) ->
 
 
 ALLOWED_REC_FIELDS = {"title", "title_locked", "participants", "duration", "audio_path", "status", "stage", "progress", "error", "language",
-                      "folder", "tags", "highlights", "notes", "peaks", "context_fixes"}
-_JSON_FIELDS = ("tags", "highlights", "peaks", "participants", "context_fixes")
+                      "folder", "tags", "highlights", "notes", "peaks", "context_fixes", "transcript_undo"}
+_JSON_FIELDS = ("tags", "highlights", "peaks", "participants", "context_fixes", "transcript_undo")
 
 
 def update_recording(rid: str, **fields) -> dict | None:
@@ -323,6 +326,36 @@ def set_segment_texts(updates: list[tuple[int, str, str | None]]) -> None:
         for sid, text, orig in updates:
             c.execute("UPDATE segments SET text=?, orig=? WHERE id=?", (text, orig, sid))
             c.execute("UPDATE segments_fts SET text=? WHERE segment_id=?", (text, sid))
+
+
+def get_segment(sid: int) -> dict | None:
+    r = connect().execute("SELECT * FROM segments WHERE id=?", (sid,)).fetchone()
+    return dict(r) if r else None
+
+
+def set_texts(rid: str, texts: dict[int, str]) -> None:
+    """New texts for lines of a recording (an edit by hand, by the AI, undo/redo)."""
+    with tx() as c:
+        for sid, text in texts.items():
+            c.execute("UPDATE segments SET text=?, orig=NULL WHERE id=? AND recording_id=?", (text, sid, rid))
+            c.execute("UPDATE segments_fts SET text=? WHERE segment_id=?", (text, sid))
+
+
+def delete_segments(rid: str, ids: list[int]) -> None:
+    with tx() as c:
+        for sid in ids:
+            c.execute("DELETE FROM segments_fts WHERE segment_id=?", (sid,))
+            c.execute("DELETE FROM segments WHERE id=? AND recording_id=?", (sid, rid))
+
+
+def restore_segments(rid: str, rows: list[dict]) -> None:
+    """Removed lines back, exactly as they were (id, times, speaker)."""
+    with tx() as c:
+        for s in rows:
+            c.execute("INSERT OR IGNORE INTO segments(id,recording_id,start,end,speaker_id,text,lang,voice,orig) "
+                      "VALUES(?,?,?,?,?,?,?,?,?)", (s["id"], rid, s["start"], s["end"], s.get("speaker_id"), s["text"],
+                                                    s.get("lang", ""), s.get("voice"), s.get("orig")))
+            c.execute("INSERT INTO segments_fts(text,recording_id,segment_id) VALUES(?,?,?)", (s["text"], rid, s["id"]))
 
 
 def find_replace(rid: str, find: str, replace: str) -> int:

@@ -69,3 +69,12 @@ def test_live_short_sentences_use_the_main_language(monkeypatch):
     fixed.s, fixed._langs, fixed._main = {"language": "de"}, {}, None
     fixed._note_language("<|en|>", 30)
     assert fixed._langs == {} and fixed._main is None  # a fixed language needs none of this
+
+
+def test_ollama_errors_in_words():
+    from rekord.llm import providers
+    m = providers.ollama_error(500, '{"error":"model requires more system memory (21.3 GiB) than is available (9.1 GiB)"}', "qwen3:30b")
+    assert "21.3 GiB" in m and "kleineres Modell" in m and "qwen3:30b" in m
+    assert "zu alt" in providers.ollama_error(500, '{"error":"unknown model architecture: qwen3"}', "x")
+    assert "abgestürzt" in providers.ollama_error(500, '{"error":"llama runner process has terminated: exit status 2"}', "x")
+    assert "neu starten" in providers.ollama_error(500, "Internal Server Error", "x")

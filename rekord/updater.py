@@ -27,7 +27,7 @@ from . import __version__, config, system
 
 log = logging.getLogger("rekord.updater")
 REPO = "KimJongUnNK/rekord"
-CHECK_EVERY = 6 * 3600
+CHECK_EVERY = 30 * 60  # a new version shows up bottom left within half an hour
 WORK = ".rekord-update"  # next to the installed app (same drive → the swap is a rename)
 INSTALLER = "curl -fsSL https://github.com/KimJongUnNK/rekord/releases/latest/download/install.sh | sh"
 INSTALLER_WIN = "irm https://github.com/KimJongUnNK/rekord/releases/latest/download/install.ps1 | iex"
