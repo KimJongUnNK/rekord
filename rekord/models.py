@@ -16,6 +16,7 @@ import tarfile
 import threading
 import urllib.request
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 from . import config
@@ -74,14 +75,85 @@ REGISTRY: dict[str, ModelSpec] = {m.id: m for m in [
 ESSENTIAL = ["pyannote-segmentation", "eres2net-base", "silero-vad"]
 
 
+# faster-whisper (CTranslate2) speech models: from Hugging Face, in REKORD's model folder. Ids "fw:<size>".
+FW_PREFIX = "fw:"
+FW = {  # size → (repository, name, MB, description)
+    "large-v3-turbo": ("mobiuslabsgmbh/faster-whisper-large-v3-turbo", "faster-whisper turbo", 1620,
+                       "Beste Qualität pro Sekunde – mit NVIDIA-Grafikkarte sehr schnell"),
+    "large-v3": ("Systran/faster-whisper-large-v3", "faster-whisper large-v3", 3090, "Maximale Genauigkeit, braucht viel Zeit ohne GPU"),
+    "distil-large-v3": ("Systran/faster-distil-whisper-large-v3", "faster-whisper distil-large-v3", 1510, "Englisch-optimiert, sehr schnell"),
+    "medium": ("Systran/faster-whisper-medium", "faster-whisper medium", 1530, "Hohe Qualität"),
+    "small": ("Systran/faster-whisper-small", "faster-whisper small", 484, "Guter Standard für Laptops"),
+    "base": ("Systran/faster-whisper-base", "faster-whisper base", 145, "Schnell, okay für klare Aufnahmen"),
+    "tiny": ("Systran/faster-whisper-tiny", "faster-whisper tiny", 75, "Schnellster Test, schwache Qualität"),
+}
+_FW_FILES = ["config.json", "preprocessor_config.json", "model.bin", "tokenizer.json", "vocabulary.*"]
+
+
+def _fw_size(model_id: str) -> str | None:
+    if model_id.startswith(FW_PREFIX) and model_id[len(FW_PREFIX):] in FW:
+        return model_id[len(FW_PREFIX):]
+    return None
+
+
+def fw_root() -> Path:
+    return config.MODELS_DIR / "faster-whisper"
+
+
+def _fw_repo_dir(size: str) -> Path:
+    return fw_root() / ("models--" + FW[size][0].replace("/", "--"))
+
+
+def fw_path(size: str) -> Path | None:
+    """The folder of a loaded faster-whisper model (what WhisperModel opens) – None if it isn't (completely) there."""
+    snaps = _fw_repo_dir(size) / "snapshots"
+    if not snaps.is_dir():
+        return None
+    for d in sorted(snaps.iterdir()):
+        if (d / "model.bin").exists() and (d / "config.json").exists() and (d / "tokenizer.json").exists():
+            return d
+    return None
+
+
+def known(model_id: str) -> bool:
+    return model_id in REGISTRY or _fw_size(model_id) is not None
+
+
+def name(model_id: str) -> str:
+    size = _fw_size(model_id)
+    return FW[size][1] if size else REGISTRY[model_id].name
+
+
+def size_mb(model_id: str) -> int:
+    size = _fw_size(model_id)
+    return FW[size][2] if size else REGISTRY[model_id].size_mb
+
+
+@lru_cache(maxsize=1)
+def faster_whisper_available() -> bool:
+    """faster-whisper is an optional extra (pip install faster-whisper) – not part of the finished apps."""
+    import importlib.util
+    return importlib.util.find_spec("faster_whisper") is not None
+
+
+def engine(settings: dict) -> str:
+    """The speech engine that actually runs: faster-whisper only if it's chosen AND installed – otherwise Whisper ONNX,
+    so a choice that can't work never breaks a transcription."""
+    if settings.get("asr_engine") == "faster-whisper" and faster_whisper_available():
+        return "faster-whisper"
+    return "sherpa"
+
+
 def needed(settings: dict) -> list[str]:
     """What REKORD needs to transcribe with these settings: speaker models, voiceprint, the chosen speech model."""
     ids = list(ESSENTIAL)
     emb = settings.get("embedding_model")
     if emb in REGISTRY and emb not in ids:
         ids.append(emb)
-    if settings.get("asr_engine") != "faster-whisper" and settings.get("asr_model") in REGISTRY:
+    if engine(settings) == "sherpa" and settings.get("asr_model") in REGISTRY:
         ids.append(settings["asr_model"])
+    elif engine(settings) == "faster-whisper" and settings.get("faster_whisper_model") in FW:
+        ids.append(FW_PREFIX + settings["faster_whisper_model"])
     return ids
 
 
@@ -101,16 +173,19 @@ def usable_asr(model_id: str) -> str:
     return model_id
 
 
-def friendly(e: BaseException) -> str:
+def friendly(e: BaseException, host: str = "github.com") -> str:
     """A download error in words: no internet, blocked, disk full – instead of a Python exception."""
     import errno
     import urllib.error
     if isinstance(e, urllib.error.HTTPError):
         return f"Server antwortet mit Fehler {e.code} – später nochmal versuchen."
     if isinstance(e, ssl.SSLError) or "CERTIFICATE" in str(e).upper():
-        return "Sichere Verbindung zu github.com nicht möglich (Firewall/Proxy prüft Verbindungen?)."
-    if isinstance(e, (urllib.error.URLError, TimeoutError, ConnectionError)):
-        return "Keine Verbindung zu github.com – Internet prüfen, dann nochmal „Laden“."
+        return f"Sichere Verbindung zu {host} nicht möglich (Firewall/Proxy prüft Verbindungen?)."
+    offline = isinstance(e, (urllib.error.URLError, TimeoutError, ConnectionError)) or e.__class__.__name__ in (
+        "ConnectError", "ConnectTimeout", "LocalEntryNotFoundError", "OfflineModeIsEnabled") or "connection" in str(e).lower() \
+        or "Proxy" in e.__class__.__name__
+    if offline:
+        return f"Keine Verbindung zu {host} – Internet prüfen, dann nochmal „Laden“."
     if isinstance(e, OSError) and e.errno == errno.ENOSPC:
         return "Kein Platz mehr auf dem Laufwerk."
     if isinstance(e, PermissionError):
@@ -162,6 +237,9 @@ def path(model_id: str, key: str = "model") -> Path:
 
 
 def installed(model_id: str) -> bool:
+    size = _fw_size(model_id)
+    if size:
+        return fw_path(size) is not None
     spec = REGISTRY.get(model_id)
     return bool(spec) and all((model_dir(spec) / f).exists() for f in spec.files.values())
 
@@ -173,6 +251,13 @@ def status() -> list[dict]:
             prog = dict(_progress.get(spec.id, {}))
         out.append({"id": spec.id, "kind": spec.kind, "name": spec.name, "size_mb": spec.size_mb,
                     "description": spec.description, "installed": installed(spec.id), "progress": prog})
+    if faster_whisper_available():  # the faster-whisper engine's own models
+        for size, (_repo, nm, mb, desc) in FW.items():
+            mid = FW_PREFIX + size
+            with _plock:
+                prog = dict(_progress.get(mid, {}))
+            out.append({"id": mid, "kind": "asr-fw", "name": nm, "size_mb": mb, "description": desc,
+                        "installed": installed(mid), "progress": prog})
     return out
 
 
@@ -189,6 +274,8 @@ def download(model_id: str, on_progress=None) -> None:
 
 
 def _download(model_id: str, on_progress=None) -> None:
+    if _fw_size(model_id):
+        return _fw_download(model_id, on_progress)
     spec = REGISTRY[model_id]
     if installed(model_id):
         return
@@ -231,11 +318,44 @@ def _download(model_id: str, on_progress=None) -> None:
         raise
 
 
+def _fw_download(model_id: str, on_progress=None) -> None:
+    """A faster-whisper model from Hugging Face (only the files the engine needs). Progress: the bytes on disk."""
+    size = _fw_size(model_id)
+    if fw_path(size):
+        return
+    repo, _nm, mb, _d = FW[size]
+    total = mb * 1024 * 1024
+    _set(model_id, state="downloading", done=0, total=total, error="")
+    fw_root().mkdir(parents=True, exist_ok=True)
+    stop = threading.Event()
+
+    def watch():  # Hugging Face reports no progress we can use: count what has arrived
+        while not stop.wait(0.7):
+            d = _fw_repo_dir(size)
+            done = sum(f.stat().st_size for f in d.rglob("*") if f.is_file() and not f.is_symlink()) if d.is_dir() else 0
+            _set(model_id, done=min(done, total))
+            if on_progress:
+                on_progress(min(1.0, done / total))
+    t = threading.Thread(target=watch, daemon=True, name=f"dl-watch-{size}")
+    t.start()
+    try:
+        from huggingface_hub import snapshot_download
+        snapshot_download(repo, cache_dir=str(fw_root()), allow_patterns=_FW_FILES)
+        if not fw_path(size):
+            raise RuntimeError("Download unvollständig – nochmal „Laden“.")
+        _set(model_id, state="done", done=total)
+    except Exception as e:  # noqa: BLE001
+        _set(model_id, state="error", error=friendly(e, "huggingface.co"))
+        raise
+    finally:
+        stop.set()
+
+
 def download_async(model_id: str) -> None:
     if installed(model_id) or _dl_lock(model_id).locked():
         return  # there, or already running
     # shown right away – the window asks for the progress immediately after the click, before the thread got going
-    _set(model_id, state="downloading", done=0, total=REGISTRY[model_id].size_mb * 1024 * 1024, error="")
+    _set(model_id, state="downloading", done=0, total=size_mb(model_id) * 1024 * 1024, error="")
 
     def run():
         try:
@@ -246,6 +366,12 @@ def download_async(model_id: str) -> None:
 
 
 def delete(model_id: str) -> None:
+    size = _fw_size(model_id)
+    if size:
+        shutil.rmtree(_fw_repo_dir(size), ignore_errors=True)
+        with _plock:
+            _progress.pop(model_id, None)
+        return
     spec = REGISTRY[model_id]
     if spec.archive_dir:
         shutil.rmtree(model_dir(spec), ignore_errors=True)
@@ -260,7 +386,7 @@ def download_missing_async(settings: dict) -> list[str]:
     todo = missing(settings)
     for mid in todo:  # all show "downloading" at once – honest: they're all on the way
         if not _dl_lock(mid).locked():
-            _set(mid, state="downloading", done=0, total=REGISTRY[mid].size_mb * 1024 * 1024, error="")
+            _set(mid, state="downloading", done=0, total=size_mb(mid) * 1024 * 1024, error="")
 
     def run():
         for mid in todo:
@@ -281,9 +407,10 @@ def ensure(ids: list[str], on_progress=None) -> None:
     """Load what's missing (blocking). on_progress(name, fraction) while loading. Missing when that fails."""
     for mid in ids:
         if not installed(mid):
-            spec = REGISTRY[mid]
+            nm, mb = name(mid), size_mb(mid)
             try:
-                download(mid, (lambda f, n=spec.name: on_progress(n, f)) if on_progress else None)
+                download(mid, (lambda f, n=nm: on_progress(n, f)) if on_progress else None)
             except Exception as e:  # noqa: BLE001
-                raise Missing(f"Das Modell „{spec.name}“ ({spec.size_mb} MB) fehlt und ließ sich nicht laden: {friendly(e)} "
+                why = friendly(e, "huggingface.co" if _fw_size(mid) else "github.com")
+                raise Missing(f"Das Modell „{nm}“ ({mb} MB) fehlt und ließ sich nicht laden: {why} "
                               "Einstellungen → Modelle → Laden.") from e

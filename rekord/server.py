@@ -109,7 +109,7 @@ def _warmup() -> None:
     try:
         if models.installed(s["embedding_model"]):
             voiceprint.get_embedder(s["embedding_model"], 2)
-        if s["asr_engine"] != "faster-whisper" and models.installed(s["asr_model"]):
+        if models.engine(s) == "sherpa" and models.installed(s["asr_model"]):
             asr.get_engine(s)
     except Exception as e:  # noqa: BLE001 - loaded on first use instead
         log.info("warmup: %s", e)
@@ -123,8 +123,20 @@ def _auto_ai() -> None:
         log.info("ai auto: %s", e)
 
 
+def repair_engine() -> None:
+    """faster-whisper chosen but not there (e.g. picked in a finished app, where it isn't included): back to Whisper ONNX,
+    so the settings show what really runs."""
+    try:
+        if config.load().get("asr_engine") == "faster-whisper" and not models.faster_whisper_available():
+            config.save({"asr_engine": "sherpa"})
+            log.info("faster-whisper not installed – engine set back to Whisper ONNX")
+    except Exception as e:  # noqa: BLE001 - e.g. data drive missing
+        log.info("repair engine: %s", e)
+
+
 def start_downloads() -> None:
     """Speech models: after the user chose where REKORD stores things (first start), otherwise right away."""
+    repair_engine()
     missing = [m for m in models.ESSENTIAL + [config.load()["asr_model"]] if not models.installed(m)]
     if config.models_missing():
         return
@@ -284,8 +296,7 @@ def status():
     s = config.load()
     return {
         "version": __version__,
-        "ready": all(models.installed(m) for m in models.ESSENTIAL) and (
-            s["asr_engine"] == "faster-whisper" or models.installed(s["asr_model"])),
+        "ready": not models.missing(s),
         "models": models.status(),
         "missing": models.missing(s),
         "provider": s["llm"]["provider"],
@@ -296,6 +307,7 @@ def status():
         "jobs_pending": jobs.pending(),
         "live": live.active(),
         "faster_whisper": asr.faster_whisper_available(),
+        "fw_device": asr.fw_device() if asr.faster_whisper_available() else "",
         "home": str(config.HOME),
         "inbox": str(config.INBOX_DIR),
         "python": sys.executable,
@@ -455,7 +467,7 @@ def dl_missing():
 
 @app.post("/api/models/{mid}/download")
 def dl_model(mid: str):
-    if mid not in models.REGISTRY:
+    if not models.known(mid):
         raise HTTPException(404)
     models.download_async(mid)
     return {"ok": True}
@@ -463,7 +475,7 @@ def dl_model(mid: str):
 
 @app.delete("/api/models/{mid}")
 def del_model(mid: str):
-    if mid not in models.REGISTRY:
+    if not models.known(mid):
         raise HTTPException(404)
     models.delete(mid)
     return {"ok": True}

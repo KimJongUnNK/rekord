@@ -5,6 +5,7 @@ faster-whisper - optional (pip install faster-whisper). CTranslate2, word timest
 """
 from __future__ import annotations
 
+import logging
 import threading
 from functools import lru_cache
 from typing import Callable
@@ -14,6 +15,7 @@ import numpy as np
 from .. import models
 from ..audio import SR
 
+log = logging.getLogger("rekord.asr")
 MAX_CHUNK = 28.0  # whisper window is 30 s
 
 
@@ -88,21 +90,46 @@ class SherpaWhisper:
 
 
 class FasterWhisper:
+    """faster-whisper (CTranslate2): word timestamps (each word gets its speaker), and it takes hints – the vocabulary
+    and the names/terms from the Unterlagen are heard as such. On an NVIDIA graphics card it's very fast; without one
+    (or without CUDA 12/cuDNN on Windows) it runs on the processor instead of failing."""
     name = "faster-whisper"
     word_timestamps = True
 
-    def __init__(self, model: str = "large-v3-turbo", language: str = "", device: str = "auto", hotwords: str = ""):
-        from faster_whisper import WhisperModel  # optional dependency
-        compute = "int8" if device in ("cpu", "auto") else "float16"
-        self.model = WhisperModel(model, device=device, compute_type=compute, download_root=str(models.config.MODELS_DIR / "faster-whisper"))
+    def __init__(self, model: str = "large-v3-turbo", language: str = "", device: str = "auto", hotwords: str = "",
+                 threads: int = 4):
+        from faster_whisper import WhisperModel
+        mid = models.FW_PREFIX + model
+        models.ensure([mid])  # from Hugging Face into REKORD's model folder (Einstellungen → Modelle shows it)
+        path = str(models.fw_path(model))
+        self.model, self.device, err = None, "", None
+        for dev in _fw_devices(device):
+            try:
+                m = WhisperModel(path, device=dev, compute_type="float16" if dev == "cuda" else "int8",
+                                 cpu_threads=max(1, int(threads)))
+                if dev == "cuda":  # a missing cuBLAS/cuDNN only shows when it runs: try once, quietly
+                    list(m.transcribe(np.zeros(SR, dtype=np.float32), language="en")[0])
+                self.model, self.device = m, dev
+                break
+            except Exception as e:  # noqa: BLE001 - e.g. "cublas64_12.dll not found": the processor then
+                err = e
+                log.warning("faster-whisper on %s failed: %s", dev, e)
+        if self.model is None:
+            raise RuntimeError(f"faster-whisper startet nicht: {err}")
+        _fw_state["device"] = self.device
         self.language = language or None
         self.hotwords = hotwords or None
         self.model_id = f"faster-whisper:{model}"
+        try:
+            import onnxruntime  # noqa: F401 - the speech detection (VAD) runs on it
+            self.vad = True
+        except ImportError:
+            self.vad = False
 
     def words(self, samples: np.ndarray, progress: Callable[[float], None] | None = None,
               hint: str = "") -> tuple[list[dict], str]:
         hot = ", ".join(x for x in (self.hotwords, hint) if x) or None  # vocabulary + terms from the Unterlagen
-        segs, info = self.model.transcribe(samples, language=self.language, word_timestamps=True, vad_filter=True,
+        segs, info = self.model.transcribe(samples, language=self.language, word_timestamps=True, vad_filter=self.vad,
                                            hotwords=hot, condition_on_previous_text=False)
         dur = len(samples) / SR or 1
         words = []
@@ -189,23 +216,44 @@ def _sherpa(model_id: str, language: str, threads: int) -> SherpaWhisper:
     return SherpaWhisper(model_id, language, threads)
 
 
+_fw_state: dict = {}  # which device faster-whisper really runs on (for the settings)
+
+
+def _fw_devices(device: str) -> list[str]:
+    if device in ("cpu", "cuda"):
+        return [device] if device == "cpu" else ["cuda", "cpu"]
+    return (["cuda", "cpu"] if cuda_devices() else ["cpu"])
+
+
 @lru_cache(maxsize=1)
-def _faster(model: str, language: str, device: str, hotwords: str) -> FasterWhisper:
-    return FasterWhisper(model, language, device, hotwords)
+def cuda_devices() -> int:
+    """NVIDIA graphics cards CTranslate2 can see (0 on a Mac, without a driver …)."""
+    try:
+        import ctranslate2
+        return int(ctranslate2.get_cuda_device_count())
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def fw_device() -> str:
+    """Where faster-whisper runs (or would): "NVIDIA-Grafikkarte" or "Prozessor"."""
+    dev = _fw_state.get("device") or ("cuda" if cuda_devices() else "cpu")
+    return "NVIDIA-Grafikkarte" if dev == "cuda" else "Prozessor"
+
+
+@lru_cache(maxsize=1)
+def _faster(model: str, language: str, device: str, hotwords: str, threads: int = 4) -> FasterWhisper:
+    return FasterWhisper(model, language, device, hotwords, threads)
 
 
 def get_engine(settings: dict):
-    if settings.get("asr_engine") == "faster-whisper":
+    if models.engine(settings) == "faster-whisper":  # chosen but not installed → Whisper ONNX instead of an error
         hot = " ".join(v.get("to", "") for v in settings.get("vocabulary", []) if v.get("to"))
         return _faster(settings["faster_whisper_model"], settings.get("language", ""),
-                       settings.get("faster_whisper_device", "auto"), hot)
+                       settings.get("faster_whisper_device", "auto"), hot, int(settings.get("threads", 4)))
     # the chosen model if it's there – otherwise one that is (the chosen one loads meanwhile) instead of an error
     return _sherpa(models.usable_asr(settings["asr_model"]), settings.get("language", ""), int(settings.get("threads", 4)))
 
 
 def faster_whisper_available() -> bool:
-    try:
-        import faster_whisper  # noqa: F401
-        return True
-    except ImportError:
-        return False
+    return models.faster_whisper_available()
