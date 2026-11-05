@@ -472,3 +472,73 @@ def test_any_format_upload_and_video_stills_in_the_recording(client, monkeypatch
     assert client.get(f"/api/recordings/{rid}/frames/x.jpg").status_code == 404
     client.delete(f"/api/recordings/{rid}")
     assert not frames.folder(rid).exists()  # gone with the recording
+
+
+def test_documents_api(client, monkeypatch, tmp_path):
+    """Unterlagen over the hub (the browser and the iPhone app): add, list, open, remove, switch corrections."""
+    import media
+    from rekord import jobs
+    matched = []
+    monkeypatch.setattr(jobs, "enqueue_context", matched.append)
+    rec = db.create_recording("Kickoff", "", status="done")
+    rid = rec["id"]
+    sid = db.add_speaker(rid, "Emil", "#FF5A1F")
+    db.replace_transcript(rid, [{"label": 0, "name": "Emil", "color": "#FF5A1F"}],
+                          [{"start": 0, "end": 3, "label": 0, "text": "Das läuft über Sapir."}])
+    del sid
+    docx = media.docx(tmp_path / "Agenda.docx", ["Kassensystem: SumUp mit Zapier und Notion", "Zapier-Konto: Emil Boenke"])
+    r = client.post(f"/api/recordings/{rid}/documents", files=[
+        ("files", ("Agenda.docx", docx.read_bytes(), "application/octet-stream")),
+        ("files", ("alt.ppt", b"\xd0\xcf", "application/octet-stream"))])
+    assert r.status_code == 200
+    body = r.json()
+    assert [d["name"] for d in body["items"]] == ["Agenda.docx"] and "als PDF oder PPTX" in body["errors"][0]
+    assert matched == [rid]
+    full = client.get(f"/api/recordings/{rid}").json()
+    assert full["documents"][0]["url"].endswith("/documents/Agenda.docx") and full["documents"][0]["words"] > 5
+    assert client.get(full["documents"][0]["url"]).content == docx.read_bytes()
+    assert client.get(f"/api/recordings/{rid}/documents/..%2Frekord.db").status_code == 404
+
+    from rekord import context
+    context.run(rid, {**config.load(), "llm": {"provider": "none"}})
+    assert client.get(f"/api/recordings/{rid}").json()["segments"][0]["text"] == "Das läuft über Zapier."
+    fixes = client.get(f"/api/recordings/{rid}/documents").json()["fixes"]
+    assert fixes[0]["from"] == "Sapir" and fixes[0]["to"] == "Zapier"
+    client.post(f"/api/recordings/{rid}/fixes", json={"from": "Sapir", "to": "Zapier", "on": False})
+    assert client.get(f"/api/recordings/{rid}").json()["segments"][0]["text"] == "Das läuft über Sapir."
+    client.post(f"/api/recordings/{rid}/fixes", json={"from": "Sapir", "to": "Zapier", "on": True})
+    assert client.post(f"/api/recordings/{rid}/fixes/undo").json()["restored"] == 1
+    assert client.post(f"/api/recordings/{rid}/fixes/rerun").json()["ok"]
+    assert client.delete(f"/api/recordings/{rid}/documents/Agenda.docx").json()["items"] == []
+    assert client.delete(f"/api/recordings/{rid}/documents/Agenda.docx").status_code == 404
+    db.update_recording(rid, status="processing")
+    assert client.post(f"/api/recordings/{rid}/fixes/rerun").status_code == 409
+    only_bad = client.post(f"/api/recordings/{rid}/documents", files={"files": ("x.doc", b"\xd0", "application/octet-stream")})
+    assert only_bad.status_code == 400
+    db.update_recording(rid, status="done")
+
+
+def test_upload_audio_with_its_documents(client, monkeypatch, tmp_path):
+    from rekord import context, jobs
+    queued = []
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append((rid, [d["name"] for d in context.items(rid)])))
+    r = client.post("/api/recordings", files=[("files", ("call.wav", _wav(), "audio/wav")),
+                                              ("files", ("Agenda.txt", "Teilnehmer: Emil Boenke".encode(), "text/plain"))])
+    rid = r.json()["items"][0]["id"]
+    assert len(r.json()["items"]) == 1 and queued == [(rid, ["Agenda.txt"])]  # analysed with its Unterlagen already there
+    only_docs = client.post("/api/recordings", files={"files": ("Agenda.txt", b"x", "text/plain")})
+    assert only_docs.status_code == 400 and "Unterlagen" in only_docs.json()["detail"]
+
+
+def test_cancel_and_delete_while_analysing(client, monkeypatch):
+    from rekord import jobs
+    rec = db.create_recording("Falsche Datei", "", status="processing")
+    assert client.post(f"/api/recordings/{rec['id']}/cancel").json()["ok"]
+    assert db.get_recording(rec["id"])["error"] == jobs.CANCELLED
+    assert not client.post(f"/api/recordings/{rec['id']}/cancel").json()["ok"]
+    rec2 = db.create_recording("Noch eine falsche", "", status="queued")
+    stopped = []
+    real = jobs.cancel
+    monkeypatch.setattr(jobs, "cancel", lambda rid, wait=5.0: stopped.append(rid) or real(rid, wait))
+    assert client.delete(f"/api/recordings/{rec2['id']}").json()["ok"]
+    assert stopped == [rec2["id"]] and db.get_recording(rec2["id"]) is None

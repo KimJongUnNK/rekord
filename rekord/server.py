@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import uuid
+from urllib.parse import quote
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -23,7 +24,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, Web
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, audio, config, db, export, frames, jobs, live, models, pipeline, summarize, updater
+from . import __version__, audio, config, context, db, export, frames, jobs, live, models, pipeline, summarize, updater
 from .engines import asr
 from .llm import providers, templates
 
@@ -286,6 +287,7 @@ def status():
         "ready": all(models.installed(m) for m in models.ESSENTIAL) and (
             s["asr_engine"] == "faster-whisper" or models.installed(s["asr_model"])),
         "models": models.status(),
+        "missing": models.missing(s),
         "provider": s["llm"]["provider"],
         "ai_ready": providers.configured(s)[0],
         "ai_problem": providers.configured(s)[1],
@@ -443,6 +445,12 @@ def pair_remove(device_id: str, request: Request):
 @app.get("/api/models")
 def get_models():
     return models.status()
+
+
+@app.post("/api/models/download-missing")
+def dl_missing():
+    """Everything REKORD still needs for transcribing (speech model, speaker models) – in the background."""
+    return {"ok": True, "loading": models.download_missing_async(config.load())}
 
 
 @app.post("/api/models/{mid}/download")
@@ -738,7 +746,36 @@ def _full(rid: str) -> dict:
     # stills from a video, each with the line it belongs to: url for the iPhone app, file for the window
     rec["frames"] = [{"t": f["t"], "seg": f["seg"], "url": f"/api/recordings/{rid}/frames/{f['file']}",
                       "file": Path(f["path"]).as_uri()} for f in frames.attach(rid, rec["segments"])]
+    rec["documents"] = _docs(rid)
+    rec["context_note"] = context.state(rid).get("note", "") if rec["documents"] else ""
     return rec
+
+
+def _docs(rid: str) -> list[dict]:
+    """The Unterlagen of a recording: url for the iPhone app and browser, file for the window."""
+    out = []
+    for d in context.items(rid):
+        d = dict(d)
+        p = d.pop("path")
+        out.append({**d, "url": f"/api/recordings/{rid}/documents/{quote(d['name'])}", "file": Path(p).as_uri()})
+    return out
+
+
+async def _save_upload(f: UploadFile, dest: Path) -> None:
+    with open(dest, "wb") as w:
+        while chunk := await f.read(1 << 20):
+            w.write(chunk)
+
+
+def _attach_docs(rid: str, items: list[tuple[str, Path]]) -> list[str]:
+    """Attach saved uploads to a recording; returns the problems (one line per file that didn't work)."""
+    errors = []
+    for name, tmp in items:
+        try:
+            context.add(rid, tmp, name=name)
+        except (context.Unsupported, OSError) as e:
+            errors.append(str(e))
+    return errors
 
 
 @app.get("/api/recordings")
@@ -749,8 +786,14 @@ def recordings(q: str = "", folder: str | None = None):
 @app.post("/api/recordings")
 async def upload(files: list[UploadFile] = File(...), title: str = Form(""), highlights: str = Form("[]"),
                  source: str = Form("import"), folder: str = Form(""), participants: str = Form("")):
-    out = []
+    out, docs = [], []
+    tmp = Path(tempfile.mkdtemp(prefix="rekord-docs-"))
     for f in files:
+        if context.is_doc(f.filename or ""):  # a PDF, slides … sent along: they become the recording's Unterlagen
+            dest = tmp / f"{len(docs)}{Path(f.filename or '').suffix.lower()}"
+            await _save_upload(f, dest)
+            docs.append((Path(f.filename or "Dokument").name, dest))
+            continue
         ext = Path(f.filename or "a.webm").suffix.lower() or ".webm"
         rid = uuid.uuid4().hex[:12]
         config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
@@ -768,9 +811,19 @@ async def upload(files: list[UploadFile] = File(...), title: str = Form(""), hig
             db.update_recording(rid, folder=folder)
         if participants:
             db.update_recording(rid, participants=json.loads(participants))
-        jobs.enqueue(rid)
         out.append(rec)
-    return {"items": out}
+    errors = []
+    try:
+        if docs and not out:
+            raise HTTPException(400, "Nur Unterlagen, keine Aufnahme: Unterlagen gehören zu einer Aufnahme – zusammen mit der "
+                                     "Audiodatei schicken oder in einer Aufnahme hinzufügen.")
+        for rec in out:
+            errors += _attach_docs(rec["id"], docs)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    for rec in out:
+        jobs.enqueue(rec["id"])  # after the Unterlagen are there: the analysis already uses them
+    return {"items": out, "errors": errors}
 
 
 @app.get("/api/recordings/{rid}")
@@ -794,11 +847,101 @@ def delete_recording(rid: str):
     rec = db.get_recording(rid)
     if rec is None:
         raise HTTPException(404)
+    jobs.cancel(rid)  # still being analysed (e.g. the wrong file): stop that first
     if rec.get("audio_path"):
         Path(rec["audio_path"]).unlink(missing_ok=True)
     frames.remove(rid)
+    context.remove_all(rid)
     db.delete_recording(rid)
     return {"ok": True}
+
+
+# ------------------------------------------------------------------ Unterlagen (documents for context)
+
+@app.get("/api/recordings/{rid}/documents")
+def documents(rid: str):
+    rec = db.get_recording(rid)
+    if rec is None:
+        raise HTTPException(404)
+    return {"items": _docs(rid), "fixes": rec.get("context_fixes") or [], "note": context.state(rid).get("note", "")}
+
+
+@app.post("/api/recordings/{rid}/documents")
+async def add_documents(rid: str, files: list[UploadFile] = File(...)):
+    """PDF, Word, PowerPoint, Excel, text, pictures … for this recording: they correct names and terms in its
+    transcript and give summaries and questions the background."""
+    rec = db.get_recording(rid)
+    if rec is None:
+        raise HTTPException(404)
+    tmp = Path(tempfile.mkdtemp(prefix="rekord-docs-"))
+    try:
+        saved = []
+        for f in files:
+            dest = tmp / f"{len(saved)}{Path(f.filename or '').suffix.lower()}"
+            await _save_upload(f, dest)
+            saved.append((Path(f.filename or "Dokument").name, dest))
+        errors = await asyncio.to_thread(_attach_docs, rid, saved)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    if len(errors) == len(files):
+        raise HTTPException(400, " · ".join(errors))
+    if rec.get("status") == "done":
+        jobs.enqueue_context(rid)  # the transcript is there: correct it now (during an analysis it runs afterwards anyway)
+    return {"items": _docs(rid), "errors": errors}
+
+
+@app.get("/api/recordings/{rid}/documents/{name}")
+def document_file(rid: str, name: str):
+    p = context.path(rid, name)
+    if p is None:
+        raise HTTPException(404)
+    return FileResponse(p, filename=p.name)
+
+
+@app.delete("/api/recordings/{rid}/documents/{name}")
+def delete_document(rid: str, name: str):
+    rec = db.get_recording(rid)
+    if rec is None or not context.remove(rid, name):
+        raise HTTPException(404)
+    if rec.get("status") == "done":
+        jobs.enqueue_context(rid)  # its corrections go, the other documents' stay
+    return {"items": _docs(rid)}
+
+
+@app.post("/api/recordings/{rid}/fixes")
+async def toggle_fix(rid: str, request: Request):
+    """{"from": "Kubernetis", "to": "Kubernetes", "on": false}: one correction off (or on again)."""
+    body = await request.json()
+    if db.get_recording(rid) is None:
+        raise HTTPException(404)
+    n = context.toggle(rid, str(body.get("from", "")), str(body.get("to", "")), bool(body.get("on", False)))
+    return {"ok": True, "changed": n, "fixes": db.get_recording(rid).get("context_fixes") or []}
+
+
+@app.post("/api/recordings/{rid}/fixes/undo")
+def undo_fixes(rid: str):
+    if db.get_recording(rid) is None:
+        raise HTTPException(404)
+    return {"ok": True, "restored": context.undo_all(rid)}
+
+
+@app.post("/api/recordings/{rid}/fixes/rerun")
+def rerun_fixes(rid: str):
+    rec = db.get_recording(rid)
+    if rec is None:
+        raise HTTPException(404)
+    if rec.get("status") != "done":
+        raise HTTPException(409, "Geht, sobald die Aufnahme fertig ausgewertet ist.")
+    jobs.enqueue_context(rid)
+    return {"ok": True}
+
+
+@app.post("/api/recordings/{rid}/cancel")
+def cancel_processing(rid: str):
+    """Stop the analysis (running or waiting). The recording stays – „Nochmal“ starts it again, or delete it."""
+    if db.get_recording(rid) is None:
+        raise HTTPException(404)
+    return {"ok": jobs.cancel(rid)}
 
 
 @app.post("/api/recordings/{rid}/reprocess")

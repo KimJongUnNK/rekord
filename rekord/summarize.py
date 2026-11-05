@@ -71,10 +71,11 @@ def _chunks(text: str, size: int) -> list[str]:
     return out
 
 
-def prepared_transcript(settings: dict, rid: str, on_status: Callable[[str], None] | None = None) -> str:
-    """Fits the transcript into the model's context. Long recordings on small local models get map-reduced."""
+def prepared_transcript(settings: dict, rid: str, on_status: Callable[[str], None] | None = None, reserve: int = 0) -> str:
+    """Fits the transcript into the model's context (minus `reserve` chars for other material, e.g. the Unterlagen).
+    Long recordings on small local models get map-reduced."""
     text = transcript_text(rid)
-    limit = providers.context_chars(settings)
+    limit = max(8000, providers.context_chars(settings) - reserve)
     if len(text) <= limit:
         return text
     parts = _chunks(text, int(limit * 0.8))
@@ -88,17 +89,44 @@ def prepared_transcript(settings: dict, rid: str, on_status: Callable[[str], Non
     return "(Langes Gespräch – abschnittsweise verdichtet)\n\n" + "\n\n".join(notes)
 
 
+DOCS_NOTE = """
+
+Zur Aufnahme gibt es Unterlagen (<unterlagen>: Agenda, Folien, Dokumente, Fotos). Sie sind Hintergrund:
+- Nutze sie für die richtige Schreibweise von Namen, Begriffen und Zahlen und um Bezüge zu verstehen („Folie 3“, „Punkt 2 der Agenda“).
+- Fasse das GESPRÄCH zusammen, nicht die Unterlagen. Was nur in den Unterlagen steht und im Gespräch nicht vorkam, gehört nicht
+  als Gesprächsinhalt hinein – höchstens als Hinweis (z. B. „Agenda-Punkt X wurde nicht besprochen“).
+- Widerspricht das Gespräch den Unterlagen (andere Zahl, anderer Termin), gilt das Gesagte – weise auf den Unterschied hin."""
+
+
+def docs_budget(settings: dict) -> int:
+    """How much of the Unterlagen goes into a prompt: plenty for long-context AIs, a share for small local models."""
+    limit = providers.context_chars(settings)
+    return min(80_000, max(3000, int(limit * 0.2)))
+
+
+def _docs(settings: dict, rid: str) -> str:
+    """The Unterlagen for the prompt – only for an AI on this computer (or a cloud AI you allowed for Unterlagen)."""
+    from . import context
+    if not context.has(rid) or not context.ai_allowed(settings)[0]:
+        return ""
+    return context.prompt_block(rid, docs_budget(settings))
+
+
 def generate_stream(rid: str, template_id: str) -> Iterator[str]:
     settings = config.load()
     rec = db.get_recording(rid)
     tpl = templates.get(template_id)
-    transcript = prepared_transcript(settings, rid)
+    docs = _docs(settings, rid)
+    transcript = prepared_transcript(settings, rid, reserve=len(docs))
     if not transcript.strip():
         raise providers.LLMError("Transkript ist leer.")
     user = f"<transkript>\n{transcript}\n</transkript>\n\n<vorlage name=\"{tpl['name']}\">\n{tpl['prompt']}\n</vorlage>"
     if rec.get("notes"):
         user += f"\n\n<notizen_des_nutzers>\n{rec['notes']}\n</notizen_des_nutzers>"
-    yield from providers.stream(settings, system_prompt(settings, rec), [{"role": "user", "content": user}])
+    if docs:
+        user = docs + "\n\n" + user
+    system = system_prompt(settings, rec) + (DOCS_NOTE if docs else "")
+    yield from providers.stream(settings, system, [{"role": "user", "content": user}])
 
 
 def generate(rid: str, template_id: str, on_delta: Callable[[str], None] | None = None) -> dict:
@@ -139,19 +167,22 @@ def ask_recording_stream(rid: str, question: str) -> Iterator[str]:
     settings = config.load()
     rec = db.get_recording(rid)
     history = [{"role": c["role"], "content": c["content"]} for c in db.list_chat(rid)][-12:]
-    transcript = prepared_transcript(settings, rid)
+    docs = _docs(settings, rid)
+    transcript = prepared_transcript(settings, rid, reserve=len(docs))
     summaries = "\n\n".join(f"## {x['title']}\n{x['content']}" for x in db.list_summaries(rid)[:2])
+    docs_rule = ("\nStammt eine Antwort aus den Unterlagen statt aus dem Gespräch, sag das und nenne das Dokument "
+                 "(z. B. „laut Agenda.pdf“)." if docs else "")
     system = system_prompt(settings, rec) + f"""
 
 Beantworte Fragen zu dieser Aufnahme. Antworte knapp und konkret und belege mit [mm:ss].
-Wenn die Antwort nicht im Transkript steht, sag das klar.
+Wenn die Antwort nicht im Transkript steht, sag das klar.{docs_rule}
 
 <transkript>
 {transcript}
 </transkript>
 <bisherige_zusammenfassungen>
 {summaries}
-</bisherige_zusammenfassungen>"""
+</bisherige_zusammenfassungen>""" + ("\n" + docs if docs else "")
     msgs = history + [{"role": "user", "content": question}]
     out = []
     for d in providers.stream(settings, system, msgs, 16000):

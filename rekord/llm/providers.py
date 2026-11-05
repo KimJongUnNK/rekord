@@ -50,6 +50,28 @@ def configured(settings: dict) -> tuple[bool, str]:
     return True, ""
 
 
+def is_local(settings: dict) -> bool:
+    """Does the chosen AI run on this computer or in your own network (Ollama, LM Studio, llama.cpp …)?
+    Claude and ChatGPT are cloud services."""
+    import ipaddress
+    from urllib.parse import urlparse
+    p, cfg = active(settings)
+    if p == "ollama":
+        url = cfg.get("base_url") or "http://localhost:11434"
+    elif p in ("compatible", "openai") and cfg.get("base_url"):
+        url = cfg["base_url"]
+    else:
+        return False
+    host = (urlparse(url if "://" in url else "http://" + url).hostname or "").lower()
+    if host in ("localhost", "host.docker.internal") or host.endswith((".local", ".localhost", ".lan", ".home.arpa")):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_private or ip.is_link_local
+
+
 def model_name(settings: dict) -> str:
     p, cfg = active(settings)
     return cfg.get("model", "") if p != "none" else ""
@@ -81,6 +103,30 @@ def stream(settings: dict, system: str, messages: list[dict], max_tokens: int = 
 
 def complete(settings: dict, system: str, messages: list[dict], max_tokens: int = 32000) -> str:
     return "".join(stream(settings, system, messages, max_tokens))
+
+
+def read_image(settings: dict, data: bytes, mime: str, prompt: str, max_tokens: int = 4000) -> str:
+    """Let an AI that can see look at one picture (a slide photo, a scanned page) and answer `prompt`.
+    LLMError when the chosen model can't take pictures."""
+    import base64
+    p, _ = active(settings)
+    b64 = base64.b64encode(data).decode("ascii")
+    if p == "anthropic":
+        msg = {"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}},
+                                           {"type": "text", "text": prompt}]}
+    elif p == "ollama":
+        msg = {"role": "user", "content": prompt, "images": [b64]}
+    else:
+        msg = {"role": "user", "content": [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                                           {"type": "text", "text": prompt}]}
+    try:
+        return complete(settings, "Du liest Bilder genau ab. Nur der Inhalt, kein Kommentar.", [msg], max_tokens)
+    except LLMError as e:
+        text = str(e).lower()
+        if any(w in text for w in ("image", "vision", "bild", "multimodal", "400")):
+            raise LLMError(f"Das gewählte KI-Modell ({model_name(settings) or p}) kann keine Bilder lesen – "
+                           "z. B. Claude, GPT-4o/5 oder ein Vision-Modell in Ollama (llava, qwen2.5vl, gemma3).") from e
+        raise
 
 
 # ------------------------------------------------------------------ Anthropic
@@ -155,7 +201,7 @@ OLLAMA_KEEP_ALIVE = "2m"  # and give the memory back soon after (Ollama's own de
 def fit_context(system: str, messages: list[dict], limit: int = 32768) -> int:
     """Context window for one request: prompt (~3 chars per token, generous) + room for the answer, rounded up to a
     power of two, between 4096 and the configured limit."""
-    chars = len(system) + sum(len(str(m.get("content", ""))) for m in messages)
+    chars = len(system) + sum(len(str(m.get("content", ""))) + 3000 * len(m.get("images") or []) for m in messages)
     need = chars // 3 + 4096
     ctx = 4096
     while ctx < need and ctx < limit:

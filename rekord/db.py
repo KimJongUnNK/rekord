@@ -110,9 +110,11 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
-MIGRATIONS = {"recordings": {"title_locked": "INTEGER DEFAULT 0", "participants": "TEXT DEFAULT '{}'"},
+MIGRATIONS = {"recordings": {"title_locked": "INTEGER DEFAULT 0", "participants": "TEXT DEFAULT '{}'",
+                             "context_fixes": "TEXT DEFAULT '[]'"},  # corrections from the Unterlagen: [{from,to,count,by,off}]
               "speakers": {"voices": "INTEGER DEFAULT 1"},
-              "segments": {"voice": "INTEGER"}}  # which unknown voice (cluster) a line in the bucket belongs to  # >1: the "Nicht erkannte Stimme" bucket holds several people
+              "segments": {"voice": "INTEGER",
+                           "orig": "TEXT"}}  # what the recognizer wrote, while Unterlagen-corrections changed the line  # which unknown voice (cluster) a line in the bucket belongs to  # >1: the "Nicht erkannte Stimme" bucket holds several people
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -155,7 +157,7 @@ def _row(r: sqlite3.Row | None) -> dict | None:
     if r is None:
         return None
     d = dict(r)
-    for k in ("tags", "highlights", "peaks"):
+    for k in ("tags", "highlights", "peaks", "context_fixes"):
         if k in d and isinstance(d[k], str):
             d[k] = json.loads(d[k] or "[]")
     if isinstance(d.get("participants"), str):
@@ -204,11 +206,12 @@ def list_recordings(q: str = "", folder: str | None = None, limit: int = 500) ->
 
 
 ALLOWED_REC_FIELDS = {"title", "title_locked", "participants", "duration", "audio_path", "status", "stage", "progress", "error", "language",
-                      "folder", "tags", "highlights", "notes", "peaks"}
+                      "folder", "tags", "highlights", "notes", "peaks", "context_fixes"}
+_JSON_FIELDS = ("tags", "highlights", "peaks", "participants", "context_fixes")
 
 
 def update_recording(rid: str, **fields) -> dict | None:
-    fields = {k: (json.dumps(v) if k in ("tags", "highlights", "peaks", "participants") else v)
+    fields = {k: (json.dumps(v, ensure_ascii=False) if k in _JSON_FIELDS else v)
               for k, v in fields.items() if k in ALLOWED_REC_FIELDS}
     if fields:
         with tx() as c:
@@ -307,11 +310,19 @@ def list_segments(rid: str) -> list[dict]:
 
 def update_segment(seg_id: int, text: str | None = None, speaker_id: int | None = None) -> None:
     with tx() as c:
-        if text is not None:
-            c.execute("UPDATE segments SET text=? WHERE id=?", (text, seg_id))
+        if text is not None:  # your own edit: the line is yours now – undoing Unterlagen-corrections leaves it alone
+            c.execute("UPDATE segments SET text=?, orig=NULL WHERE id=?", (text, seg_id))
             c.execute("UPDATE segments_fts SET text=? WHERE segment_id=?", (text, seg_id))
         if speaker_id is not None:
             c.execute("UPDATE segments SET speaker_id=? WHERE id=?", (speaker_id, seg_id))
+
+
+def set_segment_texts(updates: list[tuple[int, str, str | None]]) -> None:
+    """[(segment id, text, orig)] in one go – orig: what the recognizer wrote (None: the line is unchanged)."""
+    with tx() as c:
+        for sid, text, orig in updates:
+            c.execute("UPDATE segments SET text=?, orig=? WHERE id=?", (text, orig, sid))
+            c.execute("UPDATE segments_fts SET text=? WHERE segment_id=?", (text, sid))
 
 
 def find_replace(rid: str, find: str, replace: str) -> int:

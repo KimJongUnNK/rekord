@@ -102,15 +102,22 @@ Page {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         text: rekord.status.welcomeDone === false ? "Speicherort wählen, Spracherkennung laden (einmalig, ~700 MB) und optional eine KI für Zusammenfassungen verbinden."
-                            : "Ohne die Sprachmodelle (~700 MB, einmalig) kann REKORD nicht mitschreiben. Unter Einstellungen → Modelle laden."
+                            : rekord.status.downloading ? "Lädt " + rekord.status.downloading + " – einmalig, danach läuft alles offline."
+                            : rekord.status.modelError ? "Laden fehlgeschlagen: " + rekord.status.modelError
+                            : "Ohne die Sprachmodelle (" + (rekord.status.missingMb || 700) + " MB, einmalig) kann REKORD nicht mitschreiben. Ein Klick – danach offline."
                         font.family: Theme.text; font.pixelSize: 14; color: Theme.fg2
                     }
                 }
                 Btn {
+                    objectName: "loadModelsButton"
                     kind: "primary"
-                    text: rekord.status.welcomeDone === false ? "Einrichten" : "Modelle"
-                    onClicked: rekord.status.welcomeDone === false ? page.app.welcome(true) : page.app.go("settings", "models")
+                    visible: !rekord.status.downloading
+                    iconName: rekord.status.welcomeDone === false ? "" : "download"
+                    text: rekord.status.welcomeDone === false ? "Einrichten" : rekord.status.modelError ? "Nochmal laden" : "Jetzt laden"
+                    onClicked: rekord.status.welcomeDone === false ? page.app.welcome(true) : rekord.downloadModels()
                 }
+                BusyIndicator { visible: !!rekord.status.downloading; running: visible; Layout.preferredWidth: 26; Layout.preferredHeight: 26 }
+                Btn { visible: rekord.status.welcomeDone !== false; kind: "ghost"; text: "Modelle"; onClicked: page.app.go("settings", "models") }
             }
         }
 

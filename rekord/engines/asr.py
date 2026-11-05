@@ -58,7 +58,8 @@ class SherpaWhisper:
             return s.result.text.strip(), getattr(s.result, "lang", "") or ""
 
     def transcribe_turns(self, samples: np.ndarray, turns: list[tuple[float, float, int]],
-                         progress: Callable[[float], None] | None = None) -> list[dict]:
+                         progress: Callable[[float], None] | None = None, hint: str = "") -> list[dict]:
+        # hint (terms from the Unterlagen): sherpa's Whisper takes no prompt – they correct the text afterwards instead
         jobs = []
         for a, b, spk in turns:
             for ca, cb in split_long(a, b, samples):
@@ -98,9 +99,11 @@ class FasterWhisper:
         self.hotwords = hotwords or None
         self.model_id = f"faster-whisper:{model}"
 
-    def words(self, samples: np.ndarray, progress: Callable[[float], None] | None = None) -> tuple[list[dict], str]:
+    def words(self, samples: np.ndarray, progress: Callable[[float], None] | None = None,
+              hint: str = "") -> tuple[list[dict], str]:
+        hot = ", ".join(x for x in (self.hotwords, hint) if x) or None  # vocabulary + terms from the Unterlagen
         segs, info = self.model.transcribe(samples, language=self.language, word_timestamps=True, vad_filter=True,
-                                           hotwords=self.hotwords, condition_on_previous_text=False)
+                                           hotwords=hot, condition_on_previous_text=False)
         dur = len(samples) / SR or 1
         words = []
         for seg in segs:
@@ -115,8 +118,8 @@ class FasterWhisper:
         return clean_text(" ".join(s.text for s in segs)), info.language
 
     def transcribe_turns(self, samples: np.ndarray, turns: list[tuple[float, float, int]],
-                         progress: Callable[[float], None] | None = None) -> list[dict]:
-        words, lang = self.words(samples, progress)
+                         progress: Callable[[float], None] | None = None, hint: str = "") -> list[dict]:
+        words, lang = self.words(samples, progress, hint)
         return assign_words(words, turns, lang)
 
 
@@ -196,7 +199,8 @@ def get_engine(settings: dict):
         hot = " ".join(v.get("to", "") for v in settings.get("vocabulary", []) if v.get("to"))
         return _faster(settings["faster_whisper_model"], settings.get("language", ""),
                        settings.get("faster_whisper_device", "auto"), hot)
-    return _sherpa(settings["asr_model"], settings.get("language", ""), int(settings.get("threads", 4)))
+    # the chosen model if it's there – otherwise one that is (the chosen one loads meanwhile) instead of an error
+    return _sherpa(models.usable_asr(settings["asr_model"]), settings.get("language", ""), int(settings.get("threads", 4)))
 
 
 def faster_whisper_available() -> bool:

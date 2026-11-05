@@ -287,10 +287,15 @@ Rectangle {
                 }
             }
             Text {
+                id: statusText
+                objectName: "statusLine"
                 visible: !side.narrow
                 Layout.fillWidth: true
+                readonly property bool canLoad: !rekord.status.storageMissing && !rekord.status.downloading && rekord.status.ready === false
+                                                && (rekord.status.missing || []).length > 0
                 text: rekord.status.storageMissing ? "Speicherort nicht verbunden"
                     : rekord.status.downloading ? "Lädt " + rekord.status.downloading
+                    : canLoad ? (rekord.status.modelError ? "Laden fehlgeschlagen – nochmal" : "Spracherkennung fehlt") + " · <u>jetzt laden</u> (" + rekord.status.missingMb + " MB)"
                     : !rekord.status.ready ? "Spracherkennung fehlt noch"
                     : rekord.status.pending ? rekord.status.pending + " in Arbeit"
                     : "Bereit · " + (rekord.status.ai ? "KI: " + rekord.status.ai : "keine KI")
@@ -299,7 +304,13 @@ Rectangle {
                 elide: Text.ElideRight
                 font.family: Theme.text
                 font.pixelSize: 12
-                color: Theme.fg3
+                color: canLoad ? Theme.accent : Theme.fg3
+                textFormat: Text.StyledText
+                ToolTip.visible: canLoad && statusHover.hovered
+                ToolTip.delay: 300
+                ToolTip.text: (rekord.status.modelError ? rekord.status.modelError + "\n" : "") + "Fehlt: " + (rekord.status.missing || []).join(", ") + " – einmalig, danach offline."
+                HoverHandler { id: statusHover; enabled: statusText.canLoad; cursorShape: Qt.PointingHandCursor }
+                TapHandler { enabled: statusText.canLoad; onTapped: rekord.downloadModels() }
             }
             Btn {
                 kind: "ghost"

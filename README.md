@@ -24,6 +24,8 @@ Stell dir vor, neben dir sitzt jemand, der in jedem Meeting mitschreibt – und 
    - eine **Zusammenfassung**: Was wurde besprochen? Was wurde entschieden? Wer muss bis wann was erledigen?
 4. **Später fragst du einfach nach**, z. B. *„Was hat Lisa letzte Woche zum Budget gesagt?“* – REKORD sucht in allen deinen Aufnahmen und zeigt dir die Stelle.
 
+**Unterlagen dazu?** Agenda, Folien oder Teilnehmerliste als PDF, Word, PowerPoint – REKORD liest sie und schreibt die Namen und Fachbegriffe daraus im Transkript richtig („Bönke“ → „Boenke“, „Sapir“ → „Zapier“). Alles auf deinem Computer.
+
 REKORD lernt Stimmen: Wer einmal ca. 45 Sekunden gesprochen hat – einen Text vorgelesen oder einfach drauflos geredet –, wird ab dann in jedem Meeting mit Namen erkannt.
 
 ---
@@ -127,6 +129,12 @@ Eine Art Passwort, mit dem REKORD die KI von Claude oder ChatGPT benutzen darf. 
 Ja. Vor der Aufnahme **Online** wählen. Am Mac fragt macOS beim ersten Mal nach *„Bildschirm- & Systemaudioaufnahme“* – erlauben. Es wird nur der Ton aufgenommen, kein Bild.
 Dazu wählst du: **Call + mein Mikro** (das ganze Meeting, du inklusive) oder **Nur Call-Ton** (nur die anderen im Call – dein Mikrofon bleibt aus, z. B. bei Webinaren).
 
+**REKORD schreibt Namen und Fachbegriffe falsch. Was tun?**
+Gib REKORD die **Unterlagen** zum Termin: Agenda, Folien, Teilnehmerliste, ein Vertrag – als PDF, Word, PowerPoint, Excel, Text oder Foto. Vor der Aufnahme in *Wer ist dabei?*, beim Import zusammen mit der Audiodatei, oder später in der Aufnahme → **Unterlagen**. REKORD findet die seltenen Wörter darin und korrigiert alles im Transkript, was gleich klingt oder fast gleich geschrieben ist. Normale Wörter bleiben unangetastet, jede Korrektur steht im Reiter *Unterlagen* und lässt sich zurücknehmen. Die Unterlagen verlassen deinen Computer nicht – auch nicht, wenn Claude oder ChatGPT eingestellt ist. Für einzelne Wörter, die immer wieder falsch kommen, gibt es zusätzlich das **Vokabular** (*Einstellungen → Transkription*).
+
+**Falsche Datei importiert?**
+In der Liste auf **■** neben dem Fortschritt klicken – die Auswertung stoppt sofort. Oder Aufnahme öffnen → **Stoppen** bzw. **Löschen**.
+
 **Kann ich mit dem iPhone aufnehmen?**
 Ja, mit der **REKORD-App** fürs iPhone (eine echte App, keine Webseite – Installation siehe [Anleitung](docs/ANLEITUNG.md#3-iphone-optional)). Koppeln: In REKORD am Computer *Einstellungen → iPhone & Geräte* → in der App den QR-Code scannen oder den **6-stelligen Code** eintippen. iPhone und Computer müssen im selben WLAN sein.
 
@@ -178,6 +186,7 @@ Alles ab hier brauchst du zum Benutzen **nicht**.
 | Zusammenfassungen | Templates, Cloud-KI | 31 Vorlagen + eigene, mehrere Blickwinkel pro Gespräch, **deine KI** |
 | „Ask Plaud" | ja | **Fragen** pro Aufnahme und über alle Aufnahmen, mit klickbaren Quellen [mm:ss] |
 | Mind Map | ja | ja (SVG/PNG-Export) |
+| Kontext aus Dokumenten | – | **Unterlagen**: PDF, Word, PowerPoint, Excel, Fotos zur Aufnahme → Namen und Fachbegriffe richtig im Transkript, jede Korrektur abschaltbar, lokal |
 | Highlight-Knopf | Hardware-Taste | ★-Button, Taste `H`, Live Activity, Siri, Action Button |
 | Call-Aufnahme | Vibrationssensor | **Online-Modus**: Ton des Calls direkt am Computer (Teams, Zoom, Meet – auch als App), wahlweise mit oder ohne dein Mikro |
 | Export | PDF, Word, TXT … | Markdown, Word, TXT, SRT, VTT, JSON, PDF, Audio |

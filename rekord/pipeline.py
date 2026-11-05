@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import audio, config, db, frames
+from . import audio, config, context, db, frames, models
 from .engines import asr, voiceprint
 from .engines.diarize import clean_turns, diarize, refine_turns
 
@@ -41,6 +41,9 @@ def process(rid: str, on_event=None) -> dict:
     def stage(name: str, p: float) -> None:
         # the engines report very often (diarization: every half second of audio) – a database write and a
         # redraw each time cost more than they tell: a new step, or ≥1 % more and ≥0.5 s later
+        from . import jobs
+        if jobs.is_cancelled(rid):  # stopped in the window (analysis in this process; its own process is just ended)
+            raise RuntimeError(jobs.CANCELLED)
         now = time.monotonic()
         if name == last["name"] and (p - last["p"] < 0.01 or now - last["t"] < 0.5):
             return
@@ -55,6 +58,10 @@ def process(rid: str, on_event=None) -> dict:
         frames.extract(rec["audio_path"], rid)
     samples = audio.load(rec["audio_path"])
     duration = len(samples) / audio.SR
+    # models first, visibly: a missing one loads now (with progress) – or the recording says in words why it can't
+    if s.get("asr_engine") != "faster-whisper":
+        s = {**s, "asr_model": models.usable_asr(s["asr_model"])}
+    models.ensure(models.needed(s), on_progress=lambda name, f: stage(f"Lädt {name} (einmalig)", 0.02 + 0.02 * f))
     db.update_recording(rid, duration=duration, peaks=audio.peaks(samples))
 
     # 1. who spoke when
@@ -113,7 +120,8 @@ def process(rid: str, on_event=None) -> dict:
     # 3. words
     stage("Transkribieren", 0.4)
     engine = asr.get_engine(s)
-    segs = engine.transcribe_turns(samples, turns, progress=lambda p: stage("Transkribieren", 0.4 + 0.55 * p))
+    hint = context.hint(rid, s)  # names and terms from the Unterlagen, for engines that take a hint
+    segs = engine.transcribe_turns(samples, turns, progress=lambda p: stage("Transkribieren", 0.4 + 0.55 * p), hint=hint)
     for seg in segs:
         seg["text"] = asr.apply_vocabulary(seg["text"], s.get("vocabulary", []))
     langs = [x.get("lang") for x in segs if x.get("lang")]

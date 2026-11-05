@@ -117,6 +117,21 @@ AbstractButton {
                 color: row.status === "error" ? Theme.err : row.status === "recording" ? Theme.onAccent : Theme.accent
             }
         }
+        AbstractButton {  // stop the analysis right here (the wrong file …) – the recording stays
+            id: stopBtn
+            objectName: "rowStop"
+            visible: row.busy
+            Layout.preferredWidth: 28
+            Layout.preferredHeight: 28
+            hoverEnabled: true
+            onClicked: library.cancel(row.rid)
+            background: Rectangle { radius: 14; color: stopBtn.hovered ? Theme.card2 : "transparent"; border.width: stopBtn.hovered ? 1 : 0; border.color: Theme.line2 }
+            contentItem: Item { Icon { anchors.centerIn: parent; width: 12; height: 12; name: "stop"; color: stopBtn.hovered ? Theme.err : Theme.fg2 } }
+            ToolTip.visible: hovered
+            ToolTip.delay: 300
+            ToolTip.text: "Auswertung stoppen"
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
+        }
         Icon {
             Layout.rightMargin: 18
             width: 18; height: 18

@@ -25,6 +25,9 @@ _llock = threading.Lock()
 _started = False
 _child: subprocess.Popen | None = None
 _later: dict[str, list[str]] = {}  # summaries asked for while the recording was still being analyzed
+_current: str | None = None  # the recording being analysed right now
+_cancelled: set[str] = set()  # analyses stopped by the user (the wrong file, changed one's mind …)
+CANCELLED = "Abgebrochen."
 
 
 def subscribe(fn) -> None:
@@ -50,6 +53,8 @@ def emit(ev: dict) -> None:
 
 def enqueue(rid: str, kind: str = "process") -> None:
     if kind == "process":
+        with _llock:
+            _cancelled.discard(rid)
         db.update_recording(rid, status="queued", stage="Warteschlange", progress=0, error="")
     _q.put((kind, rid, None))
     emit({"type": "queued", "id": rid})
@@ -80,22 +85,85 @@ def pending() -> int:
     return _q.qsize()
 
 
+def cancel(rid: str, wait: float = 5.0) -> bool:
+    """Stop the analysis of a recording – running (its process ends right away) or still waiting. The recording stays
+    („Nochmal“ starts it again). False: nothing was running or waiting for it."""
+    rec = db.get_recording(rid) or {}
+    if rec.get("status") not in ("queued", "processing"):
+        return False
+    with _llock:
+        _cancelled.add(rid)
+        _later.pop(rid, None)
+        running = _current == rid
+    if running:
+        p = _child
+        if p is not None and p.poll() is None:
+            try:
+                p.kill()
+                p.wait(timeout=wait)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+    db.update_recording(rid, status="error", stage="", progress=0, error=CANCELLED)
+    emit({"type": "cancelled", "id": rid})
+    log.info("analysis of %s cancelled", rid)
+    return True
+
+
+def is_cancelled(rid: str) -> bool:
+    with _llock:
+        return rid in _cancelled
+
+
+def enqueue_context(rid: str) -> None:
+    """Unterlagen added to a finished recording: correct its transcript with them – no new analysis needed."""
+    _q.put(("context", rid, None))
+
+
+def _context(rid: str, always: bool = False) -> None:
+    """The Unterlagen step: read pictures/scans, correct the transcript with the documents' terms. Never fails the
+    recording – without it the transcript is just as the recognizer wrote it. `always`: also with no documents left
+    (one was removed – its corrections go)."""
+    from . import context
+    if not context.has(rid) and not (always and (db.get_recording(rid) or {}).get("context_fixes")):
+        return
+    emit({"type": "context_started", "id": rid})
+    try:
+        r = context.run(rid)
+    except Exception as e:  # noqa: BLE001
+        log.error("context %s failed: %s", rid, traceback.format_exc())
+        emit({"type": "context_done", "id": rid, "fixes": 0, "error": str(e)})
+        return
+    emit({"type": "context_done", "id": rid, **r})
+
+
 def _run() -> None:
+    global _current
     from . import pipeline, summarize
     while True:
         kind, rid, template_id = _q.get()
         try:
             if kind == "process":
-                if os.environ.get("REKORD_JOBS_INPROCESS") == "1":  # tests that patch the pipeline
-                    pipeline.process(rid, on_event=emit)
-                else:
-                    _process_isolated(rid)
+                if is_cancelled(rid) or (db.get_recording(rid) or {}).get("status") != "queued":
+                    continue  # stopped while waiting, or already done by an earlier entry
+                _current = rid
+                try:
+                    if os.environ.get("REKORD_JOBS_INPROCESS") == "1":  # tests that patch the pipeline
+                        pipeline.process(rid, on_event=emit)
+                    else:
+                        _process_isolated(rid)
+                finally:
+                    _current = None
+                if is_cancelled(rid):
+                    continue
+                _context(rid)  # before any summary: it should see the corrected names and terms
                 with _llock:
                     asked = _later.pop(rid, [])
                 for tid in asked:  # what was asked for during the analysis – now on the full transcript
                     _q.put(("summary", rid, tid))
                 if wants_auto_summary(config.load()):
                     _q.put(("summary", rid, None))
+            elif kind == "context":
+                _context(rid, always=True)
             elif kind == "summary":
                 emit({"type": "summary_started", "id": rid})
                 if template_id:
@@ -104,6 +172,9 @@ def _run() -> None:
                     summarize.auto_summary(rid)
                 emit({"type": "summary_done", "id": rid})
         except Exception as e:  # noqa: BLE001
+            if kind == "process" and is_cancelled(rid):  # its process was ended on purpose
+                db.update_recording(rid, status="error", stage="", progress=0, error=CANCELLED)
+                continue
             log.error("job %s %s failed: %s", kind, rid, traceback.format_exc())
             if kind == "process":
                 db.update_recording(rid, status="error", stage="", error=str(e))

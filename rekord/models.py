@@ -8,6 +8,7 @@ Layout under MODELS_DIR:
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import ssl
@@ -72,6 +73,50 @@ REGISTRY: dict[str, ModelSpec] = {m.id: m for m in [
 
 ESSENTIAL = ["pyannote-segmentation", "eres2net-base", "silero-vad"]
 
+
+def needed(settings: dict) -> list[str]:
+    """What REKORD needs to transcribe with these settings: speaker models, voiceprint, the chosen speech model."""
+    ids = list(ESSENTIAL)
+    emb = settings.get("embedding_model")
+    if emb in REGISTRY and emb not in ids:
+        ids.append(emb)
+    if settings.get("asr_engine") != "faster-whisper" and settings.get("asr_model") in REGISTRY:
+        ids.append(settings["asr_model"])
+    return ids
+
+
+def missing(settings: dict) -> list[str]:
+    return [m for m in needed(settings) if not installed(m)]
+
+
+def usable_asr(model_id: str) -> str:
+    """The speech model to use: the chosen one if it's there – otherwise one that is, rather than failing (the chosen
+    one is being loaded meanwhile). Nothing there at all: the chosen one (ensure() then loads it)."""
+    if installed(model_id):
+        return model_id
+    have = [m for m, spec in REGISTRY.items() if spec.kind == "asr" and installed(m)]
+    if have:
+        log.warning("speech model %s not loaded yet – using %s meanwhile", model_id, have[-1])
+        return have[-1]
+    return model_id
+
+
+def friendly(e: BaseException) -> str:
+    """A download error in words: no internet, blocked, disk full – instead of a Python exception."""
+    import errno
+    import urllib.error
+    if isinstance(e, urllib.error.HTTPError):
+        return f"Server antwortet mit Fehler {e.code} – später nochmal versuchen."
+    if isinstance(e, ssl.SSLError) or "CERTIFICATE" in str(e).upper():
+        return "Sichere Verbindung zu github.com nicht möglich (Firewall/Proxy prüft Verbindungen?)."
+    if isinstance(e, (urllib.error.URLError, TimeoutError, ConnectionError)):
+        return "Keine Verbindung zu github.com – Internet prüfen, dann nochmal „Laden“."
+    if isinstance(e, OSError) and e.errno == errno.ENOSPC:
+        return "Kein Platz mehr auf dem Laufwerk."
+    if isinstance(e, PermissionError):
+        return f"Keine Schreibrechte im Modell-Ordner ({config.MODELS_DIR})."
+    return str(e) or e.__class__.__name__
+
 def _ssl_context() -> ssl.SSLContext:
     """Bundled CA list (certifi): the packaged app's OpenSSL was built on Debian and would look for
     certificates at Debian paths, which fails on Fedora/Arch/openSUSE. SSL_CERT_FILE still wins."""
@@ -85,6 +130,7 @@ def _ssl_context() -> ssl.SSLContext:
         return ssl.create_default_context()
 
 
+log = logging.getLogger("rekord.models")
 _progress: dict[str, dict] = {}
 _plock = threading.Lock()
 _dl_locks: dict[str, threading.Lock] = {}
@@ -135,13 +181,14 @@ def _set(mid: str, **kw) -> None:
         _progress.setdefault(mid, {}).update(kw)
 
 
-def download(model_id: str) -> None:
-    """Blocking download + extract. Progress via status(). Concurrent callers wait for the same download."""
+def download(model_id: str, on_progress=None) -> None:
+    """Blocking download + extract. Progress via status() (and on_progress(fraction)). Concurrent callers wait for the
+    same download."""
     with _dl_lock(model_id):
-        _download(model_id)
+        _download(model_id, on_progress)
 
 
-def _download(model_id: str) -> None:
+def _download(model_id: str, on_progress=None) -> None:
     spec = REGISTRY[model_id]
     if installed(model_id):
         return
@@ -159,6 +206,8 @@ def _download(model_id: str) -> None:
                 f.write(chunk)
                 done += len(chunk)
                 _set(model_id, done=done)
+                if on_progress:
+                    on_progress(min(1.0, done / (total or spec.size_mb * 1024 * 1024)))
         if spec.archive_dir:
             _set(model_id, state="extracting")
             _extract(tmp, config.MODELS_DIR)
@@ -178,13 +227,16 @@ def _download(model_id: str) -> None:
         _set(model_id, state="done")
     except Exception as e:  # noqa: BLE001
         tmp.unlink(missing_ok=True)
-        _set(model_id, state="error", error=str(e))
+        _set(model_id, state="error", error=friendly(e))
         raise
 
 
 def download_async(model_id: str) -> None:
-    if _dl_lock(model_id).locked():
-        return  # already running
+    if installed(model_id) or _dl_lock(model_id).locked():
+        return  # there, or already running
+    # shown right away – the window asks for the progress immediately after the click, before the thread got going
+    _set(model_id, state="downloading", done=0, total=REGISTRY[model_id].size_mb * 1024 * 1024, error="")
+
     def run():
         try:
             download(model_id)
@@ -203,7 +255,35 @@ def delete(model_id: str) -> None:
         _progress.pop(model_id, None)
 
 
-def ensure(ids: list[str]) -> None:
+def download_missing_async(settings: dict) -> list[str]:
+    """Everything REKORD still needs, one after the other in the background. Returns the ids being loaded."""
+    todo = missing(settings)
+    for mid in todo:  # all show "downloading" at once – honest: they're all on the way
+        if not _dl_lock(mid).locked():
+            _set(mid, state="downloading", done=0, total=REGISTRY[mid].size_mb * 1024 * 1024, error="")
+
+    def run():
+        for mid in todo:
+            try:
+                download(mid)
+            except Exception:  # noqa: BLE001 - reported via status; the next one still loads
+                pass
+    if todo:
+        threading.Thread(target=run, daemon=True, name="dl-missing").start()
+    return todo
+
+
+class Missing(RuntimeError):
+    """A model REKORD needs is not there and could not be loaded (no internet …) – said in words."""
+
+
+def ensure(ids: list[str], on_progress=None) -> None:
+    """Load what's missing (blocking). on_progress(name, fraction) while loading. Missing when that fails."""
     for mid in ids:
         if not installed(mid):
-            download(mid)
+            spec = REGISTRY[mid]
+            try:
+                download(mid, (lambda f, n=spec.name: on_progress(n, f)) if on_progress else None)
+            except Exception as e:  # noqa: BLE001
+                raise Missing(f"Das Modell „{spec.name}“ ({spec.size_mb} MB) fehlt und ließ sich nicht laden: {friendly(e)} "
+                              "Einstellungen → Modelle → Laden.") from e
