@@ -129,15 +129,13 @@ def process(rid: str, on_event=None) -> dict:
     # 3. words
     stage("Transkribieren", 0.4)
     s = models.for_language(s)
-    if not s.get("language") and models.engine(s) == "sherpa" and turns:
-        stage("Sprache erkennen", 0.4)  # once for the whole recording – per short sentence Whisper guesses English
-        lang = asr.detect_language(samples, turns, s)
-        if lang:
-            log.info("language of %s: %s", rid, lang)
-            s = models.for_language({**s, "language": lang})
     engine = asr.get_engine(s)
     hint = context.hint(rid, s)  # names and terms from the Unterlagen, for engines that take a hint
     segs = engine.transcribe_turns(samples, turns, progress=lambda p: stage("Transkribieren", 0.4 + 0.55 * p), hint=hint)
+    if not asr.whisper_language(s) and models.engine(s) == "sherpa":
+        n = asr.fix_short_languages(segs, samples, s)  # short sentences guessed in another language: main language
+        if n:
+            log.info("%s: %d short sentences rewritten in %s", rid, n, asr.main_language(segs))
     for seg in segs:
         seg["text"] = asr.apply_vocabulary(seg["text"], s.get("vocabulary", []))
     langs = [x.get("lang") for x in segs if x.get("lang")]

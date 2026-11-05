@@ -178,7 +178,7 @@ Alles ab hier brauchst du zum Benutzen **nicht**.
 | | Plaud Note Pro | **REKORD** |
 |---|---|---|
 | Aufnahme | eigene Hardware | iPhone, Mac, Windows, Linux, jedes Mikro (USB, Headset, AirPods, Konferenz-Speaker) |
-| Transkription | Cloud | **lokal** (Whisper bis large-v3 / turbo, ~99 Sprachen, Sprache automatisch oder pro Satz) |
+| Transkription | Cloud | **lokal** (Whisper bis large-v3 / turbo, ~99 Sprachen, Sprache pro Satz) |
 | Sprecher | „Speaker 1/2" + manuell benennen | **Erkennt Personen an der Stimme**, live und über alle Meetings hinweg |
 | Live im Meeting | – | **Großanzeige „wer spricht"**, Redeanteile, Live-Mitschrift |
 | Teilnehmer vorab wählen | – | **„Wer ist dabei?"**: Anzahl + Bekannte + Vor Ort/Online → geschlossene Runde, kaum Verwechslungen |

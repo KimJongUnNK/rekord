@@ -1,5 +1,5 @@
-"""Language: detected once per recording (per short sentence Whisper guesses English and writes English), "Gemischt"
-for per-sentence detection, and English-only models never used for German. No models needed."""
+"""Language: "Automatisch" per sentence, but short sentences (where Whisper guesses English for "Ja, passt.") get the
+recording's main language; English-only models never used for German. No models needed."""
 import numpy as np
 
 from rekord import live, models
@@ -20,43 +20,52 @@ def test_english_only_models_are_never_used_for_german(monkeypatch):
     assert models.needed(fw)[-1] == "fw:large-v3-turbo"
 
 
-def test_mixed_means_per_sentence_for_the_engine():
+def test_old_mixed_setting_means_automatic():
     assert asr.whisper_language({"language": "mixed"}) == ""
     assert asr.whisper_language({"language": "de"}) == "de"
-    assert asr.whisper_language({"language": ""}) == ""
 
 
-def test_language_is_detected_once_from_the_longest_turns(monkeypatch):
-    calls = []
+def _seg(a, b, lang, text="x"):
+    return {"start": a, "end": b, "lang": f"<|{lang}|>", "text": text, "label": 0}
 
-    class Fake:
+
+def test_main_language_comes_from_the_longer_sentences():
+    segs = [_seg(0, 1, "en"), _seg(1, 9, "de"), _seg(9, 10, "en"), _seg(10, 16, "en"), _seg(16, 30, "de")]
+    assert asr.main_language(segs) == "de"  # 22 s German vs 6 s English among the long ones
+    assert asr.main_language([_seg(0, 1, "fr"), _seg(1, 2, "fr"), _seg(2, 3, "de")]) == "fr"  # none long: all count
+    assert asr.main_language([]) == ""
+
+
+def test_short_sentences_get_the_main_language_long_ones_keep_theirs(monkeypatch):
+    used = []
+
+    class Main:
         def transcribe_clip(self, clip):
-            calls.append(len(clip) / asr.SR)
-            # long clips are clearly German; a short "Okay." would be guessed English
-            return "…", "<|de|>" if len(clip) / asr.SR > 3 else "<|en|>"
-    monkeypatch.setattr(asr, "get_engine", lambda s: Fake())
-    samples = np.zeros(asr.SR * 120, dtype=np.float32)
-    turns = [(0, 1.0, 0), (1, 13, 1), (13, 14, 0), (14, 44, 1), (44, 45.2, 0), (50, 58, 2)]
-    assert asr.detect_language(samples, turns, {"language": ""}) == "de"
-    assert calls[0] == asr.MAX_CHUNK  # the longest first (cut to the 30 s window)
-    assert len(calls) == 3  # turns under 1.5 s don't count
+            return "Ja, passt.", "<|de|>"
+    monkeypatch.setattr(asr, "get_engine", lambda s: used.append(s["language"]) or Main())
+    segs = [_seg(0, 9, "de", "Heute geht es ums Budget."),
+            _seg(9, 10.5, "en", "Yes, fits."),                          # short, guessed English → German
+            _seg(11, 19, "en", "The headliner confirmed the date."),   # long English: a real English sentence
+            _seg(19, 30, "de", "Gut, dann machen wir das so.")]
+    n = asr.fix_short_languages(segs, np.zeros(asr.SR * 31, dtype=np.float32), {"language": ""})
+    assert n == 1 and used == ["de"]
+    assert segs[1]["text"] == "Ja, passt." and segs[1]["lang"] == "de"
+    assert segs[2]["text"] == "The headliner confirmed the date."  # mixed meetings stay mixed
 
 
-def test_live_settles_on_a_language(monkeypatch):
+def test_live_short_sentences_use_the_main_language(monkeypatch):
     made = []
     monkeypatch.setattr(asr, "get_engine", lambda s: made.append(s["language"]) or object())
     sess = live.LiveSession.__new__(live.LiveSession)
-    sess.s, sess.rid, sess._langs, sess._lang_locked = {"language": "", "threads": 4}, "x", {}, False
-    sess.engine = "auto"
+    sess.s, sess.rid, sess._langs, sess._main = {"language": "", "threads": 4}, "x", {}, None
     sess._note_language("<|de|>", 6)
-    sess._note_language("<|en|>", 1)  # a short "Okay." guessed English
-    sess._note_language("<|de|>", 5)
-    assert not made  # 12 s: not yet sure
-    sess._note_language("<|de|>", 4)
-    assert made == ["de"] and sess._lang_locked
+    sess._note_language("<|en|>", 5)
+    assert not made  # 11 s: not yet sure
+    sess._note_language("<|de|>", 6)
+    assert made == ["de"] and sess._main is not None  # 12 of 17 s German
     sess._note_language("<|en|>", 30)
-    assert made == ["de"]  # stays
+    assert made == ["de"]  # decided
     fixed = live.LiveSession.__new__(live.LiveSession)
-    fixed.s, fixed._langs, fixed._lang_locked = {"language": "de"}, {}, True
+    fixed.s, fixed._langs, fixed._main = {"language": "de"}, {}, None
     fixed._note_language("<|en|>", 30)
-    assert fixed._langs == {}
+    assert fixed._langs == {} and fixed._main is None  # a fixed language needs none of this

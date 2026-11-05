@@ -97,7 +97,7 @@ class FasterWhisper:
     word_timestamps = True
 
     def __init__(self, model: str = "large-v3-turbo", language: str = "", device: str = "auto", hotwords: str = "",
-                 threads: int = 4, mixed: bool = False):
+                 threads: int = 4):
         from faster_whisper import WhisperModel
         mid = models.FW_PREFIX + model
         models.ensure([mid])  # from Hugging Face into REKORD's model folder (Einstellungen → Modelle shows it)
@@ -118,7 +118,6 @@ class FasterWhisper:
             raise RuntimeError(f"faster-whisper startet nicht: {err}")
         _fw_state["device"] = self.device
         self.language = language or None
-        self.mixed = mixed and not language
         self.hotwords = hotwords or None
         self.model_id = f"faster-whisper:{model}"
         try:
@@ -130,7 +129,7 @@ class FasterWhisper:
     def words(self, samples: np.ndarray, progress: Callable[[float], None] | None = None,
               hint: str = "") -> tuple[list[dict], str]:
         hot = ", ".join(x for x in (self.hotwords, hint) if x) or None  # vocabulary + terms from the Unterlagen
-        auto = {} if self.language else ({"multilingual": True} if self.mixed else {"language_detection_segments": 4})
+        auto = {} if self.language else {"multilingual": True}  # automatic: per window, mixed meetings stay mixed
         segs, info = self.model.transcribe(samples, language=self.language, word_timestamps=True, vad_filter=self.vad,
                                            hotwords=hot, condition_on_previous_text=False, **auto)
         dur = len(samples) / SR or 1
@@ -244,11 +243,11 @@ def fw_device() -> str:
 
 
 @lru_cache(maxsize=1)
-def _faster(model: str, language: str, device: str, hotwords: str, threads: int = 4, mixed: bool = False) -> FasterWhisper:
-    return FasterWhisper(model, language, device, hotwords, threads, mixed)
+def _faster(model: str, language: str, device: str, hotwords: str, threads: int = 4) -> FasterWhisper:
+    return FasterWhisper(model, language, device, hotwords, threads)
 
 
-MIXED = "mixed"  # language setting: detect per sentence (meetings that switch languages)
+MIXED = "mixed"  # older setting value: same as automatic
 
 
 def whisper_language(settings: dict) -> str:
@@ -256,20 +255,43 @@ def whisper_language(settings: dict) -> str:
     return "" if lang == MIXED else lang
 
 
-def detect_language(samples: np.ndarray, turns: list[tuple[float, float, int]], settings: dict) -> str:
-    """The recording's language, once: the longest turns (up to ~80 s of speech), weighted by length. Per short
-    sentence Whisper often guesses English ("Ja, passt.") – and then writes that sentence in English."""
-    eng = get_engine({**settings, "language": ""})
-    votes: dict[str, float] = {}
-    for a, b, _spk in sorted(turns, key=lambda t: t[0] - t[1])[:4]:  # longest first
-        b = min(b, a + MAX_CHUNK)
-        if b - a < 1.5:
-            break
-        _text, lang = eng.transcribe_clip(samples[int(a * SR):int(b * SR)])
-        lang = (lang or "").strip("<|>")
-        if lang:
-            votes[lang] = votes.get(lang, 0.0) + (b - a)
+SHORT = 4.0  # seconds: below this Whisper's language guess is unreliable ("Ja, passt." → English)
+
+
+def _lang(code: str) -> str:
+    return (code or "").strip("<|>")
+
+
+def main_language(segs: list[dict]) -> str:
+    """The recording's main language: what the longer sentences are in (by length) – or all of them, if none is long."""
+    def tally(items):
+        votes: dict[str, float] = {}
+        for x in items:
+            lang = _lang(x.get("lang", ""))
+            if lang:
+                votes[lang] = votes.get(lang, 0.0) + (x["end"] - x["start"])
+        return votes
+    votes = tally([x for x in segs if x["end"] - x["start"] >= SHORT]) or tally(segs)
     return max(votes, key=votes.get) if votes else ""
+
+
+def fix_short_languages(segs: list[dict], samples: np.ndarray, settings: dict) -> int:
+    """"Automatisch": long sentences keep the language Whisper heard (a meeting may really switch languages), short
+    ones in another language than the recording's are written again in its main language – a short "Ja, passt." is
+    often guessed as English and then written in English. Returns how many were rewritten."""
+    main = main_language(segs)
+    if not main:
+        return 0
+    eng, n = None, 0
+    for x in segs:
+        if x["end"] - x["start"] >= SHORT or _lang(x.get("lang", "")) in ("", main):
+            continue
+        eng = eng or get_engine({**settings, "language": main})
+        text, _ = eng.transcribe_clip(samples[int(x["start"] * SR):int(x["end"] * SR)])
+        text = clean_text(text)
+        if text:
+            x["text"], x["lang"], n = text, main, n + 1
+    return n
 
 
 def get_engine(settings: dict):
@@ -277,8 +299,7 @@ def get_engine(settings: dict):
     if models.engine(settings) == "faster-whisper":  # chosen but not installed → Whisper ONNX instead of an error
         hot = " ".join(v.get("to", "") for v in settings.get("vocabulary", []) if v.get("to"))
         return _faster(settings["faster_whisper_model"], whisper_language(settings),
-                       settings.get("faster_whisper_device", "auto"), hot, int(settings.get("threads", 4)),
-                       settings.get("language") == MIXED)
+                       settings.get("faster_whisper_device", "auto"), hot, int(settings.get("threads", 4)))
     # the chosen model if it's there – otherwise one that is (the chosen one loads meanwhile) instead of an error
     return _sherpa(models.usable_asr(settings["asr_model"]), whisper_language(settings), int(settings.get("threads", 4)))
 

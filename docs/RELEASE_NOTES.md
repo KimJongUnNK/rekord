@@ -20,10 +20,9 @@
 Die Apps sind nicht signiert. Wie du sie beim ersten Mal öffnest, steht in der Anleitung.
 
 ### Neu in 1.3.9 – kein Englisch mehr, wenn Deutsch gesprochen wird
-- **Behoben: Teile des Transkripts kamen auf Englisch.** *Automatisch* hat die Sprache für jeden Satz einzeln erkannt – bei kurzen Sätzen („Ja, passt.“, „Okay.“) hat Whisper dabei oft Englisch geraten und den Satz dann auf Englisch geschrieben. Jetzt erkennt REKORD die Sprache **einmal pro Aufnahme** an den längsten Stellen und bleibt dabei; live entscheidet es nach den ersten ~15 Sekunden Sprache. faster-whisper schaut dafür nicht mehr nur auf die ersten 30 Sekunden.
-- **Neu: *Gemischt (Sprache pro Satz)*** – für Meetings, die wirklich zwischen Sprachen wechseln (das bisherige Verhalten).
+- **Behoben: Einzelne Sätze kamen auf Englisch.** *Automatisch* erkennt die Sprache pro Satz – bei kurzen Sätzen („Ja, passt.“, „Okay.“) hat Whisper dabei oft Englisch geraten und den Satz dann auf Englisch geschrieben. Jetzt bekommen Sätze unter 4 Sekunden die **Hauptsprache der Aufnahme** (woran die längeren Sätze erkannt wurden). Längere Sätze behalten ihre eigene Sprache – Meetings, die wirklich zwischen Deutsch und Englisch wechseln, bleiben richtig. Live genauso, sobald nach ~15 Sekunden klar ist, was die Hauptsprache ist. faster-whisper erkennt bei *Automatisch* jetzt pro Abschnitt statt einmal für die ganze Datei.
 - **Behoben: *distil-large-v3* kann nur Englisch** – deutsche Aufnahmen kamen damit als englische Übersetzung raus. Es steht jetzt so in der Liste, und ist es gewählt, die Sprache aber nicht Englisch, nimmt REKORD automatisch ein mehrsprachiges Modell.
-- Schon falsch transkribiert? Aufnahme öffnen → *„…“ → Neu verarbeiten*.
+- Am sichersten bleibt: Sprache fest auf **Deutsch** (*Einstellungen → Transkription*). Schon falsch transkribiert? Aufnahme öffnen → *„…“ → Neu verarbeiten*.
 
 ### Neu in 1.3.8 – zwei Spracherkennungen zur Wahl
 - **faster-whisper ist jetzt in jeder App dabei** (Mac, Windows, Linux) – unter *Einstellungen → Transkription → Engine* frei wählbar neben *Whisper ONNX*. Bisher stand es nur als „nicht installiert“ da, ließ sich aber auswählen – und dann scheiterte jede Transkription. Das ist behoben.

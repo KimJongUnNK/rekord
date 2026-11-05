@@ -19,7 +19,7 @@ Page {
     readonly property var sections: [["look", "Darstellung"], ["audio", "Audio & Mikrofon"], ["ai", "KI"], ["asr", "Transkription"],
                                      ["spk", "Sprecher-Erkennung"], ["models", "Modelle"], ["pair", "iPhone & Geräte"],
                                      ["int", "Claude Desktop (MCP)"], ["data", "Speicher & Datenschutz"]]
-    readonly property var langs: [["", "Automatisch (einmal pro Aufnahme)"], ["mixed", "Gemischt (Sprache pro Satz)"], ["de", "Deutsch"], ["en", "Englisch"], ["fr", "Französisch"], ["it", "Italienisch"],
+    readonly property var langs: [["", "Automatisch"], ["de", "Deutsch"], ["en", "Englisch"], ["fr", "Französisch"], ["it", "Italienisch"],
                                   ["es", "Spanisch"], ["nl", "Niederländisch"], ["pt", "Portugiesisch"], ["pl", "Polnisch"], ["tr", "Türkisch"],
                                   ["ru", "Russisch"], ["uk", "Ukrainisch"], ["hr", "Kroatisch"], ["sr", "Serbisch"], ["ar", "Arabisch"],
                                   ["zh", "Chinesisch"], ["ja", "Japanisch"], ["ko", "Koreanisch"]]
@@ -360,7 +360,7 @@ Page {
                     id: secAsr
                     title: "Transkription"
                     Field {
-                        label: "Sprache"; tip: "lang"; hint: "Fest einstellen = am genauesten. Automatisch erkennt sie einmal pro Aufnahme, Gemischt pro Satz (Meetings, die die Sprache wechseln)."
+                        label: "Sprache"; tip: "lang"; hint: "Fest einstellen = am genauesten. Automatisch erkennt sie pro Satz – kurze Sätze bekommen die Hauptsprache der Aufnahme."
                         Select { Layout.maximumWidth: 300; options: page.opts(page.langs); value: page.s ? page.s.language : ""; onPicked: (v) => page.save({ language: v }) }
                     }
                     Field {
