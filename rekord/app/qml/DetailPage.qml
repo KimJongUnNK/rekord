@@ -20,8 +20,18 @@ Page {
     property var knownNames: []
     property int tab: 0
     property real startAt: 0
-    readonly property var tabs: ["Zusammenfassung", "Transkript", "Mind Map", "Fragen", "Notizen", "Export"]
+    readonly property var tabs: ["Zusammenfassung", "Transkript", "Mind Map", "Fragen", "Notizen",
+                                 "Unterlagen" + (rec && rec.documents && rec.documents.length ? " · " + rec.documents.length : ""), "Export"]
+    readonly property int docsTab: 5
+    function addDocs() { tab = docsTab; docsView.add() }
     readonly property bool busy: rec && (rec.status === "queued" || rec.status === "processing" || rec.status === "recording")
+    readonly property bool analysing: !!rec && (rec.status === "queued" || rec.status === "processing")
+    readonly property bool cancelled: !!rec && rec.status === "error" && rec.error === "Abgebrochen."
+    function deleteRecording() {
+        app.confirm("Aufnahme löschen?", "Audio, Transkript, Zusammenfassungen und Unterlagen werden endgültig entfernt."
+                    + (analysing ? " Die laufende Auswertung wird gestoppt." : ""), "Löschen",
+                    () => app.call("DELETE", "/api/recordings/" + rid, null, () => { player.stop(); app.toast("Gelöscht"); app.go("library"); library.refresh() }), true)
+    }
 
     function open(id, t) {
         if (id !== rid) { rec = null; tab = 0 }
@@ -82,7 +92,7 @@ Page {
                     r.status = "processing"
                     page.rec = r
                 }
-            } else if (["done", "summary_done", "error", "queued"].indexOf(ev.type) >= 0) {
+            } else if (["done", "summary_done", "error", "queued", "cancelled", "context_done"].indexOf(ev.type) >= 0) {
                 page.reload()
             } else if (ev.type === "summary_started") {
                 page.app.toast("Zusammenfassung wird erstellt …")
@@ -124,6 +134,18 @@ Page {
                 ToolTip.text: enabled ? "Weitere Datei hinten an diese Aufnahme (z. B. Teil 2) – danach wird alles zusammen transkribiert. Oder Datei einfach auf die Aufnahme ziehen."
                                       : "Geht, sobald die Aufnahme fertig ausgewertet ist."
             }
+            Btn {  // agenda, slides, documents: names and terms from them are written right in the transcript
+                objectName: "docsButton"
+                small: true
+                iconName: "plus"
+                text: "Unterlagen"
+                enabled: !!page.rec
+                onClicked: page.addDocs()
+                ToolTip.visible: hovered
+                ToolTip.delay: 400
+                ToolTip.text: "PDF, Word, PowerPoint, Excel, Text oder Fotos zu dieser Aufnahme – REKORD schreibt Namen und Fachbegriffe daraus richtig. "
+                              + "Oder Datei einfach auf die Aufnahme ziehen. Bleibt alles auf diesem Rechner."
+            }
             Btn {
                 id: moreBtn
                 small: true
@@ -137,14 +159,12 @@ Page {
                         enabled: !!page.rec && page.rec.status === "done"
                         onTriggered: page.appendFiles()
                     }
+                    MenuItem { text: "Unterlagen hinzufügen …"; onTriggered: page.addDocs() }
                     MenuItem { text: "Personen neu erkennen"; onTriggered: page.app.call("POST", "/api/recordings/" + page.rid + "/reidentify", null, (r) => { page.app.toast(r.renamed + " Person(en) erkannt"); page.reload() }) }
                     MenuItem { text: "Umbenennen"; onTriggered: page.app.prompt("Titel", page.rec.title, (t) => page.app.call("PATCH", "/api/recordings/" + page.rid, { title: t }, () => { page.reload(); library.refresh() })) }
                     MenuSeparator {}
-                    MenuItem {
-                        text: "Löschen"
-                        onTriggered: page.app.confirm("Aufnahme löschen?", "Audio, Transkript und Zusammenfassungen werden endgültig entfernt.", "Löschen",
-                                                      () => page.app.call("DELETE", "/api/recordings/" + page.rid, null, () => { player.stop(); page.app.toast("Gelöscht"); page.app.go("library") }))
-                    }
+                    MenuItem { text: "Auswertung stoppen"; enabled: page.analysing; onTriggered: page.app.call("POST", "/api/recordings/" + page.rid + "/cancel", null, () => { page.app.toast("Auswertung gestoppt"); page.reload() }) }
+                    MenuItem { text: "Löschen"; onTriggered: page.deleteRecording() }
                 }
             }
         }
@@ -207,15 +227,41 @@ Page {
                     BusyIndicator { visible: page.busy; running: page.busy; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
                     Text {
                         Layout.fillWidth: true
-                        text: page.rec ? (page.rec.status === "error" ? "Verarbeitung fehlgeschlagen. " + (page.rec.error || "") : (page.jobStage || "In Warteschlange")) : ""
+                        text: page.rec ? (page.cancelled ? "Abgebrochen – die Aufnahme ist noch da. „Nochmal“ wertet sie aus."
+                                          : page.rec.status === "error" ? "Verarbeitung fehlgeschlagen. " + (page.rec.error || "")
+                                          : (page.jobStage || "In Warteschlange")) : ""
                         wrapMode: Text.WordWrap
                         font.family: Theme.text; font.pixelSize: 14; font.weight: Font.Bold; color: Theme.fg
                     }
                     Text { visible: page.busy; text: Math.round(page.jobProgress * 100) + " %"; font.family: Theme.text; font.pixelSize: 13; color: Theme.fg2 }
+                    Btn {  // the wrong file, or not now: stop the analysis – the recording stays
+                        objectName: "cancelButton"
+                        visible: page.analysing
+                        small: true
+                        iconName: "stop"
+                        text: "Stoppen"
+                        onClicked: page.app.call("POST", "/api/recordings/" + page.rid + "/cancel", null, () => { page.app.toast("Auswertung gestoppt"); page.reload() })
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 400
+                        ToolTip.text: "Auswertung sofort beenden. Die Aufnahme bleibt – „Nochmal“ startet sie neu."
+                    }
+                    Btn {  // the wrong file: away with it, analysis and all
+                        objectName: "cancelDeleteButton"
+                        visible: page.analysing || page.cancelled
+                        small: true
+                        kind: "ghost"
+                        iconName: "trash"
+                        text: "Löschen"
+                        onClicked: page.deleteRecording()
+                    }
                     Btn { visible: page.rec && page.rec.status === "error"; small: true; text: "Nochmal"; onClicked: page.app.call("POST", "/api/recordings/" + page.rid + "/reprocess", null, () => page.app.toast("Neu gestartet")) }
                 }
                 Bar { visible: page.busy; Layout.fillWidth: true; value: page.jobProgress }
-                Muted { visible: page.busy; font.pixelSize: 12; text: "Sprecher trennen → Personen erkennen → transkribieren → zusammenfassen. Läuft komplett auf diesem Rechner." }
+                Muted {
+                    visible: page.busy; font.pixelSize: 12
+                    text: "Sprecher trennen → Personen erkennen → transkribieren → " + (page.rec && page.rec.documents && page.rec.documents.length ? "mit Unterlagen abgleichen → " : "")
+                          + "zusammenfassen. Läuft komplett auf diesem Rechner."
+                }
             }
         }
 
@@ -296,6 +342,7 @@ Page {
                 onSeek: (s) => player.seekPlay(s)
             }
             NotesView { id: notes; page: page }
+            DocsView { id: docsView; page: page }
             ExportView { page: page }
         }
     }

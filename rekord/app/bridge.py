@@ -19,7 +19,7 @@ import numpy as np
 from PySide6.QtCore import (Property, QAbstractListModel, QByteArray, QModelIndex, QObject, Qt, QTimer, QUrl, Signal,
                             Slot)
 
-from .. import __version__, audio, config, db, jobs, live
+from .. import __version__, audio, config, context, db, jobs, live
 
 log = logging.getLogger("rekord.app")
 AUDIO_EXT = audio.MEDIA_EXT  # known endings; anything else counts when FFmpeg finds sound in it
@@ -101,10 +101,35 @@ class ListModel(QAbstractListModel):
 REC_ROLES = ["rid", "title", "dateText", "durationText", "status", "statusText", "progress", "folder", "speakers", "source"]
 
 
+def _to_path(u) -> Path:
+    """A file dialog/drop URL (QUrl or "file://…") or a plain path → Path."""
+    if isinstance(u, QUrl):
+        return Path(u.toLocalFile())
+    return Path(QUrl(str(u)).toLocalFile()) if "://" in str(u) else Path(str(u))
+
+
+def attach_docs(rid: str, paths: list[Path]) -> tuple[list[str], list[str]]:
+    """Unterlagen → a recording: (names added, problems). Reads them on this computer (PDF, Word …)."""
+    added, problems = [], []
+    for p in paths:
+        try:
+            added.append(context.add(rid, p)["name"])
+        except context.Unsupported as e:
+            problems.append(str(e))
+        except PermissionError:
+            problems.append(f"Kein Zugriff auf {p.name}" + (" – macOS sperrt den Ordner: Datenschutz & Sicherheit → "
+                                                             "Dateien und Ordner → REKORD erlauben." if sys.platform == "darwin" else "."))
+        except OSError as e:
+            problems.append(f"{p.name}: {e.strerror or e}")
+    return added, problems
+
+
 def _rec_row(r: dict) -> dict:
     st = r.get("status") or ""
     pr = float(r.get("progress") or 0)
     text = {"queued": "Wartet …", "recording": "● Nimmt auf", "error": "Fehler"}.get(st, "")
+    if st == "error" and r.get("error") == jobs.CANCELLED:
+        text = "Abgebrochen"
     if st == "processing":
         text = f"{r.get('stage') or 'Verarbeitet'} · {round(pr * 100)} %"
     return {"rid": r["id"], "title": r.get("title") or "Ohne Titel", "dateText": fmt_date(r.get("created_at")),
@@ -172,8 +197,11 @@ class Library(QObject):
         n, skipped, unreadable = 0, [], []
         self._last_ids = []
         config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-        for u in urls:
-            p = Path(QUrl(u).toLocalFile() if not isinstance(u, QUrl) else u.toLocalFile()) if "://" in str(u) or isinstance(u, QUrl) else Path(str(u))
+        paths = [_to_path(u) for u in urls]
+        docs = [p for p in paths if context.is_doc(p)]  # a PDF, the slides … picked along: the recording's Unterlagen
+        for p in paths:
+            if p in docs:
+                continue
             ext = p.suffix.lower()
             if not audio.accepted(p):  # every audio/video format FFmpeg reads – the ending doesn't matter
                 skipped.append(p.name or str(p))
@@ -188,9 +216,26 @@ class Library(QObject):
                 unreadable.append((p.name, isinstance(e, PermissionError)))
                 continue
             db.create_recording(p.stem, str(dest), source="import", rec_id=rid)
-            jobs.enqueue(rid)
+            if not docs:
+                jobs.enqueue(rid)
             self._last_ids.append(rid)
             n += 1
+        if docs and self._last_ids:
+            ids = list(self._last_ids)
+
+            def work():  # read the documents first (big PDFs take a moment), then analyse – with them
+                problems = []
+                for rid in ids:
+                    _, problems = attach_docs(rid, docs)
+                    jobs.enqueue(rid)
+                if problems:
+                    self.toast.emit(" · ".join(problems[:2]))
+            threading.Thread(target=work, daemon=True, name="import-docs").start()
+            self.toast.emit(f"{len(docs)} {'Unterlage' if len(docs) == 1 else 'Unterlagen'} dazu – Namen und Begriffe daraus "
+                            "werden im Transkript richtig geschrieben.")
+        elif docs:
+            self.toast.emit("Unterlagen gehören zu einer Aufnahme: Aufnahme öffnen → Unterlagen – oder zusammen mit der "
+                            "Audio- oder Videodatei auswählen.")
         if n:
             self.toast.emit(f"{n} {'Datei wird' if n == 1 else 'Dateien werden'} verarbeitet")
         if skipped:
@@ -204,6 +249,14 @@ class Library(QObject):
                 else " – keine Berechtigung, die Datei zu lesen." if denied else " – Datei nicht lesbar oder nicht mehr da."))
         self.refresh()
         return n
+
+    @Slot(str)
+    def cancel(self, rid: str) -> None:
+        """Stop the analysis of a recording (e.g. the wrong file was imported). The recording stays."""
+        def work():
+            if jobs.cancel(rid):
+                self.toast.emit("Auswertung gestoppt – die Aufnahme ist noch da („Nochmal“ oder löschen).")
+        threading.Thread(target=work, daemon=True, name=f"cancel-{rid}").start()
 
     @Slot(result=str)
     def lastImportedId(self) -> str:  # noqa: N802 - QML API
@@ -223,7 +276,7 @@ class Library(QObject):
             return 0
         paths, skipped = [], []
         for u in urls:
-            p = Path(QUrl(u).toLocalFile() if not isinstance(u, QUrl) else u.toLocalFile()) if "://" in str(u) or isinstance(u, QUrl) else Path(str(u))
+            p = _to_path(u)
             (paths if audio.accepted(p) else skipped).append(p)
         if skipped:
             self.toast.emit("Kein Ton gefunden: " + ", ".join(p.name for p in skipped[:3]) + " – jede Audio- oder Videodatei geht, solange Ton drin ist.")
@@ -260,9 +313,54 @@ class Library(QObject):
         urls = [u for u in data.urls() if u.isLocalFile()]
         if not urls and data.hasText():  # a copied path, e.g. "Pfad kopieren" / "Als Pfad kopieren"
             text = data.text().strip().strip('"')
-            if text and "\n" not in text and Path(text).is_file() and audio.accepted(text):
+            if text and "\n" not in text and Path(text).is_file() and (audio.accepted(text) or context.is_doc(text)):
                 urls = [QUrl.fromLocalFile(text)]
         return self.importFiles(urls) if urls else 0
+
+    @Slot(str, "QVariantList", result=int)
+    def attachDocs(self, rid: str, urls) -> int:  # noqa: N802 - QML API
+        """Unterlagen for a recording (PDF, Word, PowerPoint, Excel, text, pictures): names and terms from them are
+        written right in the transcript, summaries and questions know the background. All on this computer.
+        Returns how many files are being added (in the background)."""
+        rec = db.get_recording(rid)
+        paths = [p for p in (_to_path(u) for u in urls) if context.is_doc(p)]
+        others = len(urls) - len(paths)
+        if rec is None or not paths:
+            if others:
+                self.toast.emit("Keine Unterlage: PDF, Word, PowerPoint, Excel, Text oder Bilder gehen.")
+            return 0
+
+        def work():
+            added, problems = attach_docs(rid, paths)
+            if problems:
+                self.toast.emit(" · ".join(problems[:2]))
+            if not added:
+                return
+            jobs.emit({"type": "documents", "id": rid})
+            if (db.get_recording(rid) or {}).get("status") == "done":
+                jobs.enqueue_context(rid)
+                self.toast.emit(f"{len(added)} {'Unterlage' if len(added) == 1 else 'Unterlagen'} dazu – das Transkript wird "
+                                "damit abgeglichen …")
+            else:
+                self.toast.emit(f"{len(added)} {'Unterlage' if len(added) == 1 else 'Unterlagen'} dazu – fließt in die Auswertung ein.")
+        threading.Thread(target=work, daemon=True, name=f"docs-{rid}").start()
+        return len(paths)
+
+    @Slot("QVariant", result=bool)
+    def isDoc(self, url) -> bool:  # noqa: N802 - QML API
+        """A document (PDF, Word, slides, picture …) rather than audio/video?"""
+        return context.is_doc(_to_path(url))
+
+    @Property(str, constant=True)
+    def docFilter(self):  # noqa: N802 - QML API
+        """The file dialog's filter for Unterlagen."""
+        return context.DIALOG_FILTER
+
+    @Property(str, constant=True)
+    def importFilter(self):  # noqa: N802 - QML API
+        """„Datei transkribieren“: audio/video and, picked along, Unterlagen – in one go."""
+        exts = sorted(audio.MEDIA_EXT | context.EXT)
+        return "Audio, Video und Unterlagen (" + " ".join(f"*{e}" for e in exts) + ")"
 
     @Property(str, constant=True)
     def mediaFilter(self):  # noqa: N802 - QML API
@@ -513,6 +611,7 @@ class Live(QObject):
         self._quiet_from: float | None = None
         self._restarted = 0.0
         self._warning = ""
+        self._docs: list[Path] = []  # Unterlagen picked before the recording starts (agenda, slides …)
         self._feeder = threading.Thread(target=self._feed_loop, daemon=True, name="live-feed")
         self._feeder.start()
 
@@ -520,6 +619,41 @@ class Live(QObject):
     @Property(str, notify=changed)
     def state(self):
         return self._state
+
+    @Property("QStringList", notify=changed)
+    def docs(self):
+        """Unterlagen for the next recording (names) – attached as soon as it starts."""
+        return [p.name for p in self._docs]
+
+    @Slot("QVariantList", result=int)
+    def addDocs(self, urls) -> int:  # noqa: N802 - QML API
+        """Unterlagen for this recording: before it starts they wait here, while recording they're attached right away –
+        the live transcript already writes their names and terms right."""
+        paths = [p for p in (_to_path(u) for u in urls) if context.is_doc(p)]
+        if not paths:
+            if urls:
+                self.toast.emit("Keine Unterlage: PDF, Word, PowerPoint, Excel, Text oder Bilder gehen.")
+            return 0
+        if self._state in ("recording", "paused") and self._sess is not None:
+            rid = self._sess.rid
+
+            def work():
+                added, problems = attach_docs(rid, paths)
+                self.toast.emit(" · ".join(problems[:2]) if problems else
+                                f"{len(added)} {'Unterlage' if len(added) == 1 else 'Unterlagen'} für diese Aufnahme")
+            threading.Thread(target=work, daemon=True, name="live-docs").start()
+            return len(paths)
+        for p in paths:
+            if p not in self._docs:
+                self._docs.append(p)
+        self.changed.emit()
+        return len(paths)
+
+    @Slot(int)
+    def removeDoc(self, i: int) -> None:  # noqa: N802 - QML API
+        if 0 <= i < len(self._docs):
+            self._docs.pop(i)
+            self.changed.emit()
 
     @Property(float, notify=changed)
     def elapsed(self):
@@ -731,6 +865,14 @@ class Live(QObject):
             self._fail(f"Live-Start fehlgeschlagen: {err}")
             return
         self._sess = sess
+        if self._docs:  # the Unterlagen picked in „Wer ist dabei?“ → this recording
+            docs, rid, self._docs = list(self._docs), sess.rid, []
+
+            def work():
+                _, problems = attach_docs(rid, docs)
+                if problems:
+                    self.toast.emit(" · ".join(problems[:2]))
+            threading.Thread(target=work, daemon=True, name="live-docs").start()
         self._call = sess.call is not None
         self._mic_on = bool(getattr(sess, "mic", True))
         self._notes = " ".join(n for n in sess.notes if n)
@@ -1142,20 +1284,33 @@ class AppState(QObject):
             s = config.load()
             ready = all(models.installed(m) for m in models.ESSENTIAL) and (
                 s["asr_engine"] == "faster-whisper" or models.installed(s["asr_model"]))
-            dl = next((m for m in models.status() if (m.get("progress") or {}).get("state") == "downloading"), None)
+            st = models.status()
+            dl = next((m for m in st if (m.get("progress") or {}).get("state") == "downloading"), None)
+            miss = [m for m in st if m["id"] in models.missing(s)]
+            failed = next(((m.get("progress") or {}).get("error") for m in miss if (m.get("progress") or {}).get("state") == "error"), "")
             ok, problem = providers.configured(s)
             up = updater.info()
             self._status = {
                 "ready": ready,
                 "downloading": f"{dl['name']} {round(dl['progress']['done'] / max(1, dl['progress']['total']) * 100)} %" if dl else "",
+                "missing": [m["name"] for m in miss], "missingMb": sum(m["size_mb"] for m in miss), "modelError": failed or "",
                 "ai": f"{providers.PROVIDERS.get(s['llm']['provider'], '')}" + (f" · {providers.model_name(s)}" if providers.model_name(s) else "") if ok else "",
                 "aiProblem": "" if ok else problem, "live": bool(live.active()), "pending": jobs.pending(),
                 "storageMissing": str(config.HOME) if config.home_missing() else "", "welcomeDone": bool(s.get("welcome_done")),
                 "update": up["latest"] if up["available"] else "", "updateState": up["state"],
                 "updateProgress": up["done"] / up["total"] if up.get("total") else 0.0, "updateError": up.get("error") or ""}
+            self._timer.setInterval(1000 if dl else 4000)  # follow a download closely, otherwise every 4 s
         except Exception as e:  # noqa: BLE001
             self._status = {"ready": False, "error": str(e)}
         self.changed.emit()
+
+    @Slot()
+    def downloadModels(self) -> None:  # noqa: N802 - QML API
+        """Load every model REKORD still needs (speech, speakers) – one click, progress in the status line."""
+        from .. import models
+        models.download_missing_async(config.load())
+        self._timer.setInterval(1000)  # follow the download closely
+        self.refresh()
 
     @Slot()
     def installUpdate(self) -> None:  # noqa: N802 - QML API

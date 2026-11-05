@@ -77,13 +77,13 @@ def test_import_copies_and_queues(qt, tmp_path, monkeypatch):
     monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append(rid))
     lib.toast.connect(toasts.append)
     (tmp_path / "Interview.m4a").write_bytes(b"\0" * 64)
-    (tmp_path / "notizen.txt").write_text("kein Audio")
-    n = lib.importFiles([(tmp_path / "Interview.m4a").as_uri(), str(tmp_path / "notizen.txt")])
+    (tmp_path / "notizen.xyz").write_text("kein Audio")
+    n = lib.importFiles([(tmp_path / "Interview.m4a").as_uri(), str(tmp_path / "notizen.xyz")])
     assert n == 1 and len(queued) == 1
     rec = db.get_recording(queued[0])
     assert rec["title"] == "Interview" and rec["source"] == "import" and Path(rec["audio_path"]).is_file()
     assert Path(rec["audio_path"]).parent == config.AUDIO_DIR
-    assert toasts[0] == "1 Datei wird verarbeitet" and toasts[1].startswith("Kein Ton gefunden: notizen.txt")
+    assert toasts[0] == "1 Datei wird verarbeitet" and toasts[1].startswith("Kein Ton gefunden: notizen.xyz")
 
 
 def test_import_mp3_and_mp4_from_downloads(qt, tmp_path, monkeypatch):
@@ -781,3 +781,75 @@ def test_playback_uses_the_current_output_device(qt):
     p.playRange(0.0, 2.0)
     assert len(followed) == 3
     p.stop()
+
+
+def _wait(cond, sec=5.0):
+    import time
+    end = time.time() + sec
+    while time.time() < end and not cond():
+        QGuiApplication.processEvents()
+        time.sleep(0.02)
+    return cond()
+
+
+def test_import_takes_documents_along_as_unterlagen(qt, tmp_path, monkeypatch):
+    """Audio and its agenda picked together: one recording, the agenda its Unterlage – and only then analysed."""
+    from rekord import context
+    lib = bridge.Library()
+    queued, toasts = [], []
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append(rid))
+    lib.toast.connect(toasts.append)
+    (tmp_path / "Kickoff.m4a").write_bytes(b"\0" * 64)
+    (tmp_path / "Agenda.txt").write_text("Teilnehmer: Emil Boenke. Kassensystem: SumUp, Zapier.", "utf-8")
+    n = lib.importFiles([(tmp_path / "Kickoff.m4a").as_uri(), (tmp_path / "Agenda.txt").as_uri()])
+    assert n == 1 and lib.lastImportedId()
+    rid = lib.lastImportedId()
+    assert _wait(lambda: queued == [rid] and any("Unterlage" in t for t in toasts))  # queued after the documents are there
+    assert [d["name"] for d in context.items(rid)] == ["Agenda.txt"]
+    # only documents, no recording: say where they belong
+    toasts.clear()
+    assert lib.importFiles([(tmp_path / "Agenda.txt").as_uri()]) == 0
+    assert _wait(lambda: any("gehören zu einer Aufnahme" in t for t in toasts))
+    assert lib.isDoc((tmp_path / "Agenda.txt").as_uri()) and not lib.isDoc((tmp_path / "Kickoff.m4a").as_uri())
+
+
+def test_attach_documents_to_a_finished_recording(qt, tmp_path, monkeypatch):
+    from rekord import context
+    lib = bridge.Library()
+    matched, toasts = [], []
+    monkeypatch.setattr(jobs, "enqueue_context", matched.append)
+    lib.toast.connect(toasts.append)
+    rec = db.create_recording("Workshop", "", status="done")
+    slides = tmp_path / "Folien.pptx"
+    import media
+    media.pptx(slides, [["Workshop", "Zapier-Anbindung"]])
+    (tmp_path / "alt.doc").write_bytes(b"\xd0\xcf")
+    assert lib.attachDocs(rec["id"], [slides.as_uri(), (tmp_path / "alt.doc").as_uri()]) == 2
+    assert _wait(lambda: matched == [rec["id"]] and len(toasts) >= 2)
+    assert [d["name"] for d in context.items(rec["id"])] == ["Folien.pptx"]
+    assert any("als PDF oder DOCX" in t for t in toasts) and any("abgeglichen" in t for t in toasts)
+    assert "pptx" in lib.docFilter and "*.pdf" in lib.importFilter and "*.mp3" in lib.importFilter
+
+
+def test_documents_before_and_during_a_live_recording(qt, tmp_path):
+    lv = bridge.Live()
+    (tmp_path / "Agenda.pdf").write_bytes(b"%PDF-1.4")
+    (tmp_path / "Call.mp3").write_bytes(b"\0")
+    assert lv.addDocs([(tmp_path / "Agenda.pdf").as_uri(), (tmp_path / "Call.mp3").as_uri()]) == 1
+    assert lv.addDocs([(tmp_path / "Agenda.pdf").as_uri()]) == 1  # the same file once
+    assert list(lv.docs) == ["Agenda.pdf"]
+    lv.removeDoc(0)
+    assert list(lv.docs) == []
+
+
+def test_stop_an_analysis_from_the_list(qt, monkeypatch):
+    lib = bridge.Library()
+    stopped, toasts = [], []
+    monkeypatch.setattr(jobs, "cancel", lambda rid: stopped.append(rid) or True)
+    lib.toast.connect(toasts.append)
+    lib.cancel("abc123")
+    assert _wait(lambda: stopped == ["abc123"] and toasts)
+    assert "gestoppt" in toasts[0]
+    rec = db.create_recording("Falsche Datei", "", status="error")
+    db.update_recording(rec["id"], error=jobs.CANCELLED)
+    assert bridge._rec_row(db.get_recording(rec["id"]))["statusText"] == "Abgebrochen"

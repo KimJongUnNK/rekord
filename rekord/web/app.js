@@ -873,7 +873,7 @@ async function viewDetail(id) {
     <div id="naming"></div>
     <div class="tabs" id="tabs">
       <button data-tab="summary" title="Protokoll, To-dos, Entscheidungen – mit Vorlagen">Zusammenfassung</button><button data-tab="transcript" title="Alles, was gesagt wurde – wer, wann, was">Transkript</button>
-      <button data-tab="mindmap" title="Die Themen als Landkarte">Mind Map</button><button data-tab="ask" title="Fragen nur zu dieser Aufnahme">Fragen</button><button data-tab="notes" title="Eigene Notizen und Ordner">Notizen</button><button data-tab="export" title="Als Datei speichern oder kopieren">Export</button>
+      <button data-tab="mindmap" title="Die Themen als Landkarte">Mind Map</button><button data-tab="ask" title="Fragen nur zu dieser Aufnahme">Fragen</button><button data-tab="notes" title="Eigene Notizen und Ordner">Notizen</button><button data-tab="docs" title="Agenda, Folien, Dokumente – Namen und Begriffe daraus richtig im Transkript">Unterlagen${(rec.documents || []).length ? " · " + rec.documents.length : ""}</button><button data-tab="export" title="Als Datei speichern oder kopieren">Export</button>
     </div>
     <div id="tab"></div></div>`;
 
@@ -897,11 +897,22 @@ async function viewDetail(id) {
     $("#dmeta").innerHTML = `${fmtDate(rec.created_at)} · ${fmtDur(rec.duration || 0)} ${rec.language ? "· " + rec.language.toUpperCase() : ""}
       ${rec.folder ? `<span class="badge">${esc(rec.folder)}</span>` : ""} ${(rec.highlights || []).length ? `<span class="badge acc">★ ${rec.highlights.length}</span>` : ""}`;
     const p = $("#dprog");
+    const analysing = ["queued", "processing"].includes(rec.status);
     if (["queued", "processing", "recording"].includes(rec.status)) {
       p.innerHTML = `<div class="card" style="margin-top:14px"><div class="row"><span class="dot busy"></span><b id="pstage">${esc(rec.stage || "In Warteschlange")}</b>
-        <span class="spacer"></span><span class="muted" id="ppct">${Math.round((rec.progress || 0) * 100)} %</span></div>
+        <span class="spacer"></span><span class="muted" id="ppct">${Math.round((rec.progress || 0) * 100)} %</span>
+        ${analysing ? `<button class="btn sm" id="pstop" title="Auswertung sofort beenden – die Aufnahme bleibt">Stoppen</button><button class="btn ghost sm" id="pdel">Löschen</button>` : ""}</div>
         <div class="progress" style="width:100%"><i id="pbar" style="width:${Math.round((rec.progress || 0) * 100)}%"></i></div>
-        <div class="muted" style="font-size:13px;margin-top:8px">Sprecher trennen → Personen erkennen → transkribieren → zusammenfassen. Läuft komplett auf diesem Rechner.</div></div>`;
+        <div class="muted" style="font-size:13px;margin-top:8px">Sprecher trennen → Personen erkennen → transkribieren → ${(rec.documents || []).length ? "mit Unterlagen abgleichen → " : ""}zusammenfassen. Läuft komplett auf diesem Rechner.</div></div>`;
+      if (analysing) {
+        $("#pstop").onclick = async () => { await api(`/api/recordings/${id}/cancel`, { method: "POST" }); toast("Auswertung gestoppt"); reload(); };
+        $("#pdel").onclick = () => deleteRec();
+      }
+    } else if (rec.status === "error" && rec.error === "Abgebrochen.") {
+      p.innerHTML = `<div class="card" style="margin-top:14px"><b>Abgebrochen</b> <span class="muted">– die Aufnahme ist noch da.</span>
+        <button class="btn sm" id="retry" style="margin-left:8px">Nochmal</button><button class="btn ghost sm" id="pdel">Löschen</button></div>`;
+      $("#retry").onclick = async () => { await api(`/api/recordings/${id}/reprocess`, { method: "POST" }); toast("Neu gestartet"); };
+      $("#pdel").onclick = () => deleteRec();
     } else if (rec.status === "error") {
       p.innerHTML = `<div class="card" style="margin-top:14px;border-color:#EF4444"><b>Verarbeitung fehlgeschlagen.</b> <span class="muted">${esc(rec.error)}</span>
         <button class="btn sm" id="retry" style="margin-left:8px">Nochmal</button></div>`;
@@ -1095,7 +1106,7 @@ async function viewDetail(id) {
   const ro = new ResizeObserver(() => drawWave()); ro.observe(canvas);
 
   // ---------- tabs
-  const tabs = { summary: tabSummary, transcript: tabTranscript, mindmap: tabMindmap, ask: tabAsk, notes: tabNotes, export: tabExport };
+  const tabs = { summary: tabSummary, transcript: tabTranscript, mindmap: tabMindmap, ask: tabAsk, notes: tabNotes, docs: tabDocs, export: tabExport };
   let currentTab = tabs[tab0] ? tab0 : "summary";
   const showTab = (t) => {
     currentTab = t; setPref("detailTab", t);
@@ -1261,6 +1272,41 @@ async function viewDetail(id) {
     $("#folder").addEventListener("change", async (e) => { rec.folder = e.target.value.trim(); await api(`/api/recordings/${id}`, { method: "PATCH", json: { folder: rec.folder } }); renderMeta(); });
   }
 
+  function tabDocs() {
+    const docs = rec.documents || [];
+    const fixes = rec.context_fixes || [];
+    const n = fixes.filter((f) => !f.off).reduce((a, f) => a + (f.count || 0), 0);
+    const kind = { pdf: "PDF", "text-doc": "Dokument", slides: "Folien", sheet: "Tabelle", image: "Bild", text: "Text" };
+    $("#tab").innerHTML = `<div class="row" style="align-items:flex-start;gap:12px"><p class="muted" style="flex:1;margin:0">Agenda, Folien, Verträge, Fotos vom Whiteboard: REKORD liest sie und schreibt Namen und Fachbegriffe daraus im Transkript richtig. Zusammenfassung und Fragen kennen den Hintergrund. Alles bleibt auf diesem Rechner.</p>
+      <label class="btn primary sm">Unterlagen hinzufügen<input type="file" id="docin" multiple hidden></label></div>
+      ${docs.length ? docs.map((d) => `<div class="card row" style="margin-top:10px${d.note ? ";border-color:#F59E0B" : ""}"><div style="flex:1;min-width:0"><b>${esc(d.name)}</b>
+        <div class="muted" style="font-size:13px">${[kind[d.kind] || "Datei", d.pages ? d.pages + (d.kind === "slides" ? " Folien" : " Seiten") : "", d.words ? d.words + " Wörter" : "", d.via ? "gelesen von " + esc(d.via) : ""].filter((x) => x).join(" · ")}</div>
+        ${d.note ? `<div style="font-size:13px;color:#F59E0B">${esc(d.note)}</div>` : ""}</div>
+        <a class="btn ghost sm" href="${d.url}" target="_blank">Öffnen</a><button class="btn ghost sm" data-del="${esc(d.name)}">Entfernen</button></div>`).join("")
+        : `<label class="card" style="display:block;margin-top:12px;text-align:center;padding:36px;cursor:pointer;border-style:dashed"><b>PDF, Word, PowerPoint, Excel, Text oder Fotos</b><div class="muted">hier klicken – auch mehrere auf einmal</div><input type="file" id="docin2" multiple hidden></label>`}
+      ${docs.length ? `<div class="row" style="margin-top:18px"><b class="eyebrow">Im Transkript korrigiert${n ? " · " + n : ""}</b><span class="spacer"></span>
+        <button class="btn ghost sm" id="rerun">Neu abgleichen</button>${fixes.some((f) => !f.off) ? `<button class="btn ghost sm" id="undo">Alle rückgängig</button>` : ""}</div>
+        <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${fixes.length ? fixes.map((f, i) => `<button class="chip${f.off ? "" : " on"}" data-fix="${i}" title="${f.off ? "Aus – klicken, um wieder zu korrigieren" : "Klicken, um diese Korrektur zurückzunehmen"}">
+          <s>${esc(f.off ? f.to : f.from)}</s> → <b>${esc(f.off ? f.from : f.to)}</b>${!f.off && f.count > 1 ? " ×" + f.count : ""}${f.by === "KI" ? " · KI" : ""}</button>`).join("")
+          : `<span class="muted">${["queued", "processing"].includes(rec.status) ? "Sobald die Auswertung fertig ist, gleicht REKORD das Transkript mit den Unterlagen ab." : "Nichts zu korrigieren – die Namen und Begriffe aus den Unterlagen stehen schon richtig im Transkript."}</span>`}</div>
+        ${rec.context_note ? `<p class="muted" style="font-size:13px">${esc(rec.context_note)}</p>` : ""}` : ""}`;
+    const upload = async (files) => {
+      if (!files.length) return;
+      const fd = new FormData();
+      for (const f of files) fd.append("files", f);
+      try {
+        const r = await api(`/api/recordings/${id}/documents`, { method: "POST", body: fd });
+        toast((r.errors || []).length ? r.errors.join(" · ") : files.length + (files.length === 1 ? " Unterlage" : " Unterlagen") + " dazu");
+      } catch (e) { toast(e.message); }
+      reload();
+    };
+    for (const sel of ["#docin", "#docin2"]) if ($(sel)) $(sel).onchange = (e) => upload([...e.target.files]);
+    $$("[data-del]").forEach((b) => b.onclick = async () => { await api(`/api/recordings/${id}/documents/${encodeURIComponent(b.dataset.del)}`, { method: "DELETE" }); toast("Entfernt"); reload(); });
+    $$("[data-fix]").forEach((b) => b.onclick = async () => { const f = fixes[Number(b.dataset.fix)]; await api(`/api/recordings/${id}/fixes`, { method: "POST", json: { from: f.from, to: f.to, on: !!f.off } }); reload(); });
+    if ($("#rerun")) $("#rerun").onclick = async () => { try { await api(`/api/recordings/${id}/fixes/rerun`, { method: "POST" }); toast("Gleicht ab …"); } catch (e) { toast(e.message); } };
+    if ($("#undo")) $("#undo").onclick = async () => { await api(`/api/recordings/${id}/fixes/undo`, { method: "POST" }); toast("Transkript wie erkannt"); reload(); };
+  }
+
   function tabExport() {
     const f = [["md", "Markdown", "Zusammenfassungen + Transkript – für Notion, Obsidian"], ["docx", "Word", "Zum Weiterschicken"], ["txt", "Text", "Transkript pur"],
       ["srt", "SRT", "Untertitel mit Sprechern"], ["vtt", "WebVTT", "Untertitel fürs Web"], ["json", "JSON", "Alle Daten, maschinenlesbar"]];
@@ -1276,17 +1322,24 @@ async function viewDetail(id) {
   $("#more").onclick = async () => {
     const r = await dialog(`<h2>Aufnahme</h2>
       <button class="btn" value="reprocess">Neu verarbeiten (andere Einstellungen/Modell)</button>
+      ${["queued", "processing"].includes(rec.status) ? `<button class="btn" value="stop">Auswertung stoppen</button>` : ""}
+      <button class="btn" value="docs">Unterlagen hinzufügen …</button>
       <button class="btn" value="reid">Personen neu erkennen</button>
       <button class="btn" value="title">Umbenennen</button>
       <button class="btn danger" value="delete">Löschen</button>
       <button class="btn ghost" value="cancel">Abbrechen</button>`);
     if (r === "reprocess") { await api(`/api/recordings/${id}/reprocess`, { method: "POST" }); toast("Wird neu verarbeitet …"); reload(); }
+    if (r === "stop") { await api(`/api/recordings/${id}/cancel`, { method: "POST" }); toast("Auswertung gestoppt"); reload(); }
+    if (r === "docs") showTab("docs");
     if (r === "reid") { const x = await api(`/api/recordings/${id}/reidentify`, { method: "POST" }); toast(`${x.renamed} Person(en) erkannt`); reload(); }
     if (r === "title") { const t = await promptText("Titel", rec.title); if (t) { await api(`/api/recordings/${id}`, { method: "PATCH", json: { title: t } }); reload(); } }
-    if (r === "delete" && await confirmBox("Aufnahme löschen?", "Audio, Transkript und Zusammenfassungen werden endgültig entfernt.")) {
+    if (r === "delete") deleteRec();
+  };
+  async function deleteRec() {
+    if (await confirmBox("Aufnahme löschen?", "Audio, Transkript, Zusammenfassungen und Unterlagen werden endgültig entfernt.")) {
       await api(`/api/recordings/${id}`, { method: "DELETE" }); toast("Gelöscht"); location.hash = "#/";
     }
-  };
+  }
 
   async function reload(keepTab) {
     rec = await api(`/api/recordings/${id}`);
@@ -1302,7 +1355,8 @@ async function viewDetail(id) {
       if ($("#pbar")) { $("#pbar").style.width = Math.round(ev.progress * 100) + "%"; $("#pstage").textContent = ev.stage; $("#ppct").textContent = Math.round(ev.progress * 100) + " %"; }
       else { rec.status = "processing"; rec.stage = ev.stage; rec.progress = ev.progress; renderMeta(); }
     }
-    if (["done", "summary_done", "error", "queued"].includes(ev.type)) reload();
+    if (["done", "summary_done", "error", "queued", "cancelled", "context_done"].includes(ev.type)) reload();
+    if (ev.type === "context_done" && !ev.error) toast(ev.fixes ? `${ev.fixes} Begriff${ev.fixes === 1 ? "" : "e"} aus den Unterlagen korrigiert` : "Mit den Unterlagen abgeglichen");
     if (ev.type === "summary_started" && currentTab === "summary") toast("Zusammenfassung wird erstellt …");
   });
   cleanup = () => { off(); ro.disconnect(); audio.pause(); };
@@ -2068,6 +2122,10 @@ async function viewSettings() {
       <div class="field"><label for="thr">CPU-Threads${tip("threads")}<span class="hint">Mehr = schneller, Computer stärker ausgelastet.</span></label><input type="number" id="thr" min="1" max="32" value="${s.threads}" style="max-width:120px"></div>
       <div class="field"><div class="lbl">Vokabular${tip("vocab")}<span class="hint">Namen & Fachbegriffe, die falsch erkannt werden. "Beni" → "Beeni".</span></div><div>
         <div id="vocab"></div><button class="btn sm" id="vadd" style="margin-top:8px">+ Begriff</button></div></div>
+      <div class="field"><div class="lbl">Unterlagen${tip("docs")}<span class="hint">Namen und Begriffe aus PDFs, Folien und Dokumenten einer Aufnahme werden im Transkript richtig geschrieben – auf diesem Rechner. Eine lokale KI findet zusätzlich mehr.</span></div>
+        <label class="row"><input type="checkbox" id="ctxai" ${s.context_ai !== false ? "checked" : ""}> Mit lokaler KI abgleichen</label></div>
+      <div class="field"><div class="lbl">Unterlagen an Cloud-KI${tip("docscloud")}<span class="hint">Aus (Standard): Unterlagen verlassen nie diesen Rechner – auch wenn Claude oder ChatGPT eingestellt ist.</span></div>
+        <label class="row"><input type="checkbox" id="ctxcloud" ${s.context_cloud ? "checked" : ""}> Erlauben</label></div>
     </div></section>
 
     <section class="set-sec" id="s-spk"><h2>Sprecher-Erkennung</h2><div class="card">
@@ -2226,6 +2284,8 @@ async function viewSettings() {
     $$("#vocab [data-del]").forEach((b) => b.onclick = () => { s.vocabulary.splice(Number(b.dataset.del), 1); save({ vocabulary: s.vocabulary }); renderVocab(); });
   };
   renderVocab();
+  $("#ctxai").onchange = (e) => save({ context_ai: e.target.checked });
+  $("#ctxcloud").onchange = (e) => save({ context_cloud: e.target.checked });
   $("#vadd").onclick = () => { s.vocabulary = [...(s.vocabulary || []), { from: "", to: "" }]; renderVocab(); };
 
   // speakers

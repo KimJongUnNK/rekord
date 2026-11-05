@@ -32,9 +32,9 @@ def seed() -> dict:
     su = db.add_speaker(rec["id"], pipeline.UNKNOWN, pipeline.UNKNOWN_COLOR, None)
     conn = db.connect()
     lines = [(sl, 0, 14, "Okay, dann fangen wir an. Wichtigster Punkt heute ist der Launch am Freitag.", None),
-             (sm, 14, 31, "Die Landingpage ist fertig, nur die Texte fehlen noch. Die schicke ich bis Mittwoch.", None),
+             (sm, 14, 31, "Die Landingpage in Web Flow ist fertig, nur die Texte fehlen noch. Die schicke ich bis Mittwoch.", None),
              (su, 31, 40, "Hier ist Tom aus der Rechtsabteilung – brauchen wir dafür noch ein Okay?", 7),
-             (sl, 40, 62, "Ja, Max, kannst du das bis Donnerstag klären? Sonst verschieben wir auf Montag.", None),
+             (sl, 40, 62, "Ja, Max, kannst du das bis Donnerstag mit Frau Bruger klären? Sonst verschieben wir auf Montag.", None),
              (sm, 62, 70, "Mach ich.", None)]
     for sid, a, b, text, voice in lines:
         conn.execute("INSERT INTO segments (recording_id, speaker_id, start, end, text, voice) VALUES (?,?,?,?,?,?)",
@@ -71,13 +71,24 @@ def seed() -> dict:
                    "## Entscheidungen\n- Launch bleibt am **Freitag**\n- Rechtliche Freigabe vorher einholen\n\n"
                    "## Aufgaben\n- **Max**: Texte für die Landingpage bis Mittwoch\n- **Max**: Freigabe der Rechtsabteilung bis Donnerstag\n\n"
                    "## Offen\n- Verschiebung auf Montag, falls die Freigabe fehlt")
+    # Unterlagen: the agenda (names and terms → corrected in the transcript) and a whiteboard photo nobody could read yet
+    from rekord import context
+    import tempfile as _tf
+    tmp = Path(_tf.mkdtemp())
+    (tmp / "Agenda Launch.md").write_text("# Launch-Meeting\n\nTeilnehmer: Lisa Berger, Max Huber, Tom (Recht)\n\n"
+                                          "1. Landingpage in Webflow – Texte, Bilder\n2. Rechtliche Freigabe: Frau Brugger (Rechtsabteilung)\n"
+                                          "3. Termin: Freitag, Plan B Montag\n\nWebflow-Projekt: launch-2026. Ansprechpartnerin Recht: Frau Brugger.\n", "utf-8")
+    (tmp / "Whiteboard.jpg").write_bytes(frames._jpeg(av.VideoFrame.from_ndarray(np.full((360, 640, 3), 230, np.uint8), format="rgb24")))
+    context.add(rec["id"], tmp / "Agenda Launch.md")
+    context.add(rec["id"], tmp / "Whiteboard.jpg")
+    context.run(rec["id"], {**config.load(), "llm": {"provider": "none"}}, use_ai=False)
     p = db.create_recording("VO Statistik – Einheit 4", "", source="live", duration=5410, status="processing")
     db.update_recording(p["id"], stage="Transkription", progress=0.42)
     db.create_recording("Interview Bewerbung.m4a", "", source="import", duration=2280, status="queued")
     e = db.create_recording("Sprachnotiz", "", source="import", duration=12, status="error")
     db.update_recording(e["id"], folder="Privat")
     db.update_recording(rec["id"], folder="Arbeit")
-    return {"rid": rec["id"], "lisa": lisa, "max": max_}
+    return {"rid": rec["id"], "lisa": lisa, "max": max_, "processing": p["id"]}
 
 
 class FakeSession:
@@ -166,6 +177,9 @@ def main(out: Path) -> int:
         QMetaObject.invokeMethod(obj, fn, *[Q_ARG("QVariant", a) for a in args])
 
     shot("library")
+    lm = win.findChild(QObject, "loadModelsButton")
+    if lm is None or not lm.property("visible") or lm.property("text") != "Jetzt laden":
+        problems_extra.append("library: no 'Jetzt laden' for the missing speech models")
     # a file from outside, the short way: one pick → its recording is open (no searching the list)
     side_file = win.findChild(QObject, "fileButton")
     if side_file is None or not side_file.property("visible"):
@@ -186,9 +200,15 @@ def main(out: Path) -> int:
     append_btn = detail.findChild(QObject, "appendButton")
     if append_btn is None or not append_btn.property("visible") or not append_btn.property("enabled"):
         problems_extra.append("detail: no usable 'Audio anhängen' button on a finished recording")
-    for i, name in enumerate(["detail", "detail-transcript", "detail-mindmap", "detail-ask", "detail-notes", "detail-export"]):
+    docs_btn = detail.findChild(QObject, "docsButton")
+    if docs_btn is None or not docs_btn.property("visible") or not docs_btn.property("enabled"):
+        problems_extra.append("detail: no usable 'Unterlagen' button")
+    for i, name in enumerate(["detail", "detail-transcript", "detail-mindmap", "detail-ask", "detail-notes", "detail-docs", "detail-export"]):
         detail.setProperty("tab", i)
         shot(name)
+    fixes = db.get_recording(ids["rid"]).get("context_fixes") or []
+    if not any(f["to"] == "Webflow" for f in fixes) or not any(f["to"] == "Brugger" or f["to"].endswith("Brugger") for f in fixes):
+        problems_extra.append(f"Unterlagen: expected Webflow/Brugger corrections, got {fixes}")
     detail.setProperty("tab", 1)
     rec = db.get_recording(ids["rid"])
     sp = {s["name"]: s["id"] for s in db.list_speakers(ids["rid"])}
@@ -201,6 +221,14 @@ def main(out: Path) -> int:
     win.findChild(QObject, "assignDlg").close()
     wait(0.4)
     assert rec is not None
+    # still being analysed (e.g. the wrong file): stop it right there, or delete it
+    call(win, "openRecording", ids["processing"], 0)
+    wait(1.2)
+    shot("detail-processing")
+    for name in ("cancelButton", "cancelDeleteButton"):
+        b = win.findChild(QObject, "detailPage").findChild(QObject, name)
+        if b is None or not b.property("visible"):
+            problems_extra.append(f"detail: no visible {name} while the recording is being analysed")
 
     # Personen + Einsprechen (all three ways)
     win.setProperty("page", "people")
@@ -255,6 +283,13 @@ def main(out: Path) -> int:
         problems_extra.append("who: 'Nur Call-Ton' was picked but the dialog doesn't know")
     who.setProperty("meeting", "person")
     who.setProperty("withMic", True)
+    # Unterlagen before the start: the agenda waits in the dialog and goes to the recording once it runs
+    agenda = Path(tempfile.mkdtemp()) / "Agenda Launch.txt"
+    agenda.write_text("Launch: Webflow, Frau Brugger (Recht)", "utf-8")
+    o["live"].addDocs([QUrl.fromLocalFile(str(agenda)).toString()])
+    shot("who-docs")
+    if list(o["live"].docs) != [agenda.name]:
+        problems_extra.append(f"who: Unterlagen before the start not kept: {list(o['live'].docs)}")
     win.setProperty("whoOpen", False)
     o["live"].start("Team-Meeting Launch", "person", [ids["lisa"], ids["max"]], 3)
     for _ in range(200):
@@ -262,6 +297,13 @@ def main(out: Path) -> int:
         if o["live"].state == "recording":
             break
     sess = FakeSession.last
+    from rekord import context as _ctx
+    for _ in range(100):
+        wait(0.02)
+        if _ctx.items(sess.rid):
+            break
+    if [d["name"] for d in _ctx.items(sess.rid)] != [agenda.name] or list(o["live"].docs):
+        problems_extra.append(f"live: the Unterlagen didn't go to the recording ({_ctx.items(sess.rid)})")
     em = o["live"]._event.emit
     em({"type": "speakers", "items": [{"key": 0, "name": "Lisa", "color": "#3B82F6", "known": True, "talk": 42},
                                       {"key": 1, "name": "Max", "color": "#22C55E", "known": True, "talk": 21},
@@ -331,6 +373,11 @@ def main(out: Path) -> int:
     for key in ("ai", "asr", "models", "pair", "int", "data"):
         call(settings, "jump", key)
         shot(f"settings-{key}")
+    # no speech model loaded in the preview: a load button where the model is chosen, and "everything" under Modelle
+    for name in ("asrLoad", "loadMissing"):
+        b = settings.findChild(QObject, name)
+        if b is None or not b.property("visible"):
+            problems_extra.append(f"settings: no visible {name} although models are missing")
     o["rekord"].setAccent("#2D7FF9")  # another accent color, everywhere at once
     call(settings, "jump", "look")
     shot("settings-accent")

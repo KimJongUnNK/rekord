@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import "."
 
@@ -231,6 +232,68 @@ Sheet {
                 }
             }
             Tip { key: "intro" }
+        }
+
+        // ---- Unterlagen (optional): agenda, slides, attendee list – their names and terms are right from the first sentence
+        ColumnLayout {
+            objectName: "whoDocs"
+            Layout.fillWidth: true
+            spacing: 8
+            FileDialog {
+                id: docDlg
+                title: "Unterlagen zur Aufnahme"
+                fileMode: FileDialog.OpenFiles
+                currentFolder: library.downloadsUrl
+                nameFilters: [library.docFilter, "Alle Dateien (*)"]
+                onAccepted: live.addDocs(selectedFiles)
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Text { text: "Unterlagen"; font.family: Theme.text; font.pixelSize: 15; font.weight: Font.Bold; color: Theme.fg }
+                Text { text: "optional"; font.family: Theme.text; font.pixelSize: 13; color: Theme.fg3 }
+                Item { Layout.fillWidth: true }
+                Btn { objectName: "whoDocsAdd"; small: true; iconName: "plus"; text: "PDF, Folien, Dokumente …"; onClicked: docDlg.open() }
+            }
+            Text {
+                visible: live.docs.length === 0
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "Agenda, Folien, Teilnehmerliste: Namen und Fachbegriffe daraus schreibt REKORD richtig – schon live. Bleibt auf diesem Rechner."
+                font.family: Theme.text; font.pixelSize: 13; color: Theme.fg3
+            }
+            Flow {
+                visible: live.docs.length > 0
+                Layout.fillWidth: true
+                spacing: 8
+                Repeater {
+                    model: live.docs
+                    delegate: Rectangle {
+                        id: dchip
+                        required property string modelData
+                        required property int index
+                        height: 32
+                        width: dRow.implicitWidth + 22
+                        radius: 16
+                        color: Theme.card2
+                        border.width: 1
+                        border.color: Theme.line
+                        RowLayout {
+                            id: dRow
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: 12
+                            spacing: 8
+                            Text { text: dchip.modelData; font.family: Theme.text; font.pixelSize: 13; color: Theme.fg; elide: Text.ElideMiddle; Layout.maximumWidth: 260 }
+                            AbstractButton {
+                                implicitWidth: 18; implicitHeight: 18
+                                onClicked: live.removeDoc(dchip.index)
+                                contentItem: Icon { name: "close"; width: 12; height: 12; color: Theme.fg3 }
+                                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         RowLayout {

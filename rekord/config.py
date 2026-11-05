@@ -61,6 +61,8 @@ DEFAULTS: dict = {
     "live_cluster_threshold": 0.55,
     "live_transcribe": True,
     "vocabulary": [],  # list of {"from": "...", "to": "..."} corrections and hotwords
+    "context_ai": True,      # Unterlagen: a local AI also looks for misheard names/terms (local word matching always runs)
+    "context_cloud": False,  # Unterlagen may go to a cloud AI (Claude, ChatGPT) – off: they never leave this computer
     "auto_summary": True,
     "default_template": "auto",
     "template_order": [],  # Vorlagen in the user's order of importance (ids); empty = built-in order

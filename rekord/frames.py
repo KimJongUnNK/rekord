@@ -35,15 +35,16 @@ def _name(t: float) -> str:
     return f"f{int(round(t * 1000)):010d}.jpg"
 
 
-def _jpeg(frame) -> bytes:
-    """One still as JPEG (FFmpeg's MJPEG encoder – a fresh one per picture, it takes one frame and is done)."""
-    w = WIDTH if frame.width >= WIDTH else frame.width - frame.width % 2
+def _jpeg(frame, width: int = WIDTH, quality: str = "4") -> bytes:
+    """One still as JPEG (FFmpeg's MJPEG encoder – a fresh one per picture, it takes one frame and is done).
+    At most `width` wide; quality 2 (best) … 31."""
+    w = width if frame.width >= width else max(2, frame.width - frame.width % 2)
     h = max(2, int(round(frame.height * w / frame.width / 2)) * 2)
     img = frame.reformat(width=w, height=h, format="yuvj420p")
     enc = av.CodecContext.create("mjpeg", "w")
     enc.width, enc.height, enc.pix_fmt = w, h, "yuvj420p"
     enc.time_base = Fraction(1, 25)
-    enc.options = {"q:v": "4"}
+    enc.options = {"q:v": quality}
     img.pts = 0
     return b"".join(bytes(p) for p in [*enc.encode(img), *enc.encode(None)])
 

@@ -192,8 +192,25 @@ ApplicationWindow {
         anchors.fill: parent
         keys: ["text/uri-list"]
         onDropped: (ev) => {
-            const urls = ev.urls
+            const all = ev.urls
+            const docs = all.filter(u => library.isDoc(u))  // PDF, slides, photos …: Unterlagen, not something to transcribe
+            const urls = all.filter(u => !library.isDoc(u))
             const rec = detailPage.rec
+            if (docs.length) {
+                if (win.shownPage === "detail" && detailPage.rid) {  // the open recording's Unterlagen
+                    library.attachDocs(detailPage.rid, docs)
+                    detailPage.tab = detailPage.docsTab
+                } else if (win.shownPage === "live" || live.state !== "idle") {  // this (or the next) recording's
+                    live.addDocs(docs)
+                    if (live.state === "idle") win.toast(docs.length + (docs.length === 1 ? " Unterlage" : " Unterlagen") + " für die nächste Aufnahme")
+                } else if (urls.length) {  // audio + its documents: one recording, with them
+                    win.importUrls(all)
+                    return
+                } else {
+                    win.toast("Unterlagen gehören zu einer Aufnahme: Aufnahme öffnen und reinziehen – oder zusammen mit der Audiodatei.")
+                }
+                if (!urls.length) return
+            }
             if (win.shownPage === "detail" && detailPage.rid && rec && rec.status === "done") {  // an open recording: add to it?
                 win.confirm("An „" + rec.title + "“ anhängen?",
                             "Die Datei" + (urls.length > 1 ? "en kommen" : " kommt") + " hinten an diese Aufnahme – danach wird alles zusammen neu transkribiert. Oder als eigene Aufnahme importieren.",
@@ -220,15 +237,17 @@ ApplicationWindow {
             Icon { Layout.alignment: Qt.AlignHCenter; name: "import"; width: 54; height: 54; color: Theme.accent; stroke: 1.6 }
             Text { text: "Loslassen zum Importieren"; font.family: Theme.display; font.pixelSize: 32; font.weight: Font.Black; color: Theme.fg }
             Text { Layout.alignment: Qt.AlignHCenter; text: "Audio oder Video – REKORD erkennt, wer was gesagt hat."; font.family: Theme.text; font.pixelSize: 15; color: Theme.fg2 }
+            Text { Layout.alignment: Qt.AlignHCenter; text: "PDF, Folien, Dokumente: Unterlagen – Namen und Begriffe daraus stehen richtig im Transkript."; font.family: Theme.text; font.pixelSize: 13; color: Theme.fg3 }
         }
     }
 
     FileDialog {
         id: importDialog
-        title: "Aufnahmen importieren"
+        title: "Aufnahmen importieren – Unterlagen (PDF, Folien …) gleich mit auswählen"
         fileMode: FileDialog.OpenFiles
         currentFolder: library.downloadsUrl
-        nameFilters: [library.mediaFilter, "Alle Dateien (*)"]  // every audio/video format – others work too, if there's sound
+        // every audio/video format (others work too, if there's sound) – and the documents that belong to it, in one go
+        nameFilters: [library.importFilter, library.mediaFilter, library.docFilter, "Alle Dateien (*)"]
         onAccepted: win.importUrls(selectedFiles)
     }
 

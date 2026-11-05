@@ -14,14 +14,15 @@ for pkg in ("sherpa_onnx", "av", "webview", "uvicorn", "anthropic", "openai", "z
     except Exception:
         pass
 datas += [(os.path.join(ROOT, "rekord", "web"), os.path.join("rekord", "web")),  # previous interface + iPhone pairing page
-          (os.path.join(ROOT, "rekord", "app", "qml"), os.path.join("rekord", "app", "qml"))]  # REKORD's window (Qt Quick)
+          (os.path.join(ROOT, "rekord", "app", "qml"), os.path.join("rekord", "app", "qml")),  # REKORD's window (Qt Quick)
+          (os.path.join(ROOT, "rekord", "data"), os.path.join("rekord", "data"))]  # word list for the Unterlagen
 
 a = Analysis([os.path.join(SPECPATH, "launch.py")], pathex=[ROOT], binaries=binaries, datas=datas,
              hiddenimports=hidden + ["rekord.server", "rekord.mcp_server", "rekord.integrations", "rekord.pairing", "rekord.llm.auto", "rekord.storage",
-                                      "rekord.capture", "rekord.updater", "mcp.server.mcpserver", "mcp.server.fastmcp",
+                                      "rekord.capture", "rekord.updater", "rekord.context", "pypdf", "mcp.server.mcpserver", "mcp.server.fastmcp",
                                       "rekord.app", "rekord.app.bridge", "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtQuickControls2",
                                       "PySide6.QtMultimedia", "PySide6.QtWidgets"]
-                           + (["ScreenCaptureKit", "CoreMedia", "dispatch", "Foundation"] if sys.platform == "darwin" else ["soundcard", "cffi"]),
+                           + (["ScreenCaptureKit", "CoreMedia", "dispatch", "Foundation", "Vision"] if sys.platform == "darwin" else ["soundcard", "cffi"]),
              excludes=["tkinter", "matplotlib", "torch", "PIL",  # PIL: only needed at build time for the icon
                        # Qt parts REKORD doesn't use (the window needs Core, Gui, Qml, Quick, Controls, Multimedia;
                        # Widgets for the icon in the menu bar / notification area)

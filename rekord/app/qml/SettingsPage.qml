@@ -38,6 +38,19 @@ Page {
         loadStorage()
     }
     function loadModels() { app.call("GET", "/api/models", null, (r) => page.models = r) }
+    function modelState(m) {
+        const p = m.progress || {}
+        if (m.installed) return " ✓"
+        if (p.state === "downloading") return " · lädt " + Math.round((p.done || 0) / (p.total || 1) * 100) + " %"
+        if (p.state === "extracting") return " · entpacke …"
+        if (p.state === "error") return " · Laden fehlgeschlagen"
+        return " · nicht geladen"
+    }
+    function loadModel(m) {
+        if (!m) return
+        app.call("POST", "/api/models/" + m.id + "/download", null, () => { app.toast(m.name + " wird geladen …"); loadModels() },
+                 (err) => app.toast("Laden ging nicht: " + err))
+    }
     function loadPair() { app.call("GET", "/api/pair", null, (r) => page.pair = r, () => {}) }
     function loadStorage() { app.call("GET", "/api/storage", null, (r) => page.storage = r, () => {}) }
     function save(patch, quiet) {
@@ -368,13 +381,39 @@ Page {
                             Layout.fillWidth: true
                             options: page.s && page.s.asr_engine === "faster-whisper"
                                      ? ["large-v3-turbo", "large-v3", "distil-large-v3", "medium", "small", "base"].map(m => ({ value: m, label: m }))
-                                     : page.models.filter(m => m.kind === "asr").map(m => ({ value: m.id, label: m.name + " · " + m.size_mb + " MB" + (m.installed ? " ✓" : " (wird geladen)") }))
+                                     : page.models.filter(m => m.kind === "asr").map(m => ({ value: m.id, label: m.name + " · " + m.size_mb + " MB" + page.modelState(m) }))
                             value: page.s ? (page.s.asr_engine === "faster-whisper" ? page.s.faster_whisper_model : page.s.asr_model) : ""
                             onPicked: (v) => {
                                 if (page.s.asr_engine === "faster-whisper") { page.save({ faster_whisper_model: v }); return }
                                 page.save({ asr_model: v })
                                 const m = page.models.find(x => x.id === v)
-                                if (m && !m.installed) page.app.call("POST", "/api/models/" + v + "/download", null, () => { page.app.toast(m.name + " wird geladen …"); page.loadModels() })
+                                if (m && !m.installed) page.loadModel(m)
+                            }
+                        }
+                        RowLayout {  // the chosen model isn't there yet: load it right here, with progress
+                            readonly property var m: page.models.find(x => page.s && x.id === page.s.asr_model) || null
+                            readonly property var p: m ? (m.progress || {}) : {}
+                            readonly property bool dl: p.state === "downloading" || p.state === "extracting"
+                            visible: !!m && !m.installed && page.s.asr_engine !== "faster-whisper"
+                            Layout.fillWidth: true
+                            Layout.maximumWidth: 420
+                            spacing: 10
+                            Btn {
+                                objectName: "asrLoad"
+                                visible: !parent.dl
+                                small: true; kind: "primary"; iconName: "download"
+                                text: parent.p.state === "error" ? "Nochmal laden" : "Jetzt laden"
+                                onClicked: page.loadModel(parent.m)
+                            }
+                            Bar { visible: parent.dl; Layout.fillWidth: true; value: parent.p.state === "extracting" ? 1 : (parent.p.done || 0) / (parent.p.total || 1) }
+                            Muted {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 12
+                                color: parent.p.state === "error" ? Theme.err : Theme.fg3
+                                text: parent.p.state === "error" ? parent.p.error
+                                    : parent.dl ? (parent.p.state === "extracting" ? "entpacke …" : Math.round((parent.p.done || 0) / (parent.p.total || 1) * 100) + " %")
+                                    : "Noch nicht geladen – bis dahin nimmt REKORD ein vorhandenes Modell."
                             }
                         }
                     }
@@ -409,6 +448,17 @@ Page {
                         }
                         Muted { visible: !page.s || page.s.vocabulary.length === 0; text: "Noch nichts." }
                         Btn { small: true; iconName: "plus"; text: "Begriff"; onClicked: { const r = Object.assign({}, page.s); r.vocabulary = page.s.vocabulary.concat([{ from: "", to: "" }]); page.s = r } }
+                    }
+                    Field {
+                        label: "Unterlagen"; tip: "docs"
+                        hint: "Namen und Begriffe aus PDFs, Folien und Dokumenten einer Aufnahme werden im Transkript richtig geschrieben – am Klang und an der Schreibweise, auf diesem Rechner. "
+                              + "Eine lokale KI (Ollama, LM Studio) findet zusätzlich mehr."
+                        Check { text: "Mit lokaler KI abgleichen"; checked: page.s ? page.s.context_ai !== false : true; onToggled: page.save({ context_ai: checked }) }
+                    }
+                    Field {
+                        label: "Unterlagen an Cloud-KI"; tip: "docscloud"
+                        hint: "Aus (Standard): Unterlagen verlassen nie diesen Rechner – auch wenn Claude oder ChatGPT eingestellt ist. An: auch die Cloud-KI sieht sie (Abgleich, Bilder lesen, Zusammenfassung)."
+                        Check { text: "Erlauben"; checked: page.s ? !!page.s.context_cloud : false; onToggled: page.save({ context_cloud: checked }) }
                     }
                 }
 
@@ -471,6 +521,19 @@ Page {
                     id: secModels
                     title: "Modelle"
                     tip: "models"
+                    RowLayout {  // one click for everything transcribing needs
+                        visible: (rekord.status.missing || []).length > 0
+                        Layout.fillWidth: true
+                        spacing: 10
+                        Muted { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Zum Transkribieren fehlt noch: " + (rekord.status.missing || []).join(", ") + " (" + rekord.status.missingMb + " MB, einmalig)." }
+                        Btn {
+                            objectName: "loadMissing"
+                            kind: "primary"; small: true; iconName: "download"; text: "Alles Nötige laden"
+                            enabled: !rekord.status.downloading
+                            onClicked: { rekord.downloadModels(); page.app.toast("Lädt im Hintergrund – du kannst weiterarbeiten."); refreshT.start() }
+                            Timer { id: refreshT; interval: 300; onTriggered: page.loadModels() }
+                        }
+                    }
                     Repeater {
                         model: page.models
                         delegate: ColumnLayout {
@@ -492,9 +555,10 @@ Page {
                                     onClicked: page.app.confirm("Modell entfernen?", mr.modelData.name, "Entfernen", () => page.app.call("DELETE", "/api/models/" + mr.modelData.id, null, () => page.loadModels()))
                                 }
                                 Text { visible: mr.dl; text: mr.p.state === "extracting" ? "entpacke …" : Math.round(mr.p.done / (mr.p.total || 1) * 100) + " %"; font.pixelSize: 12; color: Theme.fg2 }
-                                Btn { visible: !mr.modelData.installed && !mr.dl; small: true; text: "Laden"; iconName: "download"; onClicked: page.app.call("POST", "/api/models/" + mr.modelData.id + "/download", null, () => page.loadModels()) }
+                                Btn { visible: !mr.modelData.installed && !mr.dl; small: true; text: mr.p.state === "error" ? "Nochmal" : "Laden"; iconName: "download"; onClicked: page.loadModel(mr.modelData) }
                             }
-                            Muted { Layout.fillWidth: true; font.pixelSize: 12; text: mr.modelData.description + (mr.p.state === "error" ? " · " + mr.p.error : "") }
+                            Muted { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 12; color: mr.p.state === "error" ? Theme.err : Theme.fg3
+                                    text: mr.p.state === "error" ? "Laden fehlgeschlagen: " + mr.p.error : mr.modelData.description }
                             Bar { visible: mr.dl; Layout.fillWidth: true; value: mr.p.state === "extracting" ? 1 : mr.p.done / (mr.p.total || 1) }
                         }
                     }

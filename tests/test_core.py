@@ -325,7 +325,7 @@ def test_concurrent_model_downloads_run_once(monkeypatch):
     from rekord import models
     calls = []
 
-    def fake(mid):
+    def fake(mid, on_progress=None):
         calls.append(mid)
         time.sleep(0.3)
     monkeypatch.setattr(models, "_download", fake)

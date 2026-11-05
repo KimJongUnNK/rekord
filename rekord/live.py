@@ -20,7 +20,7 @@ import time
 
 import numpy as np
 
-from . import audio, config, db, jobs, models, pipeline
+from . import audio, config, context, db, jobs, models, pipeline
 from .audio import SR
 from .engines import asr, voiceprint
 
@@ -84,6 +84,7 @@ class LiveSession:
         self.title = title or time.strftime("Meeting %d.%m.%Y %H:%M")
         self.rec = db.create_recording(self.title, "", source=source, status="recording")
         self.rid = self.rec["id"]
+        self._fix = context.LiveFixer(self.rid, self.s)  # names and terms from the Unterlagen, also while recording
         if self.participants or self.guests or self.meeting != "person":
             db.update_recording(self.rid, participants={"ids": self.participants, "guests": self.guests, "meeting": self.meeting})
         self.wav_path = config.AUDIO_DIR / f"{self.rid}.wav"
@@ -381,7 +382,7 @@ class LiveSession:
             samples = np.concatenate([g["samples"] for g in group])
             clips = asr.split_long(0, len(samples) / SR, samples)
             parts = [self.engine.transcribe_clip(samples[int(a * SR):int(b * SR)])[0] for a, b in clips]
-            text = asr.apply_vocabulary(asr.clean_text(" ".join(parts)), self.s.get("vocabulary", []))
+            text = self._fix(asr.apply_vocabulary(asr.clean_text(" ".join(parts)), self.s.get("vocabulary", [])))
         with self._lock:
             seg = {"start": round(start, 2), "end": round(end, 2), "text": text, **self._label(r)}
             self.segments.append(seg)
