@@ -1790,7 +1790,7 @@ async function editTemplate(t) {
 // ================================================================ SETTINGS
 const ACCENTS = [["#FF5A1F", "Voltage"], ["#2D7FF9", "Electric"], ["#C6F432", "Acid"], ["#E11D74", "Magenta"], ["#8B5CF6", "Violet"],
   ["#FACC15", "Yellow"], ["#EF4444", "Red"], ["#14B8A6", "Teal"], ["#F6F5F2", "Mono"]];
-const LANGS = [["", "Automatisch (pro Satz)"], ["de", "Deutsch"], ["en", "Englisch"], ["fr", "Französisch"], ["it", "Italienisch"], ["es", "Spanisch"],
+const LANGS = [["", "Automatisch"], ["de", "Deutsch"], ["en", "Englisch"], ["fr", "Französisch"], ["it", "Italienisch"], ["es", "Spanisch"],
   ["nl", "Niederländisch"], ["pt", "Portugiesisch"], ["pl", "Polnisch"], ["tr", "Türkisch"], ["ru", "Russisch"], ["uk", "Ukrainisch"], ["hr", "Kroatisch"],
   ["sr", "Serbisch"], ["ar", "Arabisch"], ["zh", "Chinesisch"], ["ja", "Japanisch"], ["ko", "Koreanisch"]];
 
@@ -2114,7 +2114,7 @@ async function viewSettings() {
     </div></section>
 
     <section class="set-sec" id="s-asr"><h2>Transkription</h2><div class="card">
-      <div class="field"><label for="lang">Sprache${tip("lang")}<span class="hint">Fest einstellen = genauer. Auto erkennt pro Satz (gemischte Meetings).</span></label>
+      <div class="field"><label for="lang">Sprache${tip("lang")}<span class="hint">Fest einstellen = am genauesten. Automatisch erkennt sie pro Satz – kurze Sätze bekommen die Hauptsprache der Aufnahme.</span></label>
         <select id="lang">${LANGS.map(([k, n]) => opt(k, s.language, n)).join("")}</select></div>
       <div class="field"><label for="engine">Engine${tip("engine")}<span class="hint">Was Sprache in Text verwandelt.</span></label><select id="engine">${opt("sherpa", s.asr_engine, "Whisper ONNX (überall, CPU)")}${
         opt("faster-whisper", s.asr_engine, "faster-whisper (NVIDIA-GPU)" + (st.faster_whisper ? "" : " – nicht in dieser App enthalten"))}</select></div>

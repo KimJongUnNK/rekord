@@ -263,13 +263,13 @@ Popup {
                             RowLayout { Text { text: "Sprache in den Meetings"; font.pixelSize: 14; font.weight: Font.Bold; color: Theme.fg } Tip { key: "lang" } }
                             Select {
                                 Layout.maximumWidth: 320
-                                options: [["", "Automatisch (pro Satz)"], ["de", "Deutsch"], ["en", "Englisch"], ["fr", "Französisch"], ["it", "Italienisch"], ["es", "Spanisch"],
+                                options: [["", "Automatisch"], ["de", "Deutsch"], ["en", "Englisch"], ["fr", "Französisch"], ["it", "Italienisch"], ["es", "Spanisch"],
                                           ["nl", "Niederländisch"], ["pt", "Portugiesisch"], ["pl", "Polnisch"], ["tr", "Türkisch"], ["ru", "Russisch"], ["uk", "Ukrainisch"],
                                           ["hr", "Kroatisch"], ["sr", "Serbisch"], ["ar", "Arabisch"], ["zh", "Chinesisch"], ["ja", "Japanisch"], ["ko", "Koreanisch"]].map(x => ({ value: x[0], label: x[1] }))
                                 value: w.settings ? w.settings.language : ""
                                 onPicked: (v) => w.app.call("PUT", "/api/settings", { language: v }, () => w.app.toast("Gespeichert"))
                             }
-                            Muted { font.pixelSize: 13; Layout.fillWidth: true; text: "Fest eingestellt ist am genauesten. Automatisch erkennt die Sprache pro Satz – für gemischte Runden." }
+                            Muted { font.pixelSize: 13; Layout.fillWidth: true; text: "Fest eingestellt ist am genauesten. Automatisch erkennt die Sprache pro Satz – auch gemischte Runden." }
                             RowLayout { Text { text: "Protokolle schreiben auf"; font.pixelSize: 14; font.weight: Font.Bold; color: Theme.fg } Tip { key: "sumlang" } }
                             Select {
                                 Layout.maximumWidth: 320

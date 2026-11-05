@@ -73,6 +73,8 @@ class LiveSession:
                                                   closed_set=bool(self.participants) and self.guests == 0 and not lecture,
                                                   max_speakers=0 if lecture else len(self.participants) + self.guests)
         self.engine = None
+        self._langs: dict[str, float] = {}  # "Automatisch": seconds per language heard in longer sentences
+        self._main = None                   # … and an engine for the main language, for short sentences
         if self.s.get("live_transcribe", True):
             try:
                 from . import system  # short clips: half the cores are plenty – the rest stays with the apps in front
@@ -381,12 +383,37 @@ class LiveSession:
         if self.engine is not None:
             samples = np.concatenate([g["samples"] for g in group])
             clips = asr.split_long(0, len(samples) / SR, samples)
-            parts = [self.engine.transcribe_clip(samples[int(a * SR):int(b * SR)])[0] for a, b in clips]
+            parts = []
+            for a, b in clips:
+                clip = samples[int(a * SR):int(b * SR)]
+                eng = self._main if (self._main is not None and b - a < asr.SHORT) else self.engine
+                t, lang = eng.transcribe_clip(clip)
+                parts.append(t)
+                if b - a >= asr.SHORT:
+                    self._note_language(lang, b - a)
             text = self._fix(asr.apply_vocabulary(asr.clean_text(" ".join(parts)), self.s.get("vocabulary", [])))
         with self._lock:
             seg = {"start": round(start, 2), "end": round(end, 2), "text": text, **self._label(r)}
             self.segments.append(seg)
         self.emit({"type": "segment", **seg})
+
+    def _note_language(self, lang: str, seconds: float) -> None:
+        """"Automatisch": once ~15 s of longer sentences agree on a language, short ones are written in it – Whisper
+        guesses a short "Ja, passt." as English now and then. Long sentences keep their own language (mixed meetings)."""
+        lang = (lang or "").strip("<|>")
+        if asr.whisper_language(self.s) or not lang or self._main is not None:
+            return
+        self._langs[lang] = self._langs.get(lang, 0.0) + seconds
+        total = sum(self._langs.values())
+        top = max(self._langs, key=self._langs.get)
+        if total >= 15 and self._langs[top] / total >= 0.6:
+            try:
+                from . import system
+                self._main = asr.get_engine({**self.s, "language": top,
+                                             "threads": system.processing_threads(self.s["threads"], True)})
+                log.info("live %s: main language %s", self.rid, top)
+            except Exception as e:  # noqa: BLE001 - keep guessing per sentence
+                log.warning("live main language: %s", e)
 
     def _label(self, r: dict) -> dict:
         key = r.get("key")
