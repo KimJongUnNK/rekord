@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import "."
 
 // First start: a short guided setup. Willkommen → Speicherort (before any big download) → Aussehen → Sprache →
-// Mikrofon → KI → Deine Stimme → iPhone → Fertig. Every step can be skipped and changed later in the settings.
+// Mikrofon → KI → Deine Stimme → Fertig. Every step can be skipped and changed later in the settings.
 Popup {
     id: w
     objectName: "welcomeWiz"
@@ -26,7 +26,6 @@ Popup {
     property bool micOk: false
     property string voiceName: ""
     property var settings: null
-    property var pair: null
     property var known: []
     readonly property string step: steps[i] || "hi"
 
@@ -36,7 +35,7 @@ Popup {
             if (s.storage_missing) return
             if (!force && s.welcome_done) return
             w.needStorage = !s.storage_chosen
-            w.steps = ["hi", "storage", "look", "lang", "mic", "ai", "voice", "phone", "done"]
+            w.steps = ["hi", "storage", "look", "lang", "mic", "ai", "voice", "done"]
             let saved = Number(rekord.pref("welcome_step") || 0)
             if (force) saved = 0
             w.i = Math.max(0, Math.min(w.steps.length - 1, saved))
@@ -61,7 +60,6 @@ Popup {
         if (step === "lang" || step === "ai") app.call("GET", "/api/settings", null, (s) => w.settings = s)
         if (step === "mic") { live.refreshMics(); voice.start(600) }
         if (step === "voice") app.call("GET", "/api/profiles", null, (r) => w.known = r.items)
-        if (step === "phone") app.call("GET", "/api/pair", null, (r) => w.pair = r, () => {})
         if (step === "done") app.call("GET", "/api/status", null, (s) => w.st = s)
     }
     function leaveStep() { if (step === "mic") voice.discard() }
@@ -358,26 +356,6 @@ Popup {
                             }
                             Text { visible: w.voiceName !== ""; text: "✓ " + w.voiceName + " ist gespeichert."; color: Theme.ok; font.pixelSize: 14; font.weight: Font.Bold }
                             Muted { font.pixelSize: 13; Layout.fillWidth: true; text: "Andere Leute sprichst du später unter Personen ein – oder direkt vor einem Meeting bei „Wer ist dabei?“." }
-                        }
-
-                        // ---- iPhone
-                        ColumnLayout {
-                            visible: w.step === "phone"
-                            Layout.fillWidth: true
-                            spacing: 12
-                            Eyebrow { text: "Schritt " + (w.i + 1) + " · iPhone" }
-                            Text { text: "Auch am iPhone aufnehmen?"; font.family: Theme.display; font.pixelSize: 30; font.weight: Font.Black; color: Theme.fg }
-                            Muted { Layout.fillWidth: true; text: "Mit der REKORD-App am iPhone: dort auf Koppeln tippen, den Code scannen oder die 6 Ziffern eintippen. Alles, was du am iPhone aufnimmst, landet hier." }
-                            RowLayout {
-                                visible: w.pair !== null && w.pair.urls.length > 0
-                                spacing: 24
-                                QrView { rows: w.pair ? w.pair.qr_rows : []; Layout.preferredWidth: 200; Layout.preferredHeight: 200 }
-                                ColumnLayout {
-                                    Text { text: w.pair ? w.pair.code.code.slice(0, 3) + " " + w.pair.code.code.slice(3) : ""; font.family: Theme.display; font.pixelSize: 40; font.weight: Font.Black; font.letterSpacing: 4; color: Theme.fg }
-                                    Muted { Layout.maximumWidth: 280; text: "iPhone und Computer im selben WLAN. Der Code gilt 10 Minuten – später jederzeit unter Einstellungen → iPhone & Geräte." }
-                                }
-                            }
-                            Muted { visible: w.pair === null || w.pair.urls.length === 0; text: "Gerade kein WLAN gefunden. Später unter Einstellungen → iPhone & Geräte." }
                         }
 
                         // ---- Fertig

@@ -1,4 +1,4 @@
-"""Generates the app icons (PWA, iOS, desktop). Bold typographic mark: a record dot + 'R'."""
+"""Generates the app icons (browser, desktop). Bold typographic mark: a record dot + 'R'."""
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont

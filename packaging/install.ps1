@@ -43,7 +43,6 @@ try {
         $s.Save()
     }
     Write-Host "OK REKORD ist installiert (Startmenue + Desktop) und startet jetzt." -ForegroundColor Green
-    Write-Host "  Fragt Windows nach der Firewall: 'Private Netzwerke' anhaken -> Zugriff zulassen (fuers iPhone)."
     Start-Process $exe
 }
 finally {

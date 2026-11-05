@@ -1,14 +1,22 @@
-# REKORD.
+<p align="center"><img src="rekord/web/icons/icon-512.png" width="112" alt="REKORD"></p>
 
-**Du redest. REKORD schreibt mit.**
+<h1 align="center">REKORD.</h1>
 
-REKORD ist eine kostenlose App für deinen Computer (und optional dein iPhone). Du nimmst ein Gespräch auf – ein Meeting, eine Besprechung, ein Interview, einen Teams- oder Zoom-Call. REKORD schreibt dann **alles auf, was gesagt wurde**, zeigt **wer was gesagt hat** und macht dir daraus ein **fertiges Protokoll mit To-dos**.
+<p align="center"><b>Du redest. REKORD schreibt mit.</b></p>
+
+<p align="center">
+  <a href="https://github.com/KimJongUnNK/rekord/releases/latest/download/REKORD-macOS-AppleSilicon.zip"><img src="https://img.shields.io/badge/Mac-herunterladen-111111?style=for-the-badge&logo=apple&logoColor=white" alt="Für Mac herunterladen"></a>
+  <a href="https://github.com/KimJongUnNK/rekord/releases/latest/download/REKORD-Windows-x64.zip"><img src="https://img.shields.io/badge/Windows-herunterladen-0067B8?style=for-the-badge&logo=windows&logoColor=white" alt="Für Windows herunterladen"></a>
+  <a href="https://github.com/KimJongUnNK/rekord/releases/latest"><img src="https://img.shields.io/badge/Linux-herunterladen-E95420?style=for-the-badge&logo=linux&logoColor=white" alt="Für Linux herunterladen"></a>
+</p>
+
+REKORD ist eine kostenlose App für deinen Computer (Mac, Windows, Linux). Du nimmst ein Gespräch auf – ein Meeting, eine Besprechung, ein Interview, einen Teams- oder Zoom-Call. REKORD schreibt dann **alles auf, was gesagt wurde**, zeigt **wer was gesagt hat** und macht dir daraus ein **fertiges Protokoll mit To-dos**.
 
 Kein Konto. Kein Abo. Deine Aufnahmen bleiben **auf deinem Computer**.
 
-| Während des Meetings: wer spricht gerade | Danach: das Protokoll | Alles als Mind Map | Auch am iPhone |
-|---|---|---|---|
-| ![Live-Ansicht: groß angezeigt, wer gerade spricht](docs/04-live-running.png) | ![Fertige Zusammenfassung mit To-dos](docs/20-summary-dark.png) | ![Mind Map eines Meetings](docs/21-mindmap.png) | ![REKORD am iPhone](docs/13-mobile-detail.png) |
+| Während des Meetings: wer spricht gerade | Danach: das Protokoll | Alles als Mind Map |
+|---|---|---|
+| ![Live-Ansicht: groß angezeigt, wer gerade spricht](docs/04-live-running.png) | ![Fertige Zusammenfassung mit To-dos](docs/20-summary-dark.png) | ![Mind Map eines Meetings](docs/21-mindmap.png) |
 
 ---
 
@@ -37,7 +45,6 @@ REKORD lernt Stimmen: Wer einmal ca. 45 Sekunden gesprochen hat – einen Text v
 - **Ca. 2 GB freien Speicher** – mit der kostenlosen lokalen KI zusätzlich 3–6 GB. Am besten **8 GB Arbeitsspeicher** oder mehr.
 - **Ein Mikrofon** – das eingebaute reicht. Ein Headset oder Konferenz-Mikro wird genauer.
 - **Internet nur beim ersten Start** (REKORD lädt einmal ca. 700 MB). Danach geht alles offline.
-- Optional: ein **iPhone**, wenn du auch unterwegs aufnehmen willst.
 
 ---
 
@@ -64,7 +71,6 @@ Du musst nichts verstehen, nur **eine Zeile kopieren und einfügen**. Das dauert
    ```
 3. **Rechtsklick** ins PowerShell-Fenster (das fügt ein) und **Enter** drücken.
 4. Warten, bis REKORD aufgeht. Du findest es danach im **Startmenü** und auf dem **Desktop**.
-   Fragt Windows nach der Firewall: **„Private Netzwerke“** anhaken → **Zugriff zulassen** (nur wichtig fürs iPhone).
 
 ### Linux
 
@@ -135,14 +141,14 @@ Gib REKORD die **Unterlagen** zum Termin: Agenda, Folien, Teilnehmerliste, ein V
 **Falsche Datei importiert?**
 In der Liste auf **■** neben dem Fortschritt klicken – die Auswertung stoppt sofort. Oder Aufnahme öffnen → **Stoppen** bzw. **Löschen**.
 
-**Kann ich mit dem iPhone aufnehmen?**
-Ja, mit der **REKORD-App** fürs iPhone (eine echte App, keine Webseite – Installation siehe [Anleitung](docs/ANLEITUNG.md#3-iphone-optional)). Koppeln: In REKORD am Computer *Einstellungen → iPhone & Geräte* → in der App den QR-Code scannen oder den **6-stelligen Code** eintippen. iPhone und Computer müssen im selben WLAN sein.
+**Kann ich mit dem Handy aufnehmen?**
+Nimm mit der Sprachmemo-App deines Handys auf und leg die Datei in den **Eingangsordner** (z. B. per iCloud, Dropbox oder OneDrive) – REKORD wertet sie automatisch aus. Oder einfach ins REKORD-Fenster ziehen.
 
 **Geht das auch in der Uni?**
 Ja. Vor der Aufnahme **Vorlesung** wählen: Mitzählen musst du nicht. REKORD erkennt die vortragende Person und sammelt Fragen aus dem Hörsaal unter „Publikum“. Danach gibt es automatisch einen **Lernzettel** mit Kernaussagen, Definitionen und Prüfungsrelevantem. Die Stimme des Profs lernt REKORD, indem du ihn **einfach reden lässt** oder sie **aus einer Aufnahme** nimmst – vorlesen muss niemand etwas.
 
 **Ist das eine Web-App?**
-Nein. REKORD ist am Computer ein **echtes Programm** mit eigenem Fenster (Mac, Windows, Linux) – ab Version 1.3 komplett: Aufnahmen, Live, Fragen, Personen, Vorlagen, Einstellungen und die Einführung – und am iPhone eine echte App. Mehr dazu in der [Anleitung](docs/ANLEITUNG.md#das-rekord-fenster).
+Nein. REKORD ist am Computer ein **echtes Programm** mit eigenem Fenster (Mac, Windows, Linux) – ab Version 1.3 komplett: Aufnahmen, Live, Fragen, Personen, Vorlagen, Einstellungen und die Einführung. Mehr dazu in der [Anleitung](docs/ANLEITUNG.md#das-rekord-fenster).
 
 **Welche Sprachen versteht REKORD?**
 Rund 99 Sprachen, auch gemischt im selben Gespräch. Am genauesten, wenn du die Sprache in den Einstellungen fest einstellst.
@@ -177,7 +183,7 @@ Alles ab hier brauchst du zum Benutzen **nicht**.
 
 | | Plaud Note Pro | **REKORD** |
 |---|---|---|
-| Aufnahme | eigene Hardware | iPhone, Mac, Windows, Linux, jedes Mikro (USB, Headset, AirPods, Konferenz-Speaker) |
+| Aufnahme | eigene Hardware | Mac, Windows, Linux, jedes Mikro (USB, Headset, AirPods, Konferenz-Speaker) |
 | Transkription | Cloud | **lokal** (Whisper bis large-v3 / turbo, ~99 Sprachen, Sprache pro Satz) |
 | Sprecher | „Speaker 1/2" + manuell benennen | **Erkennt Personen an der Stimme**, live und über alle Meetings hinweg |
 | Live im Meeting | – | **Großanzeige „wer spricht"**, Redeanteile, Live-Mitschrift |
@@ -200,17 +206,16 @@ Alles ab hier brauchst du zum Benutzen **nicht**.
 ## Architektur
 
 ```
- iPhone (native App)                Mac / Windows / Linux  – „Hub"
- ┌──────────────────────┐   WLAN   ┌───────────────────────────────────────────────┐
- │ Mikro → 16 kHz PCM   │ ───────► │ Live:  VAD → Stimmabdruck → Person? → Whisper │
- │ Live Activity        │ ◄─────── │        („Lisa spricht", Mitschrift)            │
- │ Widgets · Siri       │  Events  │ Danach: pyannote-Segmentierung → Feintrennung │
- └──────────────────────┘          │        → Personen-Abgleich → Whisper → KI     │
- Oberfläche am Computer ──────────►│ SQLite + FTS5 · Audio · Modelle · ~/Rekord    │
- Claude Desktop ── MCP ───────────►│                                               │
-                                   └──────────────┬────────────────────────────────┘
-                                                  │ nur Text
-                                    Claude API · OpenAI API · Ollama · LM Studio
+ Mac / Windows / Linux – alles auf diesem Computer (127.0.0.1)
+ ┌───────────────────────────────────────────────┐
+ │ Live:  VAD → Stimmabdruck → Person? → Whisper │  ◄── REKORD-Fenster (Qt)
+ │        („Lisa spricht", Mitschrift)            │  ◄── Browser
+ │ Danach: pyannote-Segmentierung → Feintrennung │  ◄── Claude Desktop (MCP)
+ │        → Personen-Abgleich → Whisper → KI     │
+ │ SQLite + FTS5 · Audio · Modelle · ~/Rekord    │
+ └──────────────┬────────────────────────────────┘
+                │ nur Text
+  Claude API · OpenAI API · Ollama · LM Studio
 ```
 
 Die gesamte Sprachverarbeitung läuft über **sherpa-onnx** (ONNX Runtime, CPU, kein PyTorch, keine GPU nötig) und damit identisch auf Windows, macOS (Intel + Apple Silicon) und Linux.
@@ -248,13 +253,10 @@ Im WLAN ist jeder Zugriff außer von localhost durch einen **Kopplungs-Code** ge
 **Aus dem Quellcode starten** (Python 3.10+):
 ```bash
 git clone https://github.com/KimJongUnNK/rekord && cd rekord
-./start.sh --host 0.0.0.0        # macOS/Linux · Windows: .\start.ps1 --host 0.0.0.0
+./start.sh                       # macOS/Linux · Windows: .\start.ps1
 ```
 
 **CLI:** `rekord serve` · `rekord process datei.m4a --summary meeting` · `rekord models list|download` · `rekord enroll "Lisa" probe.m4a` · `rekord mcp`
-
-**iOS-App selbst bauen** (Mac + Xcode): `brew install xcodegen && cd ios && xcodegen generate && open Rekord.xcodeproj`. Dann bei *Signing & Capabilities* dein Team wählen.
-Ist die Bundle-ID `app.rekord.ios` vergeben, Prefix und App Group (`group.app.rekord.shared`) in beiden Targets ändern.
 
 **Desktop-Pakete:** `pyinstaller desktop/rekord.spec`. Linux-Pakete: `packaging/linux/build.sh`. Ein Push auf den Branch `release` baut alles und veröffentlicht das Release.
 
@@ -271,7 +273,6 @@ Die End-to-End-Tests erzeugen Meetings mit mehreren Sprechern über offene TTS-S
 - Überlappendes Sprechen (zwei gleichzeitig) wird dem dominanteren Sprecher zugeordnet.
 - Sehr ähnliche Stimmen ohne Anlernen können verwechselt werden. Abhilfe: anlernen und Teilnehmer wählen.
 - Das Live-Transkript nutzt das gewählte Modell auf kurzen Schnipseln. Das genaue Transkript entsteht im zweiten Durchgang.
-- Die iOS-App braucht zum Bauen einen Mac mit Xcode. Live Activities laufen ab iOS 18.
 - Linux-Pakete gibt's für x86_64. ARM-Boards (Raspberry Pi) und musl-Distros (Alpine) laufen aus dem Quellcode.
 
 MIT-Lizenz · © 2026 Emil Boenke

@@ -38,7 +38,7 @@ def serve(host: str, port: int, open_browser: bool = False, auto_download: bool 
     print(f"\n  REKORD läuft:  http://localhost:{port}")
     if app.state.lan:
         for ip in lan_ips():
-            print(f"  Im WLAN:       http://{ip}:{port}   (für die iPhone-App: Einstellungen → iPhone & Geräte)")
+            print(f"  Im WLAN:       http://{ip}:{port}   (nur für gekoppelte Geräte)")
     print()
     if open_browser:
         import threading
@@ -64,7 +64,7 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="rekord", description="REKORD – lokaler KI-Notizrekorder")
     sub = p.add_subparsers(dest="cmd")
     sv = sub.add_parser("serve", help="Hub starten (Standard)")
-    sv.add_argument("--host", default="127.0.0.1", help="0.0.0.0 = im WLAN erreichbar (für iPhone)")
+    sv.add_argument("--host", default="127.0.0.1", help="0.0.0.0 = im WLAN erreichbar (nur für gekoppelte Geräte)")
     sv.add_argument("--port", type=int, default=8765)
     sv.add_argument("--no-browser", action="store_true")
     sv.add_argument("--no-download", action="store_true", help="Modelle nicht automatisch laden")

@@ -1,12 +1,12 @@
 #!/bin/sh
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
-# the iPhone app (8765, discovery: mDNS) must reach REKORD in the Wi-Fi: open the ports if a firewall runs
+# REKORD stays on this computer (127.0.0.1) – no open ports. Versions up to 1.4.0 opened 8765 for the iPhone app: close it.
 if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-  firewall-cmd --permanent --add-port=8765/tcp --add-service=mdns >/dev/null 2>&1 \
-    && firewall-cmd --reload >/dev/null 2>&1 && echo "REKORD: Firewall-Port 8765 fürs iPhone freigegeben." || true
-elif command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
-  ufw allow 8765/tcp >/dev/null 2>&1 && ufw allow 5353/udp >/dev/null 2>&1 \
-    && echo "REKORD: Firewall-Port 8765 fürs iPhone freigegeben." || true
+  if firewall-cmd --permanent --query-port=8765/tcp >/dev/null 2>&1; then
+    firewall-cmd --permanent --remove-port=8765/tcp >/dev/null 2>&1 && firewall-cmd --reload >/dev/null 2>&1 || true
+  fi
+elif command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "8765/tcp"; then
+  ufw delete allow 8765/tcp >/dev/null 2>&1 || true
 fi
 exit 0

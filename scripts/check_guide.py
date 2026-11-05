@@ -34,7 +34,7 @@ groups["Aufnahme: … Menü"] = {m.split(" (")[0] for m in re.findall(r'<button 
 groups["Einstellungen: Felder"] = {re.split(r"<span class=\"hint\">", m)[0] for m in re.findall(r'class="field"><(?:div class="lbl"|label[^>]*)>(.*?)</(?:div|label)>', app)}
 groups["Einstellungen: Auswahl"] = set(re.findall(r'\["(?:system|light|dark|comfortable|compact|mic|mic\+system|lecture)", "([^"]+)"[,\]]', app))
 groups["KI-Anbieter"] = set(re.findall(r'\["(?:anthropic|openai|ollama|compatible|none)", "([^"]+)", "', app))
-groups["Live"] = {"Wer ist dabei?", "Gäste", "Vorstellungsrunde", "Im Raum", "Mitschrift", "Pause"} \
+groups["Live"] = {"Wer ist dabei?", "Vorstellungsrunde", "Im Raum", "Mitschrift", "Pause"} \
     | set(re.findall(r'<button data-m="[^"]+"[^>]*>([^<]+)</button>', app))
 groups["Export"] = set(re.findall(r'\["(?:md|docx|txt|srt|vtt|json)", "([^"]+)"', app)) | {"Zwischenablage", "PDF", "Audio"}
 groups["Knöpfe"] = set(re.findall(r'id="(?:enroll|new|clr|gen|frep|mmgen|mcp-copy|quit|ltest|mic-test|oll-setup|cd-connect|cc-connect'
@@ -53,7 +53,6 @@ groups["Wer ist dabei? / Wer ist das?"] = {"Wie viele sprechen?", "Wer davon ist
     | {"Wo findet das Meeting statt?"}
 groups["Einsprechen"] = set(re.findall(r'<button type="button" data-m="\w+">([^<]+)</button>', app.split("async function enrollDialog")[1])) \
     | {"Anderer Text", "Gesprächsidee", "Stimme lernen", "Stimme speichern"}
-groups["Koppeln"] = {"Kopplungs-Code", "Neuer Code", "Gekoppelte Geräte", "Trennen", "Alle Geräte trennen", "QR-Code scannen"}
 groups["Speicherort"] = {"Speicherort", "KI-Modelle", "Laufwerk fehlt", "Nochmal prüfen", "Neu auf diesem Computer anfangen", "Umziehen"}
 
 # ---- the REKORD window (Qt Quick)
@@ -63,7 +62,7 @@ wizard_qml = (QML / "WelcomeWizard.qml").read_text("utf-8")
 groups["Fenster: Einstellungen – Bereiche"] = set(re.findall(r'\["\w+", "([^"]+)"\]', settings_qml.split("readonly property var sections:")[1].split("readonly property var langs")[0]))
 groups["Fenster: Einstellungen – Felder"] = set(re.findall(r'^\s*label: "([^"]+)"', settings_qml, re.M)) \
     | set(re.findall(r'\["\w+", "([^"]+)", "\w+", "[^"]+", [\d.]+, [\d.]+\]', settings_qml))  # the sliders
-groups["Fenster: Einstellungen – Knöpfe"] = {"Pegel testen", "Testen", "Neuer Code", "Alle Geräte trennen", "Einführung starten", "REKORD beenden",
+groups["Fenster: Einstellungen – Knöpfe"] = {"Pegel testen", "Testen", "Einführung starten", "REKORD beenden",
                                              "Lokal einrichten", "Verwenden", "Alle nicht verwendeten löschen", "Laden & verwenden", "Umziehen"}
 groups["Fenster: Einführung"] = set(re.findall(r'"Schritt " \+ \(w\.i \+ 1\) \+ " · ([^"]+)"', wizard_qml)) | {"Erste Aufnahme", "Zur App", "Überspringen"}
 groups["Fenster: Fragen & Vorlagen"] = {"Verlauf leeren", "Eigene Vorlage", "Reihenfolge zurücksetzen", "Löschen"}

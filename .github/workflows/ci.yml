@@ -41,13 +41,6 @@ jobs:
         run: |
           pytest -m models -q -rs > e2e.log 2>&1 || { echo "::error title=e2e::$(tail -c 3000 e2e.log | tr '\n' ' ')"; exit 1; }
           echo "::notice title=e2e::$(grep -E '^SKIPPED|passed' e2e.log | tr -d '\r' | tr '\n%' ' _' | cut -c1-900)"
-  ios:
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v7
-      - run: brew install xcodegen
-      - run: cd ios && xcodegen generate
-      - run: cd ios && xcodebuild -project Rekord.xcodeproj -scheme Rekord -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
   desktop:
     strategy:
       fail-fast: false

@@ -1,5 +1,5 @@
 /* REKORD first start: a short guided setup instead of dropping people into the app.
-   Steps: Willkommen → Speicherort (before any big download) → Aussehen → Mikrofon → KI → Deine Stimme → iPhone → Fertig.
+   Steps: Willkommen → Speicherort (before any big download) → Aussehen → Mikrofon → KI → Deine Stimme → Fertig.
    Everything can be skipped and changed later in the settings; "Einführung starten" there shows it again. */
 "use strict";
 
@@ -20,7 +20,7 @@ async function welcome(force = false) {
   const firstRun = IS_LOCAL ? !st.welcome_done : !welcomeDone();
   if (!force && !firstRun) return;
   const needStorage = IS_LOCAL && !st.storage_chosen;
-  const steps = ["hi", ...(IS_LOCAL ? ["storage"] : []), "look", "lang", "mic", "ai", "voice", ...(IS_LOCAL ? ["phone"] : []), "done"];
+  const steps = ["hi", ...(IS_LOCAL ? ["storage"] : []), "look", "lang", "mic", "ai", "voice", "done"];
   let i = 0;
   try { i = Math.min(steps.length - 1, Number(localStorage.getItem(WELCOME_KEY + ".step") || 0)); } catch (e) {}
   if (needStorage) i = Math.min(i, steps.indexOf("storage"));
@@ -274,20 +274,6 @@ async function welcome(force = false) {
         const prof = await enrollDialog({ name: $("#wl-name", ov).value.trim() });
         if (prof) { result.voice = prof.name; setPref("participants", [...new Set([...prefs.participants, prof.id])]); render(); }
       };
-      return;
-    }
-    if (step === "phone") {
-      let p = null;
-      try { p = await api("/api/pair"); } catch (e) {}
-      ov.innerHTML = frame(`
-        <div class="eyebrow">Schritt ${i + 1} · iPhone</div><h1 class="wl-h">Auch am iPhone aufnehmen?</h1>
-        <p class="wl-lead">Mit der REKORD-App am iPhone: dort auf <b>Koppeln</b> tippen, den Code scannen oder die 6 Ziffern eintippen. Alles, was du am iPhone aufnimmst, landet hier.</p>
-        ${p && p.urls.length ? `<div class="row" style="align-items:center;gap:24px"><div class="qr">${p.qr_app}</div>
-          <div><b style="font-size:34px;letter-spacing:.12em">${esc(p.code.code.slice(0, 3) + " " + p.code.code.slice(3))}</b>
-          <p class="muted" style="max-width:260px">iPhone und Computer im selben WLAN. Der Code gilt 10 Minuten – später jederzeit unter Einstellungen → iPhone & Geräte.</p></div></div>`
-          : `<p class="muted">Gerade kein WLAN gefunden. Später unter Einstellungen → iPhone & Geräte.</p>`}`,
-      { next: "Weiter" });
-      bindFrame();
       return;
     }
     if (step === "done") {

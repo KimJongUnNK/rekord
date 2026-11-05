@@ -1,5 +1,5 @@
 name: release
-# Push to the `release` branch (or a v* tag) → builds Windows + macOS desktop apps and an unsigned iPhone IPA,
+# Push to the `release` branch (or a v* tag) → builds the Windows, macOS and Linux apps,
 # then publishes GitHub Release v<version from pyproject.toml> (tag is created by the workflow).
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
           - os: windows-latest
             asset: REKORD-Windows-x64.zip
           - os: macos-15  # pinned: on 2026-11-04 GitHub's macos-latest pool left jobs unassigned until they were cancelled,
-            asset: REKORD-macOS-AppleSilicon.zip  # while macos-15 (the iPhone build) ran at once
+            asset: REKORD-macOS-AppleSilicon.zip  # while macos-15 ran at once
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -67,22 +67,6 @@ jobs:
           else 7z a "../../${{ matrix.asset }}" REKORD > /dev/null; fi
       - uses: actions/upload-artifact@v7
         with: { name: "${{ matrix.asset }}", path: "${{ matrix.asset }}" }
-
-  ios:
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v7
-      - run: brew install xcodegen
-      - name: build unsigned IPA (sideload with Sideloadly/AltStore, or re-sign with your Apple ID)
-        run: |
-          cd ios && xcodegen generate
-          xcodebuild -project Rekord.xcodeproj -scheme Rekord -configuration Release -sdk iphoneos \
-            -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build > build.log 2>&1 \
-            || { echo "::error title=ios::$(tail -c 3000 build.log | tr '\n' ' ')"; exit 1; }
-          mkdir -p Payload && cp -R build/Build/Products/Release-iphoneos/Rekord.app Payload/
-          zip -qry ../REKORD-iOS-unsigned.ipa Payload
-      - uses: actions/upload-artifact@v7
-        with: { name: REKORD-iOS-unsigned.ipa, path: REKORD-iOS-unsigned.ipa }
 
   linux-build:
     # Debian 11 base (glibc 2.31) → the binary runs on Debian 11+, Ubuntu 20.04+, Fedora, openSUSE, Arch, Mint, Pop!_OS …
@@ -164,9 +148,9 @@ jobs:
         with: { name: linux-packages, path: linux-out/* }
 
   publish:
-    needs: [desktop, ios, linux-package]
+    needs: [desktop, linux-package]
     # never a release without the desktop apps: "latest" would then have no Mac (or Windows) download, and the one-line
-    # installer would fail. Linux and the iPhone app may be missing (then they're added by a re-run of the failed jobs).
+    # installer would fail. Linux may be missing (then it's added by a re-run of the failed job).
     if: ${{ !cancelled() && needs.desktop.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
@@ -183,10 +167,13 @@ jobs:
           gh release view "${{ steps.v.outputs.tag }}" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null | while read -r a; do
             [ -f "dist/$a" ] || gh release delete-asset "${{ steps.v.outputs.tag }}" "$a" --repo "$GITHUB_REPOSITORY" -y
           done
+      - name: release page text (docs/RELEASE_NOTES.md with the version filled in)
+        run: sed "s/{{VERSION}}/${TAG#v}/g" docs/RELEASE_NOTES.md > "$RUNNER_TEMP/notes.md"
+        env: { TAG: "${{ steps.v.outputs.tag }}" }
       - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
-          body_path: docs/RELEASE_NOTES.md
+          body_path: ${{ runner.temp }}/notes.md
           tag_name: ${{ steps.v.outputs.tag }}
           target_commitish: ${{ github.sha }}
           name: REKORD ${{ steps.v.outputs.tag }}

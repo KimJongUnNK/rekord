@@ -370,7 +370,7 @@ def main(out: Path) -> int:
     win.setProperty("page", "settings")
     settings = win.findChild(QObject, "settingsPage")
     shot("settings")
-    for key in ("ai", "asr", "models", "pair", "int", "data"):
+    for key in ("ai", "asr", "models", "int", "data"):
         call(settings, "jump", key)
         shot(f"settings-{key}")
     # both engines selectable: faster-whisper chosen → its models, where it runs, a load button
