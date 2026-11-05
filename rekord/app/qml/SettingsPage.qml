@@ -364,37 +364,53 @@ Page {
                         Select { Layout.maximumWidth: 300; options: page.opts(page.langs); value: page.s ? page.s.language : ""; onPicked: (v) => page.save({ language: v }) }
                     }
                     Field {
-                        label: "Engine"; tip: "engine"; hint: "Was Sprache in Text verwandelt."
+                        label: "Engine"; tip: "engine"
+                        hint: page.s && page.s.asr_engine === "faster-whisper" && page.st && page.st.fw_device
+                              ? "Läuft hier auf: " + page.st.fw_device + ". Wortgenaue Zeiten, hört Begriffe aus Vokabular und Unterlagen."
+                              : "Was Sprache in Text verwandelt. Beide laufen auf diesem Rechner."
                         Select {
+                            objectName: "engineSelect"
                             Layout.maximumWidth: 420
                             Layout.fillWidth: true
-                            options: [{ value: "sherpa", label: "Whisper ONNX (überall, CPU)" },
-                                      { value: "faster-whisper", label: "faster-whisper (GPU/CUDA, Wortzeiten)" + (page.st && page.st.faster_whisper ? "" : " – nicht installiert") }]
-                            value: page.s ? page.s.asr_engine : "sherpa"
-                            onPicked: (v) => page.save({ asr_engine: v })
+                            readonly property bool fw: !!(page.st && page.st.faster_whisper)
+                            options: [{ value: "sherpa", label: "Whisper ONNX – läuft überall" },
+                                      { value: "faster-whisper", label: "faster-whisper – wortgenau, NVIDIA-GPU" + (fw ? "" : " (nicht installiert)") }]
+                            value: page.s ? (page.s.asr_engine === "faster-whisper" && !fw ? "sherpa" : page.s.asr_engine) : "sherpa"
+                            onPicked: (v) => {
+                                if (v === "faster-whisper" && !fw) {  // can't run here: keep what works instead of breaking every transcription
+                                    page.app.toast("faster-whisper ist in dieser Installation nicht enthalten (pip install faster-whisper). Whisper ONNX bleibt.")
+                                    value = "sherpa"
+                                    return
+                                }
+                                page.save({ asr_engine: v })
+                                const m = page.models.find(x => x.id === (v === "faster-whisper" ? "fw:" + page.s.faster_whisper_model : page.s.asr_model))
+                                if (m && !m.installed) page.app.toast(m.name + " ist noch nicht geladen – unten „Jetzt laden“.")
+                            }
                         }
                     }
                     Field {
+                        id: modelField
                         label: "Modell"; tip: "asrmodel"; hint: "turbo = beste Qualität pro Sekunde. small = Laptop-Standard."
+                        readonly property bool isFw: !!page.s && page.s.asr_engine === "faster-whisper"
+                        readonly property string chosen: page.s ? (isFw ? "fw:" + page.s.faster_whisper_model : page.s.asr_model) : ""
                         Select {
                             Layout.maximumWidth: 420
                             Layout.fillWidth: true
-                            options: page.s && page.s.asr_engine === "faster-whisper"
-                                     ? ["large-v3-turbo", "large-v3", "distil-large-v3", "medium", "small", "base"].map(m => ({ value: m, label: m }))
-                                     : page.models.filter(m => m.kind === "asr").map(m => ({ value: m.id, label: m.name + " · " + m.size_mb + " MB" + page.modelState(m) }))
-                            value: page.s ? (page.s.asr_engine === "faster-whisper" ? page.s.faster_whisper_model : page.s.asr_model) : ""
+                            options: page.models.filter(m => m.kind === (modelField.isFw ? "asr-fw" : "asr"))
+                                                .map(m => ({ value: m.id, label: m.name + " · " + m.size_mb + " MB" + page.modelState(m) }))
+                            value: modelField.chosen
                             onPicked: (v) => {
-                                if (page.s.asr_engine === "faster-whisper") { page.save({ faster_whisper_model: v }); return }
-                                page.save({ asr_model: v })
+                                if (modelField.isFw) page.save({ faster_whisper_model: v.replace(/^fw:/, "") })
+                                else page.save({ asr_model: v })
                                 const m = page.models.find(x => x.id === v)
                                 if (m && !m.installed) page.loadModel(m)
                             }
                         }
                         RowLayout {  // the chosen model isn't there yet: load it right here, with progress
-                            readonly property var m: page.models.find(x => page.s && x.id === page.s.asr_model) || null
+                            readonly property var m: page.models.find(x => x.id === modelField.chosen) || null
                             readonly property var p: m ? (m.progress || {}) : {}
                             readonly property bool dl: p.state === "downloading" || p.state === "extracting"
-                            visible: !!m && !m.installed && page.s.asr_engine !== "faster-whisper"
+                            visible: !!m && !m.installed
                             Layout.fillWidth: true
                             Layout.maximumWidth: 420
                             spacing: 10
@@ -413,6 +429,7 @@ Page {
                                 color: parent.p.state === "error" ? Theme.err : Theme.fg3
                                 text: parent.p.state === "error" ? parent.p.error
                                     : parent.dl ? (parent.p.state === "extracting" ? "entpacke …" : Math.round((parent.p.done || 0) / (parent.p.total || 1) * 100) + " %")
+                                    : modelField.isFw ? "Noch nicht geladen – wird sonst bei der ersten Auswertung geladen."
                                     : "Noch nicht geladen – bis dahin nimmt REKORD ein vorhandenes Modell."
                             }
                         }
@@ -546,7 +563,7 @@ Page {
                             RowLayout {
                                 Layout.fillWidth: true
                                 Text { text: mr.modelData.name; font.family: Theme.text; font.pixelSize: 14; font.weight: Font.Bold; color: Theme.fg }
-                                Text { text: ({ asr: "Spracherkennung", segmentation: "Sprecherwechsel", embedding: "Stimmabdruck", vad: "Sprach-Erkennung" })[mr.modelData.kind] || ""; font.pixelSize: 12; color: Theme.fg3 }
+                                Text { text: ({ asr: "Spracherkennung", "asr-fw": "Spracherkennung · faster-whisper", segmentation: "Sprecherwechsel", embedding: "Stimmabdruck", vad: "Sprach-Erkennung" })[mr.modelData.kind] || ""; font.pixelSize: 12; color: Theme.fg3 }
                                 Muted { text: mr.modelData.size_mb + " MB"; font.pixelSize: 12 }
                                 Item { Layout.fillWidth: true }
                                 Text { visible: mr.modelData.installed; text: "installiert"; font.pixelSize: 12; color: Theme.ok; font.weight: Font.Bold }

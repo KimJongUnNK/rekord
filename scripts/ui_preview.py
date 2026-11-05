@@ -373,6 +373,20 @@ def main(out: Path) -> int:
     for key in ("ai", "asr", "models", "pair", "int", "data"):
         call(settings, "jump", key)
         shot(f"settings-{key}")
+    # both engines selectable: faster-whisper chosen → its models, where it runs, a load button
+    config.save({"asr_engine": "faster-whisper", "faster_whisper_model": "large-v3-turbo"})
+    call(settings, "load")
+    wait(1.0)
+    call(settings, "jump", "asr")
+    shot("settings-asr-faster-whisper")
+    eng = settings.findChild(QObject, "engineSelect")
+    from rekord import models as _m
+    if _m.faster_whisper_available() and (eng is None or eng.property("value") != "faster-whisper"):
+        problems_extra.append(f"settings: faster-whisper not selectable (value {eng.property('value') if eng else None})")
+    config.save({"asr_engine": "sherpa"})
+    call(settings, "load")
+    wait(1.0)
+    call(settings, "jump", "asr")
     # no speech model loaded in the preview: a load button where the model is chosen, and "everything" under Modelle
     for name in ("asrLoad", "loadMissing"):
         b = settings.findChild(QObject, name)

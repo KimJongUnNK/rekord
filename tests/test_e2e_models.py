@@ -473,3 +473,25 @@ def test_live_window_shows_who_speaks_while_the_transcript_is_busy(people, monke
         QCoreApplication.processEvents()
         time.sleep(0.01)
     assert done and len(lv.lines.items()) >= 3
+
+
+def test_faster_whisper_engine_end_to_end(tmp_path):
+    """The second engine for real: its model from Hugging Face, word timestamps, the Unterlagen terms as hint."""
+    from rekord import context
+    from rekord.engines import asr
+    s = config.load()
+    config.save({"asr_engine": "faster-whisper", "faster_whisper_model": "tiny"})
+    try:
+        models.ensure(["fw:tiny"])
+        r = db.create_recording("FW", str(FIX / "meeting1.wav"))
+        (tmp_path / "Agenda.txt").write_text("Agenda: Budget, Launch, Marketing", "utf-8")
+        context.add(r["id"], tmp_path / "Agenda.txt")
+        res = pipeline.process(r["id"])
+        assert res["segments"] >= 3
+        text = " ".join(t for _, _, t in _names(r["id"])).lower()
+        assert len(text.split()) > 40, text
+        assert asr.fw_device() in ("Prozessor", "NVIDIA-Grafikkarte")
+        segs = db.list_segments(r["id"])  # word timestamps → lines still split by speaker (known or by voice)
+        assert len({(x["speaker_id"], x["voice"]) for x in segs}) >= 2
+    finally:
+        config.save({"asr_engine": s["asr_engine"], "faster_whisper_model": s["faster_whisper_model"]})

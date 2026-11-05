@@ -59,9 +59,18 @@ def process(rid: str, on_event=None) -> dict:
     samples = audio.load(rec["audio_path"])
     duration = len(samples) / audio.SR
     # models first, visibly: a missing one loads now (with progress) – or the recording says in words why it can't
-    if s.get("asr_engine") != "faster-whisper":
-        s = {**s, "asr_model": models.usable_asr(s["asr_model"])}
-    models.ensure(models.needed(s), on_progress=lambda name, f: stage(f"Lädt {name} (einmalig)", 0.02 + 0.02 * f))
+    if models.engine(s) == "sherpa":
+        s = {**s, "asr_engine": "sherpa", "asr_model": models.usable_asr(s["asr_model"])}
+    load = lambda name, f: stage(f"Lädt {name} (einmalig)", 0.02 + 0.02 * f)  # noqa: E731
+    try:
+        models.ensure(models.needed(s), on_progress=load)
+    except models.Missing:
+        fallback = models.usable_asr(s["asr_model"])
+        if models.engine(s) != "faster-whisper" or not models.installed(fallback):
+            raise
+        log.warning("faster-whisper model not loadable – this recording with Whisper ONNX (%s)", fallback)
+        s = {**s, "asr_engine": "sherpa", "asr_model": fallback}
+        models.ensure(models.needed(s), on_progress=load)
     db.update_recording(rid, duration=duration, peaks=audio.peaks(samples))
 
     # 1. who spoke when

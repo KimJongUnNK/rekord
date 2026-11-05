@@ -96,3 +96,94 @@ def test_api_loads_what_is_missing(monkeypatch):
         assert c.post("/api/models/download-missing").json() == {"ok": True, "loading": ["whisper-small"]}
         assert "missing" in c.get("/api/status").json()
     assert calls == [1]
+
+
+# ------------------------------------------------------------------ faster-whisper: the second engine, selectable
+
+def _fake_fw(root, size="small"):
+    repo = models.FW[size][0]
+    snap = root / "faster-whisper" / ("models--" + repo.replace("/", "--")) / "snapshots" / "abc123"
+    snap.mkdir(parents=True)
+    for f in ("model.bin", "config.json", "tokenizer.json", "vocabulary.json"):
+        (snap / f).write_bytes(b"x")
+    return snap
+
+
+def test_engine_choice_and_what_it_needs(no_models, monkeypatch):
+    s = {"asr_engine": "faster-whisper", "faster_whisper_model": "small", "asr_model": "whisper-small",
+         "embedding_model": "eres2net-base"}
+    monkeypatch.setattr(models, "faster_whisper_available", lambda: True)
+    assert models.engine(s) == "faster-whisper"
+    assert models.needed(s) == models.ESSENTIAL + ["fw:small"]
+    monkeypatch.setattr(models, "faster_whisper_available", lambda: False)
+    assert models.engine(s) == "sherpa" and models.needed(s)[-1] == "whisper-small"  # chosen but not there: ONNX
+
+
+def test_faster_whisper_models_are_listed_loaded_and_removed(no_models, monkeypatch):
+    monkeypatch.setattr(models, "faster_whisper_available", lambda: True)
+    st = {m["id"]: m for m in models.status()}
+    assert st["fw:large-v3-turbo"]["kind"] == "asr-fw" and not st["fw:small"]["installed"]
+    assert models.known("fw:small") and not models.known("fw:nope") and models.name("fw:small") == "faster-whisper small"
+    got = []
+
+    def snapshot_download(repo, cache_dir, allow_patterns):
+        got.append((repo, allow_patterns))
+        _fake_fw(no_models, "small")
+    import huggingface_hub
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", snapshot_download)
+    models.download("fw:small")
+    assert got[0][0] == "Systran/faster-whisper-small" and "model.bin" in got[0][1]
+    assert models.installed("fw:small") and models.fw_path("small").name == "abc123"
+    models.delete("fw:small")
+    assert not models.installed("fw:small")
+
+
+def test_faster_whisper_download_error_in_words(no_models, monkeypatch):
+    import huggingface_hub
+
+    def offline(*a, **k):
+        raise ConnectionError("Failed to establish a new connection")
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", offline)
+    with pytest.raises(models.Missing, match="huggingface.co"):
+        models.ensure(["fw:tiny"])
+
+
+def test_faster_whisper_falls_back_to_the_processor(no_models, monkeypatch):
+    """An NVIDIA card without CUDA 12/cuDNN: loading or the first run fails on the GPU – it runs on the processor."""
+    import faster_whisper
+    _fake_fw(no_models, "base")
+    made = []
+
+    class Model:
+        def __init__(self, path, device, compute_type, cpu_threads):
+            made.append((device, compute_type, cpu_threads))
+            self.device = device
+
+        def transcribe(self, audio, **kw):
+            if self.device == "cuda":
+                raise RuntimeError("Library cublas64_12.dll is not found or cannot be loaded")
+            return iter([]), None
+    monkeypatch.setattr(faster_whisper, "WhisperModel", Model)
+    monkeypatch.setattr(asr, "cuda_devices", lambda: 1)
+    eng = asr.FasterWhisper("base", "de", "auto", "", threads=3)
+    assert made == [("cuda", "float16", 3), ("cpu", "int8", 3)]
+    assert eng.device == "cpu" and asr.fw_device() == "Prozessor"
+    monkeypatch.setattr(asr, "cuda_devices", lambda: 0)
+    made.clear()
+    asr.FasterWhisper("base", "de", "auto", "")
+    assert [m[0] for m in made] == ["cpu"]  # no card: straight to the processor
+
+
+def test_api_knows_faster_whisper_models(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from rekord.server import app
+    started = []
+    monkeypatch.setattr(models, "download_async", started.append)
+    app.state.auto_download = False
+    with TestClient(app) as c:
+        assert c.post("/api/models/fw:small/download").json() == {"ok": True}
+        assert c.post("/api/models/fw:nope/download").status_code == 404
+        st = c.get("/api/status").json()
+        assert st["faster_whisper"] is True and st["fw_device"] in ("Prozessor", "NVIDIA-Grafikkarte")
+    assert started == ["fw:small"]

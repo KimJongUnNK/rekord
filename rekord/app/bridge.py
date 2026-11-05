@@ -1282,8 +1282,7 @@ class AppState(QObject):
         from ..llm import providers
         try:
             s = config.load()
-            ready = all(models.installed(m) for m in models.ESSENTIAL) and (
-                s["asr_engine"] == "faster-whisper" or models.installed(s["asr_model"]))
+            ready = not models.missing(s)
             st = models.status()
             dl = next((m for m in st if (m.get("progress") or {}).get("state") == "downloading"), None)
             miss = [m for m in st if m["id"] in models.missing(s)]
