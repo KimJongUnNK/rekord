@@ -758,6 +758,9 @@ def _full(rid: str) -> dict:
     # stills from a video, each with the line it belongs to: url for the iPhone app, file for the window
     rec["frames"] = [{"t": f["t"], "seg": f["seg"], "url": f"/api/recordings/{rid}/frames/{f['file']}",
                       "file": Path(f["path"]).as_uri()} for f in frames.attach(rid, rec["segments"])]
+    from . import history
+    rec["history"] = history.state(rid)  # what Rückgängig / Wiederholen would do
+    rec.pop("transcript_undo", None)
     rec["documents"] = _docs(rid)
     rec["context_note"] = context.state(rid).get("note", "") if rec["documents"] else ""
     return rec
@@ -930,6 +933,44 @@ async def toggle_fix(rid: str, request: Request):
     return {"ok": True, "changed": n, "fixes": db.get_recording(rid).get("context_fixes") or []}
 
 
+@app.post("/api/recordings/{rid}/transcript/ai")
+async def transcript_ai_edit(rid: str, request: Request):
+    """{"instruction": "Lass den Smalltalk weg"}: the AI changes or removes lines; undo with …/transcript/ai/undo."""
+    from . import transcript_ai
+    if db.get_recording(rid) is None:
+        raise HTTPException(404)
+    body = await request.json()
+    try:
+        return await asyncio.to_thread(transcript_ai.edit, rid, str(body.get("instruction", "")), config.load())
+    except (transcript_ai.EditError, providers.LLMError) as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/recordings/{rid}/transcript/history")
+def transcript_history(rid: str):
+    from . import history
+    if db.get_recording(rid) is None:
+        raise HTTPException(404)
+    return history.state(rid)
+
+
+@app.post("/api/recordings/{rid}/transcript/undo")
+def transcript_undo(rid: str):
+    """Rückgängig: the last change to the transcript (by hand, Suchen & Ersetzen, the AI)."""
+    from . import history
+    if db.get_recording(rid) is None:
+        raise HTTPException(404)
+    return {**history.undo(rid), **history.state(rid)}
+
+
+@app.post("/api/recordings/{rid}/transcript/redo")
+def transcript_redo(rid: str):
+    from . import history
+    if db.get_recording(rid) is None:
+        raise HTTPException(404)
+    return {**history.redo(rid), **history.state(rid)}
+
+
 @app.post("/api/recordings/{rid}/fixes/undo")
 def undo_fixes(rid: str):
     if db.get_recording(rid) is None:
@@ -1020,8 +1061,11 @@ def export_rec(rid: str, fmt: str):
 
 @app.post("/api/recordings/{rid}/find_replace")
 async def find_replace(rid: str, request: Request):
+    from . import history
     b = await request.json()
-    n = db.find_replace(rid, b["find"], b.get("replace", ""))
+    find, repl = b["find"], b.get("replace", "")
+    texts = {s["id"]: s["text"].replace(find, repl) for s in db.list_segments(rid) if find and find in s["text"]}
+    n = history.change(rid, f"Ersetzen: {find} → {repl}"[:120], texts)["changed"]
     if b.get("speakers"):
         for sp in db.list_speakers(rid):
             if sp["name"] == b["find"]:
@@ -1032,8 +1076,13 @@ async def find_replace(rid: str, request: Request):
 
 @app.patch("/api/segments/{sid}")
 async def patch_segment(sid: int, request: Request):
+    from . import history
     b = await request.json()
-    db.update_segment(sid, text=b.get("text"), speaker_id=b.get("speaker_id"))
+    seg = db.get_segment(sid)
+    if seg is not None and b.get("text") is not None and b["text"] != seg["text"]:
+        history.change(seg["recording_id"], "Text bearbeitet", {sid: b["text"]})  # a step back with Rückgängig
+    if b.get("speaker_id") is not None:
+        db.update_segment(sid, speaker_id=b.get("speaker_id"))
     return {"ok": True}
 
 

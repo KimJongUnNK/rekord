@@ -1118,7 +1118,13 @@ async function viewDetail(id) {
   function tabTranscript() {
     const hl = rec.highlights || [];
     if (!segs().length) { $("#tab").innerHTML = `<div class="empty"><p>${rec.status === "done" ? "Keine Sprache erkannt." : "Transkript entsteht gerade …"}</p></div>`; return; }
-    $("#tab").innerHTML = `<div class="row" style="margin-bottom:12px">
+    const h = rec.history || {};
+    $("#tab").innerHTML = `<form class="row" id="taiform" style="margin-bottom:10px;gap:8px">
+        <input type="text" id="tai" style="flex:1" placeholder="Sag der KI, was sie ändern soll – z. B. „Lass den Smalltalk weg“, „Schreib Emil statt Emir“, „Ähms raus“">
+        <button class="btn primary sm" id="taigo">Ändern</button>
+        <button type="button" class="btn ghost sm" id="tundo" ${h.undo ? "" : "disabled"} title="${h.undo ? "Zurücknehmen: " + esc(h.undo) : "Nichts zurückzunehmen"}">↶ Rückgängig</button>
+        <button type="button" class="btn ghost sm" id="tredo" ${h.redo ? "" : "disabled"} title="${h.redo ? "Wiederholen: " + esc(h.redo) : "Nichts zu wiederholen"}">↷ Wiederholen</button></form>
+      <div class="row" style="margin-bottom:12px">
         <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" id="tfind" placeholder="Im Transkript suchen"></label>
         <button class="btn sm" id="frep">Suchen & Ersetzen</button>
         <label class="row muted" style="font-size:13px"><input type="checkbox" id="ascroll" ${prefs.autoscroll ? "checked" : ""}> Mitscrollen</label></div>
@@ -1161,6 +1167,20 @@ async function viewDetail(id) {
       }
       toast(`${res.changed} Stellen ersetzt`); reload();
     };
+    $("#taiform").onsubmit = async (e) => {
+      e.preventDefault();
+      const t = $("#tai").value.trim();
+      if (!t) return;
+      $("#taigo").disabled = true; $("#taigo").textContent = "Arbeitet …";
+      try {
+        const r = await api(`/api/recordings/${id}/transcript/ai`, { method: "POST", json: { instruction: t } });
+        toast(r.changed || r.deleted ? `${r.changed} geändert, ${r.deleted} entfernt – „Rückgängig“ holt alles zurück.` : (r.note || "Nichts zu ändern."));
+        reload();
+      } catch (err) { toast(err.message); $("#taigo").disabled = false; $("#taigo").textContent = "Ändern"; }
+    };
+    const step = async (dir) => { const r = await api(`/api/recordings/${id}/transcript/${dir}`, { method: "POST" }); if (r.done) toast((dir === "undo" ? "Rückgängig: " : "Wiederholt: ") + r.label); reload(); };
+    $("#tundo").onclick = () => step("undo");
+    $("#tredo").onclick = () => step("redo");
   }
 
   function renderMd(el, content, sumId) {

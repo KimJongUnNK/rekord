@@ -234,15 +234,40 @@ def _ollama(cfg: dict, system: str, messages: list[dict]) -> Iterator[str]:
                 body.pop("think")
                 yield from _strip_think(_ollama_raw(base, body))
                 return
-            r.raise_for_status()
+            if r.status_code >= 400:
+                r.read()
+                raise LLMError(ollama_error(r.status_code, r.text, model))
             yield from _strip_think(_ollama_lines(r))
     except httpx.ConnectError as e:
         raise LLMError(f"Ollama antwortet nicht auf {base}.") from e
 
 
+def ollama_error(status: int, text: str, model: str) -> str:
+    """Ollama's own reason (it sends {"error": "..."}) in words, with what to do – instead of "500 Internal Server Error"."""
+    try:
+        msg = json.loads(text).get("error") or text
+    except ValueError:
+        msg = text
+    msg = (msg or "").strip()[:300] or f"Fehler {status}"
+    low = msg.lower()
+    if "memory" in low or "oom" in low or "cuda" in low or "out of" in low:
+        tip = "Zu wenig (Grafik-)Speicher für dieses Modell – Einstellungen → KI → Lokal → ein kleineres Modell oder kürzere Kontextlänge."
+    elif "not found" in low or "pull" in low:
+        tip = f"Modell „{model}“ fehlt – Einstellungen → KI → Lokal → Laden."
+    elif "unknown model architecture" in low or "unsupported" in low or "version" in low:
+        tip = "Dieses Ollama ist zu alt für das Modell – Ollama aktualisieren (Einstellungen → KI → Lokal → Lokal einrichten)."
+    elif "llama runner" in low or "terminated" in low or "exit status" in low:
+        tip = "Ollama ist beim Laden abgestürzt – Ollama beenden (Taskleiste) und neu starten, sonst ein anderes Modell probieren."
+    else:
+        tip = "Ollama beenden und neu starten; hilft das nicht, ein anderes Modell wählen."
+    return f"Ollama ({model}): {msg} → {tip}"
+
+
 def _ollama_raw(base: str, body: dict) -> Iterator[str]:
     with httpx.stream("POST", f"{base}/api/chat", json=body, timeout=httpx.Timeout(600, connect=5)) as r:
-        r.raise_for_status()
+        if r.status_code >= 400:
+            r.read()
+            raise LLMError(ollama_error(r.status_code, r.text, body.get("model", "")))
         yield from _ollama_lines(r)
 
 

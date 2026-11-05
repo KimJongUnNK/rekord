@@ -1198,9 +1198,11 @@ class AppState(QObject):
     focusRequested = Signal()
     toast = Signal(str)
     navigate = Signal(str, str)  # go to a page (and a section of it), e.g. Einstellungen → Speicher
+    _refresh_soon = Signal()     # from a worker thread: refresh on the UI thread
 
     def __init__(self, port: int, keep_running: bool = False, parent=None):
         super().__init__(parent)
+        self._refresh_soon.connect(self.refresh, Qt.QueuedConnection)
         self._port = port
         self._keep = keep_running
         self._status: dict = {}
@@ -1310,6 +1312,22 @@ class AppState(QObject):
         models.download_missing_async(config.load())
         self._timer.setInterval(1000)  # follow the download closely
         self.refresh()
+
+    @Slot()
+    def checkUpdate(self) -> None:  # noqa: N802 - QML API
+        """„Nach Updates suchen“ bottom left: ask GitHub now."""
+        from .. import updater
+
+        def go():
+            info = updater.check(force=True)
+            if info.get("available"):
+                self.toast.emit(f"Neue Version {info['latest']} – unten links „Jetzt aktualisieren“.")
+            elif info.get("check_error"):
+                self.toast.emit(info["check_error"])
+            else:
+                self.toast.emit(f"REKORD {info['current']} ist aktuell.")
+            self._refresh_soon.emit()
+        threading.Thread(target=go, daemon=True, name="update-check").start()
 
     @Slot()
     def installUpdate(self) -> None:  # noqa: N802 - QML API
