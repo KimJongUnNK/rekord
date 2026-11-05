@@ -97,7 +97,7 @@ class FasterWhisper:
     word_timestamps = True
 
     def __init__(self, model: str = "large-v3-turbo", language: str = "", device: str = "auto", hotwords: str = "",
-                 threads: int = 4):
+                 threads: int = 4, mixed: bool = False):
         from faster_whisper import WhisperModel
         mid = models.FW_PREFIX + model
         models.ensure([mid])  # from Hugging Face into REKORD's model folder (Einstellungen → Modelle shows it)
@@ -118,6 +118,7 @@ class FasterWhisper:
             raise RuntimeError(f"faster-whisper startet nicht: {err}")
         _fw_state["device"] = self.device
         self.language = language or None
+        self.mixed = mixed and not language
         self.hotwords = hotwords or None
         self.model_id = f"faster-whisper:{model}"
         try:
@@ -129,8 +130,9 @@ class FasterWhisper:
     def words(self, samples: np.ndarray, progress: Callable[[float], None] | None = None,
               hint: str = "") -> tuple[list[dict], str]:
         hot = ", ".join(x for x in (self.hotwords, hint) if x) or None  # vocabulary + terms from the Unterlagen
+        auto = {} if self.language else ({"multilingual": True} if self.mixed else {"language_detection_segments": 4})
         segs, info = self.model.transcribe(samples, language=self.language, word_timestamps=True, vad_filter=self.vad,
-                                           hotwords=hot, condition_on_previous_text=False)
+                                           hotwords=hot, condition_on_previous_text=False, **auto)
         dur = len(samples) / SR or 1
         words = []
         for seg in segs:
@@ -242,17 +244,43 @@ def fw_device() -> str:
 
 
 @lru_cache(maxsize=1)
-def _faster(model: str, language: str, device: str, hotwords: str, threads: int = 4) -> FasterWhisper:
-    return FasterWhisper(model, language, device, hotwords, threads)
+def _faster(model: str, language: str, device: str, hotwords: str, threads: int = 4, mixed: bool = False) -> FasterWhisper:
+    return FasterWhisper(model, language, device, hotwords, threads, mixed)
+
+
+MIXED = "mixed"  # language setting: detect per sentence (meetings that switch languages)
+
+
+def whisper_language(settings: dict) -> str:
+    lang = settings.get("language") or ""
+    return "" if lang == MIXED else lang
+
+
+def detect_language(samples: np.ndarray, turns: list[tuple[float, float, int]], settings: dict) -> str:
+    """The recording's language, once: the longest turns (up to ~80 s of speech), weighted by length. Per short
+    sentence Whisper often guesses English ("Ja, passt.") – and then writes that sentence in English."""
+    eng = get_engine({**settings, "language": ""})
+    votes: dict[str, float] = {}
+    for a, b, _spk in sorted(turns, key=lambda t: t[0] - t[1])[:4]:  # longest first
+        b = min(b, a + MAX_CHUNK)
+        if b - a < 1.5:
+            break
+        _text, lang = eng.transcribe_clip(samples[int(a * SR):int(b * SR)])
+        lang = (lang or "").strip("<|>")
+        if lang:
+            votes[lang] = votes.get(lang, 0.0) + (b - a)
+    return max(votes, key=votes.get) if votes else ""
 
 
 def get_engine(settings: dict):
+    settings = models.for_language(settings)  # an English-only model never writes German
     if models.engine(settings) == "faster-whisper":  # chosen but not installed → Whisper ONNX instead of an error
         hot = " ".join(v.get("to", "") for v in settings.get("vocabulary", []) if v.get("to"))
-        return _faster(settings["faster_whisper_model"], settings.get("language", ""),
-                       settings.get("faster_whisper_device", "auto"), hot, int(settings.get("threads", 4)))
+        return _faster(settings["faster_whisper_model"], whisper_language(settings),
+                       settings.get("faster_whisper_device", "auto"), hot, int(settings.get("threads", 4)),
+                       settings.get("language") == MIXED)
     # the chosen model if it's there – otherwise one that is (the chosen one loads meanwhile) instead of an error
-    return _sherpa(models.usable_asr(settings["asr_model"]), settings.get("language", ""), int(settings.get("threads", 4)))
+    return _sherpa(models.usable_asr(settings["asr_model"]), whisper_language(settings), int(settings.get("threads", 4)))
 
 
 def faster_whisper_available() -> bool:

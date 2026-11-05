@@ -186,7 +186,7 @@ async function welcome(force = false) {
       ov.innerHTML = frame(`
         <div class="eyebrow">Schritt ${i + 1} · Sprache</div><h1 class="wl-h">Welche Sprache sprecht ihr?</h1>
         <div class="wl-field"><b>Sprache in den Meetings</b>${tip("lang")}<select id="wl-lang">${LANGS.map(([k, n]) => opt(k, cfg.language, n)).join("")}</select>
-          <span class="muted" style="font-size:13px">Fest eingestellt ist am genauesten. <b>Automatisch</b> erkennt die Sprache pro Satz – für gemischte Runden.</span></div>
+          <span class="muted" style="font-size:13px">Fest eingestellt ist am genauesten. <b>Automatisch</b> erkennt die Sprache einmal pro Aufnahme.</span></div>
         <div class="wl-field"><b>Protokolle schreiben auf</b>${tip("sumlang")}<select id="wl-sumlang">${[["de", "Deutsch"], ["en", "Englisch"], ["auto", "Wie im Gespräch"]].map(([k, n]) => opt(k, cfg.summary_language, n)).join("")}</select></div>
         <p class="muted" style="font-size:13px">Gilt für alle Aufnahmen und lässt sich unter Einstellungen → Transkription bzw. KI ändern. Die App selbst ist auf Deutsch.</p>`);
       bindFrame();

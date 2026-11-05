@@ -49,7 +49,7 @@ REGISTRY: dict[str, ModelSpec] = {m.id: m for m in [
     _whisper("base", 208, "Schnell, okay für klare Aufnahmen"),
     _whisper("small", 639, "Guter Standard für Laptops"),
     _whisper("turbo", 564, "large-v3-turbo: beste Qualität/Speed (empfohlen ab 16 GB RAM)"),
-    _whisper("distil-large-v3", 529, "Englisch-optimiert, sehr schnell"),
+    _whisper("distil-large-v3", 529, "Nur Englisch – andere Sprachen kommen als englische Übersetzung raus"),
     _whisper("medium", 1931, "Hohe Qualität, langsam"),
     _whisper("large-v3", 1068, "Maximale Genauigkeit, am langsamsten"),
     ModelSpec(id="pyannote-segmentation", kind="segmentation", name="pyannote segmentation 3.0", size_mb=7,
@@ -81,7 +81,8 @@ FW = {  # size → (repository, name, MB, description)
     "large-v3-turbo": ("mobiuslabsgmbh/faster-whisper-large-v3-turbo", "faster-whisper turbo", 1620,
                        "Beste Qualität pro Sekunde – mit NVIDIA-Grafikkarte sehr schnell"),
     "large-v3": ("Systran/faster-whisper-large-v3", "faster-whisper large-v3", 3090, "Maximale Genauigkeit, braucht viel Zeit ohne GPU"),
-    "distil-large-v3": ("Systran/faster-distil-whisper-large-v3", "faster-whisper distil-large-v3", 1510, "Englisch-optimiert, sehr schnell"),
+    "distil-large-v3": ("Systran/faster-distil-whisper-large-v3", "faster-whisper distil-large-v3", 1510,
+                        "Nur Englisch – andere Sprachen kommen als englische Übersetzung raus"),
     "medium": ("Systran/faster-whisper-medium", "faster-whisper medium", 1530, "Hohe Qualität"),
     "small": ("Systran/faster-whisper-small", "faster-whisper small", 484, "Guter Standard für Laptops"),
     "base": ("Systran/faster-whisper-base", "faster-whisper base", 145, "Schnell, okay für klare Aufnahmen"),
@@ -144,7 +145,29 @@ def engine(settings: dict) -> str:
     return "sherpa"
 
 
+ENGLISH_ONLY = {"whisper-distil-large-v3", FW_PREFIX + "distil-large-v3"}
+_MULTILINGUAL = ["whisper-turbo", "whisper-small", "whisper-medium", "whisper-large-v3", "whisper-base", "whisper-tiny"]
+
+
+def for_language(settings: dict) -> dict:
+    """An English-only model can't write German: it translates. Is one chosen and the language isn't English, use a
+    multilingual one instead – one that's there, else turbo (loaded like any missing model)."""
+    lang = settings.get("language") or ""
+    if lang == "en":
+        return settings
+    s = dict(settings)
+    if engine(s) == "faster-whisper" and FW_PREFIX + (s.get("faster_whisper_model") or "") in ENGLISH_ONLY:
+        log.warning("faster-whisper %s only writes English – using large-v3-turbo", s["faster_whisper_model"])
+        s["faster_whisper_model"] = "large-v3-turbo"
+    if s.get("asr_model") in ENGLISH_ONLY:
+        alt = next((m for m in _MULTILINGUAL if m in REGISTRY and installed(m)), "whisper-turbo")
+        log.warning("%s only writes English – using %s", s["asr_model"], alt)
+        s["asr_model"] = alt
+    return s
+
+
 def needed(settings: dict) -> list[str]:
+    settings = for_language(settings)
     """What REKORD needs to transcribe with these settings: speaker models, voiceprint, the chosen speech model."""
     ids = list(ESSENTIAL)
     emb = settings.get("embedding_model")

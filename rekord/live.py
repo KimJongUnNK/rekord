@@ -73,6 +73,8 @@ class LiveSession:
                                                   closed_set=bool(self.participants) and self.guests == 0 and not lecture,
                                                   max_speakers=0 if lecture else len(self.participants) + self.guests)
         self.engine = None
+        self._langs: dict[str, float] = {}  # "Automatisch": seconds per detected language, until it's clear
+        self._lang_locked = bool(self.s.get("language"))
         if self.s.get("live_transcribe", True):
             try:
                 from . import system  # short clips: half the cores are plenty – the rest stays with the apps in front
@@ -381,12 +383,35 @@ class LiveSession:
         if self.engine is not None:
             samples = np.concatenate([g["samples"] for g in group])
             clips = asr.split_long(0, len(samples) / SR, samples)
-            parts = [self.engine.transcribe_clip(samples[int(a * SR):int(b * SR)])[0] for a, b in clips]
+            parts = []
+            for a, b in clips:
+                t, lang = self.engine.transcribe_clip(samples[int(a * SR):int(b * SR)])
+                parts.append(t)
+                self._note_language(lang, b - a)
             text = self._fix(asr.apply_vocabulary(asr.clean_text(" ".join(parts)), self.s.get("vocabulary", [])))
         with self._lock:
             seg = {"start": round(start, 2), "end": round(end, 2), "text": text, **self._label(r)}
             self.segments.append(seg)
         self.emit({"type": "segment", **seg})
+
+    def _note_language(self, lang: str, seconds: float) -> None:
+        """"Automatisch": once ~15 s of speech agree on a language, stay with it – per short sentence Whisper would
+        otherwise guess English now and then and write that sentence in English."""
+        lang = (lang or "").strip("<|>")
+        if self._lang_locked or not lang:
+            return
+        self._langs[lang] = self._langs.get(lang, 0.0) + seconds
+        total = sum(self._langs.values())
+        top = max(self._langs, key=self._langs.get)
+        if total >= 15 and self._langs[top] / total >= 0.6:
+            self._lang_locked = True
+            try:
+                from . import system
+                self.engine = asr.get_engine({**self.s, "language": top,
+                                              "threads": system.processing_threads(self.s["threads"], True)})
+                log.info("live %s: language %s", self.rid, top)
+            except Exception as e:  # noqa: BLE001 - keep the automatic one
+                log.warning("live language lock: %s", e)
 
     def _label(self, r: dict) -> dict:
         key = r.get("key")
