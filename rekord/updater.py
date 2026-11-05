@@ -398,7 +398,7 @@ APPLY = {"mac-app": _apply_mac, "windows": _apply_windows, "appimage": _apply_ap
 
 
 def _keep_args() -> list[str]:
-    return [a for a in sys.argv[1:] if a in ("--background", "--local")]
+    return [a for a in sys.argv[1:] if a in ("--background", "--lan")]
 
 
 def _relaunch(cmd: list[str]) -> None:

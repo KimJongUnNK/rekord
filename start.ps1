@@ -1,6 +1,5 @@
 # REKORD starten (Windows). Rechtsklick → "Mit PowerShell ausführen".
 # Erster Start richtet alles ein. Python fehlt?  winget install -e --id Python.Python.3.12
-# Fürs iPhone im WLAN:  .\start.ps1 --host 0.0.0.0
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 if (-not (Test-Path ".venv")) {

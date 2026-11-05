@@ -48,12 +48,6 @@ const TIPS = {
   embm: "Das Modell, das aus einer Stimme einen Stimmabdruck berechnet. Ein Wechsel macht alle gespeicherten Stimmabdrücke unbrauchbar – alle Personen müssen neu eingesprochen werden. Nur ändern, wenn du weißt, warum.",
   // ---------------------------------------------------------------- Modelle
   models: "Die Programme, mit denen REKORD hört – alle laufen auf diesem Computer. <b>Spracherkennung</b> schreibt den Text, <b>Sprecherwechsel</b> merkt, wann jemand anderes redet, <b>Stimmabdruck</b> erkennt Personen wieder, <b>Sprach-Erkennung</b> trennt Sprechen von Stille. Fehlende lädt REKORD beim Start selbst.",
-  // ---------------------------------------------------------------- iPhone & Geräte
-  qr: "Für die REKORD-App am iPhone (Aufnahme auch bei gesperrtem Bildschirm, Sperrbildschirm-Widget). Eine Web-Version fürs Handy gibt es nicht – im WLAN spricht nur die App mit REKORD.",
-  address: "Unter dieser Adresse ist REKORD im WLAN erreichbar. Handy und Computer müssen im selben WLAN sein – Gäste-WLANs trennen Geräte voneinander.",
-  paircode: "6 Ziffern zum Eintippen am Handy – statt QR-Code. Der Code gilt 10 Minuten und nur zum Koppeln: Das Handy bekommt dabei einen eigenen, langen Schlüssel. Nach 5 falschen Versuchen ist 1 Minute Pause. <b>Neuer Code</b> macht sofort einen neuen.",
-  devices: "Alle Handys und Geräte, die mit dem Code gekoppelt wurden. <b>Trennen</b> sperrt ein einzelnes Gerät aus (z. B. ein altes Handy). <b>Alle Geräte trennen</b> sperrt alle aus – auch die per QR-Code gekoppelten.",
-  firewall: "Die Firewall dieses Linux-Computers blockiert Verbindungen vom iPhone. Der Knopf gibt genau den REKORD-Port frei (8765) und fragt dafür nach deinem Passwort.",
   // ---------------------------------------------------------------- Claude
   claudedesktop: "Verbindet die Claude-App mit deiner REKORD-Bibliothek (über MCP, einen offenen Standard). Claude kann dann deine Transkripte durchsuchen und lesen und Zusammenfassungen zurückspeichern – mit deinem normalen Claude-Abo, ohne API-Key. Danach Claude einmal neu starten.",
   claudecode: "Dasselbe für Claude Code, die Terminal-Version von Claude. Nur nötig, wenn du Claude Code nutzt.",
@@ -64,16 +58,16 @@ const TIPS = {
   othermodel: "Jedes Modell aus der Ollama-Bibliothek (ollama.com/library) – Namen eintippen, z. B. <b>llama3.1:8b</b> oder <b>mistral</b>. Faustregel: Das Modell sollte höchstens etwa 60 % deines RAMs groß sein, sonst wird es sehr langsam.",
   ask: "Eine Frage an alle Aufnahmen auf einmal – z. B. „Was hat Anna zum Budget gesagt?“ oder „Welche To-dos sind offen?“. REKORD sucht die passenden Stellen und lässt die KI antworten; jede Antwort nennt, wer es wann gesagt hat – ein Klick auf die Zeit öffnet die Aufnahme genau dort. Braucht eine KI (Einstellungen → KI). Der Verlauf bleibt auf diesem Computer.",
   templates: "Eine Vorlage ist die Anleitung für die KI: welche Abschnitte das Protokoll hat, wie ausführlich, in welchem Ton. Eingebaute Vorlagen lassen sich nicht überschreiben – Bearbeiten legt eine eigene Kopie an. Eigene Vorlagen erscheinen überall, wo du zusammenfasst (auch in der iPhone-App).",
-  tplorder: "Die Reihenfolge deiner Vorlagen: Was oben steht, steht auch beim Zusammenfassen ganz oben in der Auswahl (am Computer und in der iPhone-App). Am ⠿-Griff ziehen oder mit ↑ ↓ ⤒ verschieben – wird sofort gespeichert. <b>Reihenfolge zurücksetzen</b> stellt die ursprüngliche wieder her.",
+  tplorder: "Die Reihenfolge deiner Vorlagen: Was oben steht, steht auch beim Zusammenfassen ganz oben in der Auswahl. Am ⠿-Griff ziehen oder mit ↑ ↓ ⤒ verschieben – wird sofort gespeichert. <b>Reihenfolge zurücksetzen</b> stellt die ursprüngliche wieder her.",
   ollamadelete: "Löscht das Modell vom Computer und gibt den Speicher frei. War es das aktive Modell, nimmt REKORD automatisch ein anderes vorhandenes. Neu laden geht jederzeit mit „Laden“.",
   datadir: "Hier liegt alles: Audio, Datenbank, Stimmabdrücke, Modelle. Backup = diesen Ordner kopieren. Neuer Computer = Ordner rüberkopieren.",
   inbox: "Ein Ordner, den REKORD beobachtet: Jede Audio- oder Videodatei, die hier landet, wird automatisch verarbeitet. Praktisch mit iCloud-, Dropbox- oder OneDrive-Sync vom Handy oder für Diktiergeräte.",
   privacy: "Audio, Transkript und Stimmabdrücke bleiben immer auf diesem Computer. Nur wenn du Claude oder ChatGPT nutzt, geht der Text eines Gesprächs zum Zusammenfassen an den Anbieter.",
-  autostart: "REKORD startet beim Einschalten des Computers unsichtbar im Hintergrund. So kann sich das iPhone jederzeit verbinden, ohne dass du REKORD erst öffnen musst. Das Fenster öffnest du wie gewohnt über das App-Symbol.",
-  help: "Startet die Einführung vom ersten Start noch einmal: Speicherort, Aussehen, Sprache, Mikrofon, KI, deine Stimme, iPhone.",
+  autostart: "REKORD startet beim Einschalten des Computers unsichtbar im Hintergrund. So verarbeitet REKORD den Eingangsordner sofort und Claude Desktop findet es jederzeit, ohne dass du REKORD erst öffnen musst. Das Fenster öffnest du wie gewohnt über das App-Symbol.",
+  help: "Startet die Einführung vom ersten Start noch einmal: Speicherort, Aussehen, Sprache, Mikrofon, KI, deine Stimme.",
   version: "Die installierte Version. <b>Jetzt aktualisieren</b> lädt die neue Version, <b>ersetzt</b> die alte (keine zweite App daneben) und startet REKORD neu. Aufnahmen, Personen und Einstellungen bleiben. Läuft gerade eine Aufnahme, geht das erst danach. Startest du eine neuere REKORD-Version, während die alte noch offen ist, beendet sich die alte von selbst.",
   updatecheck: "REKORD fragt beim Start und dann alle 6 Stunden bei GitHub nach, ob es eine neue Version gibt, und zeigt sie links an. Installiert wird nur, wenn du auf <b>Aktualisieren</b> klickst. Dabei wird nichts über dich gesendet.",
-  quit: "Beendet REKORD komplett, auch den Teil im Hintergrund. Danach kann sich das iPhone nicht mehr verbinden, bis du REKORD wieder öffnest.",
+  quit: "Beendet REKORD komplett, auch den Teil im Hintergrund. Danach läuft nichts mehr im Hintergrund, bis du REKORD wieder öffnest.",
   // ---------------------------------------------------------------- Live & Aufnahmen
   who: "Vor jeder Aufnahme: Wie viele Leute sprechen, und wer davon ist schon bekannt? Dann weiß REKORD genau, wie viele Stimmen es trennen muss, und vergleicht nur mit den Leuten im Raum – das verhindert fast alle Verwechslungen.",
   total: "Alle, die in diesem Meeting reden – dich mitgezählt.",

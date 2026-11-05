@@ -1,4 +1,4 @@
-/* REKORD web app — runs as PWA on Mac, Windows, Linux, iPhone, Android. No build step, no CDN, works offline on the LAN. */
+/* REKORD web app — runs in the browser on this computer. No build step, no CDN, works offline. */
 "use strict";
 
 // ================================================================ helpers
@@ -2089,7 +2089,7 @@ async function viewSettings() {
   const save = debounce(async (patch) => { s = await api("/api/settings", { method: "PUT", json: patch }); toast("Gespeichert", 1000); refreshStatus(); }, 500);
   const saveNow = async (patch) => { s = await api("/api/settings", { method: "PUT", json: patch }); refreshStatus(); return s; };
   const sections = [["look", "Darstellung"], ["audio", "Audio & Mikrofon"], ["ai", "KI"], ["asr", "Transkription"], ["spk", "Sprecher-Erkennung"],
-    ["models", "Modelle"], ["pair", "iPhone & Geräte"], ["int", "Claude Desktop (MCP)"], ["data", "Speicher & Datenschutz"]];
+    ["models", "Modelle"], ["int", "Claude Desktop (MCP)"], ["data", "Speicher & Datenschutz"]];
   const opt = (v, cur, label) => `<option value="${esc(v)}" ${String(v) === String(cur) ? "selected" : ""}>${esc(label)}</option>`;
 
   view.innerHTML = `<div class="page narrow">
@@ -2163,7 +2163,6 @@ async function viewSettings() {
 
     <section class="set-sec" id="s-models"><h2>Modelle${tip("models")}</h2><div class="card" id="models"></div></section>
 
-    <section class="set-sec" id="s-pair"><h2>iPhone & Geräte${tip("qr")}</h2><div class="card" id="pair"></div></section>
 
     <section class="set-sec" id="s-int"><h2>Claude Desktop (MCP)</h2><div class="card">
       <p style="margin-top:0">Verbinde deine REKORD-Bibliothek direkt mit <b>Claude Desktop</b> oder <b>Claude Code</b>. Claude kann dann alle Transkripte durchsuchen,
@@ -2182,14 +2181,14 @@ async function viewSettings() {
         <div><span class="kbd">${esc(st.inbox)}</span><label class="row" style="margin-top:8px"><input type="checkbox" id="inbox" ${s.inbox_enabled ? "checked" : ""}> Überwachen</label></div></div>
       <div class="field"><div class="lbl">Was verlässt das Gerät?${tip("privacy")}</div><div class="muted">Audio, Transkription, Sprecher-Erkennung: <b>nie</b>. Für Zusammenfassungen geht nur der
         <b>Text</b> an die gewählte KI – bei Ollama/LM Studio auch das nicht. Keine Telemetrie, kein Konto. Die Update-Suche fragt GitHub nur nach der neuesten Versionsnummer (abschaltbar unter <i>Version & Updates</i>).</div></div>
-      ${IS_LOCAL ? `<div class="field"><div class="lbl">Mit dem Computer starten${tip("autostart")}<span class="hint">REKORD läuft dann ab dem Einschalten im Hintergrund – das iPhone kann sich jederzeit verbinden.</span></div>
+      ${IS_LOCAL ? `<div class="field"><div class="lbl">Mit dem Computer starten${tip("autostart")}<span class="hint">REKORD läuft dann ab dem Einschalten im Hintergrund – der Eingangsordner wird sofort verarbeitet, Claude Desktop findet REKORD jederzeit.</span></div>
         <div id="autost" class="muted">prüfe …</div></div>` : ""}
       <div class="field"><div class="lbl">Hilfe${tip("help")}<span class="hint">Jeder Punkt hat ein ⓘ – drüberfahren oder antippen.</span></div>
         <div class="row"><button class="btn sm" id="tour">Einführung starten</button><a class="btn sm" href="https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md" target="_blank" rel="noopener">Anleitung ↗</a></div></div>
       <div class="field"><div class="lbl">Version & Updates${tip("version")}<span class="hint">Ein Update ersetzt die installierte App und startet sie neu – Aufnahmen und Einstellungen bleiben.</span></div>
         <div><div id="upd" class="muted">REKORD ${esc(st.version)}</div>
         <label class="row" style="margin-top:8px"><input type="checkbox" id="upd-auto" ${s.update_check !== false ? "checked" : ""}> Automatisch nach Updates suchen${tip("updatecheck")}</label></div></div>
-      ${["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) ? `<div class="field"><div class="lbl">Beenden${tip("quit")}<span class="hint">Stoppt REKORD auf diesem Computer (läuft sonst im Hintergrund weiter, damit das iPhone verbunden bleibt).</span></div>
+      ${["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) ? `<div class="field"><div class="lbl">Beenden${tip("quit")}<span class="hint">Stoppt REKORD auf diesem Computer (läuft sonst im Hintergrund weiter).</span></div>
         <div><button class="btn danger" id="quit">REKORD beenden</button></div></div>` : ""}
     </div></section></div>`;
 
@@ -2345,55 +2344,6 @@ async function viewSettings() {
     if (ms.some((m) => ["downloading", "extracting"].includes((m.progress || {}).state))) setTimeout(() => $("#models") && renderModels(), 1500);
   };
   renderModels();
-
-  // pairing
-  try {
-    const p = await api("/api/pair");
-    $("#pair").innerHTML = `
-      ${p.lan ? "" : `<p style="margin-top:0"><b>REKORD ist gerade nur auf diesem Computer erreichbar.</b> Starte REKORD über die App (Mac/Windows/Linux),
-        dann ist es automatisch im WLAN sichtbar. Im Terminal: <span class="kbd">rekord serve --host 0.0.0.0</span></p>`}
-      <div class="row" style="align-items:flex-start;gap:28px">
-        <div><div class="qr">${p.qr_app}</div><p style="max-width:260px"><b>REKORD-App am iPhone</b><br><span class="muted">In der App „Koppeln“ → QR-Code scannen
-          – oder den 6-stelligen Code unten eintippen. Danach nimmst du am iPhone auf und siehst live, wer spricht.</span></p></div>
-      </div>
-      <div id="fw"></div>
-      <div class="field"><div class="lbl">Adresse${tip("address")}<span class="hint">Handy und Computer im selben WLAN.</span></div><div>${p.urls.map((u) => `<span class="kbd">${esc(u)}</span>`).join(" ") || "–"}</div></div>
-      <div class="field"><div class="lbl">Kopplungs-Code${tip("paircode")}<span class="hint">In der REKORD-App am iPhone eintippen. Gilt 10 Minuten.</span></div>
-        <div><div class="row" style="align-items:center"><b id="pcode" style="font-size:34px;letter-spacing:.12em;font-variant-numeric:tabular-nums">${esc(p.code.code.slice(0, 3) + " " + p.code.code.slice(3))}</b>
-          <span class="muted" id="pcode-left"></span>${IS_LOCAL ? `<button class="btn sm" id="pcode-new">Neuer Code</button>` : ""}</div></div></div>
-      <div class="field"><div class="lbl">Gekoppelte Geräte${tip("devices")}<span class="hint">Jedes Gerät mit Code hat einen eigenen Schlüssel.</span></div>
-        <div>${p.devices.length ? p.devices.map((d) => `<div class="row" style="margin-bottom:6px"><span>📱 <b>${esc(d.name)}</b> <span class="muted">· seit ${fmtDate(d.created)}</span></span>
-            ${IS_LOCAL ? `<button class="btn ghost sm" data-unpair="${esc(d.id)}">Trennen</button>` : ""}</div>`).join("") : `<span class="muted">Noch keins – oder per QR-Code gekoppelt.</span>`}
-          ${IS_LOCAL ? `<div class="row" style="margin-top:6px"><button class="btn danger sm" id="rot">Alle Geräte trennen</button></div>` : ""}</div></div>`;
-    let codeExp = p.code.expires;
-    const tick = () => {
-      const left = Math.max(0, Math.round(codeExp - Date.now() / 1000)), el = $("#pcode-left");
-      if (!el) return clearInterval(codeTimer);
-      if (left <= 0) { api("/api/pair").then((q) => { codeExp = q.code.expires; $("#pcode").textContent = q.code.code.slice(0, 3) + " " + q.code.code.slice(3); }).catch(() => {}); }
-      el.textContent = `noch ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
-    };
-    const codeTimer = setInterval(tick, 1000); tick();
-    disposers.push(() => clearInterval(codeTimer));
-    $("#pcode-new") && ($("#pcode-new").onclick = async () => {
-      const c = await api("/api/pair/code", { method: "POST" }); codeExp = c.expires; $("#pcode").textContent = c.code.slice(0, 3) + " " + c.code.slice(3); tick();
-    });
-    $$("[data-unpair]").forEach((b) => b.onclick = async () => {
-      if (!(await confirmBox("Gerät trennen?", "Es muss danach neu gekoppelt werden.", "Trennen"))) return;
-      await api(`/api/pair/devices/${b.dataset.unpair}`, { method: "DELETE" }); viewSettings();
-    });
-    if (IS_LOCAL) integrations().then((it) => {
-      const fw = it.firewall, box = $("#fw");
-      if (!box || !fw.tool || fw.open === true) return;
-      box.innerHTML = `<div class="field"><div class="lbl">Firewall${tip("firewall")}<span class="hint">Die ${esc(fw.tool)}-Firewall dieses Computers blockiert das iPhone.</span></div>
-        <div class="row"><button class="btn primary" id="fw-open">Für iPhone freigeben</button><span class="muted" id="fw-res"></span></div></div>`;
-      $("#fw-open").onclick = async (e) => {
-        e.target.disabled = true; $("#fw-res").textContent = "Passwort-Fenster beachten …";
-        try { const r = await api("/api/integrations/firewall", { method: "POST" }); $("#fw-res").innerHTML = `<span style="color:#22C55E">✓ ${esc(r.message)}</span>`; }
-        catch (err) { $("#fw-res").innerHTML = `<span style="color:#EF4444">✗ ${esc(err.message)}</span>`; e.target.disabled = false; }
-      };
-    });
-    $("#rot") && ($("#rot").onclick = async () => { if (await confirmBox("Alle Geräte trennen?", "Alle gekoppelten Handys – auch die per QR-Code – müssen neu koppeln. Gut, wenn ein Handy verloren ging.", "Alle trennen")) { await api("/api/settings/rotate-token", { method: "POST" }); viewSettings(); } });
-  } catch (e) { $("#pair").textContent = e.message; }
 
   // MCP
   const [cmd, ...args] = st.mcp_command || [st.python || "python", "-m", "rekord", "mcp"];

@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
-// Einstellungen: look, microphone, AI, transcription, speaker recognition, models, iPhone, Claude, storage, updates.
+// Einstellungen: look, microphone, AI, transcription, speaker recognition, models, Claude, storage, updates.
 Page {
     id: page
     objectName: "settingsPage"
@@ -12,12 +12,11 @@ Page {
     property var st: null         // /api/status (models, home, inbox, mcp …)
     property var models: []
     property var templates: []
-    property var pair: null
     property var integ: null
     property var storage: null
     property bool micTest: false
     readonly property var sections: [["look", "Darstellung"], ["audio", "Audio & Mikrofon"], ["ai", "KI"], ["asr", "Transkription"],
-                                     ["spk", "Sprecher-Erkennung"], ["models", "Modelle"], ["pair", "iPhone & Geräte"],
+                                     ["spk", "Sprecher-Erkennung"], ["models", "Modelle"],
                                      ["int", "Claude Desktop (MCP)"], ["data", "Speicher & Datenschutz"]]
     readonly property var langs: [["", "Automatisch"], ["de", "Deutsch"], ["en", "Englisch"], ["fr", "Französisch"], ["it", "Italienisch"],
                                   ["es", "Spanisch"], ["nl", "Niederländisch"], ["pt", "Portugiesisch"], ["pl", "Polnisch"], ["tr", "Türkisch"],
@@ -33,7 +32,6 @@ Page {
         app.call("GET", "/api/status", null, (r) => page.st = r)
         loadModels()
         app.call("GET", "/api/templates", null, (r) => page.templates = r.items)
-        loadPair()
         app.call("GET", "/api/integrations", null, (r) => page.integ = r, () => {})
         loadStorage()
     }
@@ -51,7 +49,6 @@ Page {
         app.call("POST", "/api/models/" + m.id + "/download", null, () => { app.toast(m.name + " wird geladen …"); loadModels() },
                  (err) => app.toast("Laden ging nicht: " + err))
     }
-    function loadPair() { app.call("GET", "/api/pair", null, (r) => page.pair = r, () => {}) }
     function loadStorage() { app.call("GET", "/api/storage", null, (r) => page.storage = r, () => {}) }
     function save(patch, quiet) {
         app.call("PUT", "/api/settings", patch, (r) => { page.s = r; rekord.refresh(); if (!quiet) page.app.toast("Gespeichert") })
@@ -60,7 +57,7 @@ Page {
     function opts(list) { return list.map(x => ({ value: x[0], label: x[1] })) }
     function gb(n) { return (n || 0).toLocaleString(Qt.locale("de_AT"), "f", 1) + " GB" }
     function jump(key) {
-        const item = { look: secLook, audio: secAudio, ai: secAi, asr: secAsr, spk: secSpk, models: secModels, pair: secPair, int: secInt, data: secData }[key]
+        const item = { look: secLook, audio: secAudio, ai: secAi, asr: secAsr, spk: secSpk, models: secModels, int: secInt, data: secData }[key]
         if (item) flick.contentY = Math.max(0, Math.min(item.y - 8, flick.contentHeight - flick.height))
     }
     onShownChanged: {
@@ -68,14 +65,6 @@ Page {
         else if (micTest) { voice.discard(); micTest = false }
     }
     Timer { running: page.shown && page.models.some(m => m.progress && ["downloading", "extracting"].indexOf(m.progress.state) >= 0); interval: 1500; repeat: true; onTriggered: page.loadModels() }
-    Timer {  // the pairing code renews itself every 10 minutes
-        id: codeTick
-        running: page.shown && page.pair !== null
-        interval: 1000; repeat: true
-        property int left: 0
-        onTriggered: { left = Math.max(0, Math.round(page.pair.code.expires - Date.now() / 1000)); if (left <= 0) page.loadPair() }
-    }
-
     DrivePicker { id: picker; app: page.app }
 
     ColumnLayout {
@@ -581,79 +570,6 @@ Page {
                     }
                 }
 
-                // ================================================================ iPhone
-                Section {
-                    id: secPair
-                    title: "iPhone & Geräte"
-                    tip: "qr"
-                    Muted {
-                        visible: page.pair !== null && !page.pair.lan
-                        Layout.fillWidth: true
-                        text: "REKORD ist gerade nur auf diesem Computer erreichbar. Starte REKORD über die App (Mac/Windows/Linux), dann ist es automatisch im WLAN sichtbar. Im Terminal: rekord serve --host 0.0.0.0"
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 24
-                        QrView { rows: page.pair ? page.pair.qr_rows : []; Layout.preferredWidth: 220; Layout.preferredHeight: 220 }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            Text { text: "REKORD-App am iPhone"; font.family: Theme.text; font.pixelSize: 16; font.weight: Font.Black; color: Theme.fg }
-                            Muted { Layout.fillWidth: true; text: "In der App „Koppeln“ → QR-Code scannen – oder den 6-stelligen Code eintippen. Danach nimmst du am iPhone auf und siehst live, wer spricht." }
-                            RowLayout {
-                                spacing: 12
-                                Text {
-                                    text: page.pair ? page.pair.code.code.slice(0, 3) + " " + page.pair.code.code.slice(3) : ""
-                                    font.family: Theme.display; font.pixelSize: 40; font.weight: Font.Black; font.letterSpacing: 4; font.features: ({ "tnum": 1 })
-                                    color: Theme.fg
-                                }
-                                Tip { key: "paircode" }
-                            }
-                            RowLayout {
-                                Muted { text: "noch " + Math.floor(codeTick.left / 60) + ":" + (codeTick.left % 60 < 10 ? "0" : "") + codeTick.left % 60; font.pixelSize: 13 }
-                                Btn { small: true; text: "Neuer Code"; iconName: "refresh"; onClicked: page.app.call("POST", "/api/pair/code", null, () => page.loadPair()) }
-                            }
-                        }
-                    }
-                    Field {
-                        visible: page.integ !== null && !!page.integ.firewall.tool && page.integ.firewall.open !== true
-                        label: "Firewall"; tip: "firewall"; hint: page.integ ? "Die " + page.integ.firewall.tool + "-Firewall dieses Computers blockiert das iPhone." : ""
-                        RowLayout {
-                            Btn {
-                                kind: "primary"; text: "Für iPhone freigeben"
-                                onClicked: { enabled = false; fwRes.text = "Passwort-Fenster beachten …"; page.app.call("POST", "/api/integrations/firewall", null, (r) => { fwRes.text = "✓ " + r.message; fwRes.color = Theme.ok }, (e) => { fwRes.text = "✗ " + e; fwRes.color = Theme.err; enabled = true }) }
-                            }
-                            Text { id: fwRes; font.pixelSize: 13; color: Theme.fg2; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                        }
-                    }
-                    Field {
-                        label: "Adresse"; tip: "address"; hint: "Handy und Computer im selben WLAN."
-                        Text { text: page.pair && page.pair.urls.length ? page.pair.urls.join("   ") : "–"; font.family: Theme.text; font.pixelSize: 14; color: Theme.fg; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    }
-                    Field {
-                        label: "Gekoppelte Geräte"; tip: "devices"; hint: "Jedes Gerät mit Code hat einen eigenen Schlüssel."
-                        Repeater {
-                            model: page.pair ? page.pair.devices : []
-                            delegate: RowLayout {
-                                required property var modelData
-                                Icon { name: "phone"; width: 18; height: 18; color: Theme.fg2 }
-                                Text { text: modelData.name; font.family: Theme.text; font.pixelSize: 14; font.weight: Font.Bold; color: Theme.fg }
-                                Muted { text: "· seit " + new Date(modelData.created * 1000).toLocaleString(Qt.locale("de_AT"), "dd.MM.yyyy"); font.pixelSize: 13 }
-                                Btn {
-                                    kind: "ghost"; small: true; text: "Trennen"
-                                    onClicked: page.app.confirm("Gerät trennen?", "Es muss danach neu gekoppelt werden.", "Trennen", () => page.app.call("DELETE", "/api/pair/devices/" + modelData.id, null, () => page.loadPair()))
-                                }
-                            }
-                        }
-                        Muted { visible: !page.pair || page.pair.devices.length === 0; text: "Noch keins – oder per QR-Code gekoppelt." }
-                        Btn {
-                            kind: "danger"; small: true; text: "Alle Geräte trennen"
-                            onClicked: page.app.confirm("Alle Geräte trennen?", "Alle gekoppelten Handys – auch die per QR-Code – müssen neu koppeln. Gut, wenn ein Handy verloren ging.", "Alle trennen",
-                                                        () => page.app.call("POST", "/api/settings/rotate-token", null, () => { page.app.toast("Alle Geräte getrennt"); page.loadPair() }))
-                        }
-                    }
-                }
-
                 // ================================================================ Claude Desktop
                 Section {
                     id: secInt
@@ -776,7 +692,7 @@ Page {
                         }
                     }
                     Field {
-                        label: "Mit dem Computer starten"; tip: "autostart"; hint: "REKORD läuft dann ab dem Einschalten im Hintergrund – das iPhone kann sich jederzeit verbinden."
+                        label: "Mit dem Computer starten"; tip: "autostart"; hint: "REKORD läuft dann ab dem Einschalten im Hintergrund – der Eingangsordner wird sofort verarbeitet, Claude Desktop findet REKORD jederzeit."
                         readonly property var a: page.integ ? page.integ.autostart : null
                         id: autoField
                         Check {

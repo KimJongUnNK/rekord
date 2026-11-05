@@ -17,7 +17,7 @@ Rectangle {
         { page: "ask", label: "Fragen", icon: "ask", tip: "Fragen über alle Aufnahmen" },
         { page: "people", label: "Personen", icon: "people", tip: "Die Stimmen, die REKORD kennt" },
         { page: "templates", label: "Vorlagen", icon: "templates", tip: "Formate für Zusammenfassungen" },
-        { page: "settings", label: "Einstellungen", icon: "settings", tip: "Mikrofon, KI, Speicherort, iPhone …" }
+        { page: "settings", label: "Einstellungen", icon: "settings", tip: "Mikrofon, KI, Modelle, Speicherort …" }
     ]
     readonly property string current: side.app.page === "detail" ? "library" : side.app.page
     readonly property bool recording: live.state === "recording" || live.state === "paused" || live.state === "starting" || live.state === "stopping"

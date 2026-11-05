@@ -110,7 +110,7 @@ ApplicationWindow {
 
     onClosing: (close) => {
         if (live.state !== "idle") { close.accepted = false; quitDialog.open(); return }
-        if (rekord.keepRunning) { close.accepted = false; win.hide(); return }  // keeps running for the iPhone
+        if (rekord.keepRunning) { close.accepted = false; win.hide(); return }  // keeps running in the background (Eingangsordner, Claude Desktop)
         rekord.quit()
     }
 

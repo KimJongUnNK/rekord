@@ -133,7 +133,7 @@ Page {
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            text: rekord.status.live ? "Gerade nimmt ein anderes Gerät auf (z. B. die iPhone-App) – das Gespräch erscheint danach unter Aufnahmen."
+            text: rekord.status.live ? "Gerade läuft schon eine Aufnahme (z. B. im Browser) – das Gespräch erscheint danach unter Aufnahmen."
                 : live.error ? live.error
                 : "Strg+R startet von überall. Während der Aufnahme: Leertaste = Pause, H = Moment markieren."
             font.family: Theme.text; font.pixelSize: 13; color: live.error ? Theme.err : Theme.fg3
