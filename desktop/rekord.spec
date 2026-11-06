@@ -7,14 +7,14 @@ from PyInstaller.utils.hooks import collect_all
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 
 datas, binaries, hidden = [], [], []
-for pkg in ("sherpa_onnx", "av", "webview", "uvicorn", "anthropic", "openai", "zeroconf", "docx", "qrcode", "certifi", "zstandard", "soundcard",
+for pkg in ("sherpa_onnx", "av", "uvicorn", "anthropic", "openai", "zeroconf", "docx", "qrcode", "certifi", "zstandard", "soundcard",
             "faster_whisper", "ctranslate2", "tokenizers", "onnxruntime", "huggingface_hub"):  # faster-whisper and what it runs on  # PySide6: its own hooks
     try:
         d, b, h = collect_all(pkg)
         datas += d; binaries += b; hidden += h
     except Exception:
         pass
-datas += [(os.path.join(ROOT, "rekord", "web"), os.path.join("rekord", "web")),  # previous interface + the app icon
+datas += [(os.path.join(ROOT, "rekord", "web"), os.path.join("rekord", "web")),  # the app icons
           (os.path.join(ROOT, "rekord", "app", "qml"), os.path.join("rekord", "app", "qml")),  # REKORD's window (Qt Quick)
           (os.path.join(ROOT, "rekord", "data"), os.path.join("rekord", "data"))]  # word list for the Unterlagen
 

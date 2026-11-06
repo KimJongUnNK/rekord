@@ -467,16 +467,13 @@ def test_window_selftest_mode_quits_with_result(tmp_path):
     assert len(list((tmp_path / "shots").glob("*.png"))) == 8
 
 
-def test_usable_respects_classic_and_missing_display(qt, monkeypatch):
+def test_usable_knows_a_missing_display(qt, monkeypatch):
     from rekord import app
-    monkeypatch.setenv("REKORD_CLASSIC", "1")
-    assert app.usable() is False
-    monkeypatch.delenv("REKORD_CLASSIC")
     if sys.platform.startswith("linux"):
         monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
         monkeypatch.delenv("DISPLAY", raising=False)
         monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-        assert app.usable() is False  # no screen: the hub runs, the previous interface opens in the browser
+        assert app.usable() is False  # no screen: REKORD says why (there is no web page to fall back to)
 
 
 def test_microphone_without_qt_multimedia_records_through_the_system(pulse):

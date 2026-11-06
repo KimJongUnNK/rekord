@@ -68,7 +68,7 @@ def main(argv: list[str] | None = None) -> None:
     sv.add_argument("--port", type=int, default=8765)
     sv.add_argument("--no-browser", action="store_true")
     sv.add_argument("--no-download", action="store_true", help="Modelle nicht automatisch laden")
-    dk = sub.add_parser("desktop", help="Als Desktop-App-Fenster starten (pywebview)")
+    dk = sub.add_parser("desktop", help="REKORD mit Fenster starten")
     dk.add_argument("--lan", action="store_true", help="Zusätzlich im WLAN erreichbar machen")
     dk.add_argument("--port", type=int, default=8765)
     pr = sub.add_parser("process", help="Datei(en) direkt verarbeiten und Markdown ausgeben")

@@ -1,8 +1,7 @@
 """REKORD's window: a native program built with Qt Quick – no browser, no web view.
 
-The engine (recognition, transcription, processing) runs in this process; the hub for the iPhone app runs next to
-it in a background thread. Pages that aren't part of the native app yet open in the previous interface
-("klassische Ansicht", its own window) until they are ported."""
+The engine (recognition, transcription, processing) runs in this process; the local API (Claude Desktop, tools)
+runs next to it in a background thread. There is no web interface."""
 from __future__ import annotations
 
 import functools
@@ -33,14 +32,11 @@ def importable() -> bool:
 
 
 def usable() -> bool:
-    """Can this computer show the native window? REKORD_CLASSIC=1 keeps the previous interface.
+    """Can this computer show the native window?
 
     On Linux a missing system library (e.g. libxcb-cursor0) makes Qt abort the whole process instead of raising,
-    so a quick try runs in a child process first – then REKORD falls back to the previous interface."""
+    so a quick try runs in a child process first – then REKORD says why instead of crashing."""
     global _why
-    if os.environ.get("REKORD_CLASSIC") == "1":
-        _why = "REKORD_CLASSIC=1"
-        return False
     if not importable():
         return False
     if sys.platform.startswith("linux") and not os.environ.get("QT_QPA_PLATFORM"):
@@ -133,7 +129,7 @@ def build(port: int, keep_running: bool | None = None) -> Window | None:
 
 def run(port: int) -> int:
     """Show the window until it's closed (or REKORD is quit). Returns 0, or 1 if the interface couldn't load
-    (the caller then falls back to the previous interface)."""
+    (the caller then says why)."""
     from PySide6.QtCore import QTimer
 
     from .. import __version__, desktop, system

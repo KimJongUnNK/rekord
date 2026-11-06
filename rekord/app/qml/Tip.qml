@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import "."
 
-// ⓘ next to a setting or term: hover or click shows what it does (texts: web/help.js, one place for both views).
+// ⓘ next to a setting or term: hover or click shows what it does (texts: rekord/data/help.json).
 Rectangle {
     id: t
     property string key

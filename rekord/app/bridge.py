@@ -1250,7 +1250,7 @@ class VoiceRecorder(QObject):
             x = self._rs(x)
         self._parts.append(x)
         self._buf = np.concatenate([self._buf, x])
-        step = live.SR // 10  # judged every 0.1 s, like the previous interface
+        step = live.SR // 10  # judged every 0.1 s
         while len(self._buf) >= step:
             block, self._buf = self._buf[:step], self._buf[step:]
             rms = float(np.sqrt(np.mean(block ** 2)))

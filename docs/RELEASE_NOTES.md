@@ -45,6 +45,7 @@ Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und
 - ⏹️ **Stopp gleich neben „Datei transkribieren“.** Links siehst du, was gerade transkribiert wird – mit Fortschritt und **Stopp**, von jeder Seite aus.
 - ☑️ **Mehrere Aufnahmen auf einmal löschen.** *Aufnahmen → Auswählen*, antippen, **N löschen**.
 - 📜 **Alles scrollt.** Ausklappmenüs mit vielen Einträgen, „Wer ist das?“ mit vielen Stimmen, der Dialog „Wer sagt das?“ – und die ganze Aufnahme-Seite, wenn das Fenster klein ist.
+- 🧹 **Nur noch die App.** Die Browser-Version ist weg – REKORD ist das Programm auf deinem Computer. Weniger Ballast, schnellere Updates.
 - 🟧 **Rundes App-Icon** im Dock und in der Taskleiste – und oben in der Mac-Menüleiste ein schlichtes, einfarbiges Symbol wie bei allen anderen Apps (voller Punkt = nimmt gerade auf).
 
 ## Neu in 1.4.3

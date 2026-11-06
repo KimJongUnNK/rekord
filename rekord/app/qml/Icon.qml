@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Shapes
 import "."
 
-// Line icons (24×24, round strokes) – the same set as the previous interface.
+// Line icons (24×24, round strokes).
 Item {
     id: root
     property string name

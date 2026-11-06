@@ -631,7 +631,7 @@ Page {
                         Muted { visible: ccField.cc && !ccField.cc.installed; text: "Nicht installiert – brauchst du nur, wenn du Claude im Terminal nutzt." }
                     }
                     Field {
-                        label: "Von Hand eintragen"
+                        label: "Von Hand eintragen"; tip: "mcpmanual"
                         hint: "Claude Desktop → Einstellungen → Entwickler → Konfiguration bearbeiten."
                         readonly property var cmd: page.st && page.st.mcp_command ? page.st.mcp_command : ["python", "-m", "rekord", "mcp"]
                         readonly property string json: JSON.stringify({ mcpServers: { rekord: { command: cmd[0], args: cmd.slice(1), env: { REKORD_HOME: page.st ? page.st.home : "" } } } }, null, 2)

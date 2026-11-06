@@ -23,7 +23,6 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 
 from . import __version__, audio, config, context, db, export, frames, jobs, live, models, pipeline, summarize, updater
 from .engines import asr
@@ -232,7 +231,7 @@ async def auth(request: Request, call_next):
     if path == "/api/pair/claim":  # the app trades the 6-digit code for its key
         return await call_next(request)
     if not (path.startswith("/api/") or path.startswith("/ws/")):
-        return FileResponse(WEB / "pair.html", status_code=403)
+        return JSONResponse({"detail": "Nur die Schnittstelle – REKORD ist eine App auf dem Computer"}, status_code=403)
     tok = request.headers.get("x-rekord-token") or request.query_params.get("token")
     if not _token_ok(tok):
         return JSONResponse({"detail": "Nicht gekoppelt – in der REKORD-App mit dem Code vom Computer koppeln"}, status_code=401)
@@ -244,24 +243,18 @@ def _ws_ok(ws: WebSocket) -> bool:
     return _is_local(host) or _token_ok(ws.query_params.get("token") or ws.headers.get("x-rekord-token"))
 
 
-# ------------------------------------------------------------------ static / PWA
+# ------------------------------------------------------------------ no web interface: REKORD is the app on the computer
 
-app.mount("/static", StaticFiles(directory=WEB), name="static")
+INDEX = """<!doctype html><html lang="de"><meta charset="utf-8"><title>REKORD</title>
+<body style="font-family:-apple-system,Segoe UI,sans-serif;background:#0B0B0C;color:#F6F5F2;display:grid;place-items:center;height:100vh;margin:0">
+<div style="text-align:center"><h1 style="font-size:44px;margin:0">REKORD läuft.</h1>
+<p style="color:#A8A6A0">REKORD ist eine App auf deinem Computer – öffne sie über das REKORD-Symbol.<br>
+Hier läuft nur die Schnittstelle (für Claude Desktop und Werkzeuge).</p></div></body></html>"""
 
 
 @app.get("/")
 def index():
-    return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
-
-
-@app.get("/manifest.webmanifest")
-def manifest():
-    return FileResponse(WEB / "manifest.webmanifest", media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
-
-
-@app.get("/sw.js")
-def sw():
-    return FileResponse(WEB / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+    return Response(INDEX, media_type="text/html; charset=utf-8", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/icons/{name}")

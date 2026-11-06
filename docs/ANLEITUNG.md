@@ -291,7 +291,6 @@ Oben gibt's Sprung-Knöpfe zu den Bereichen. *Darstellung* und *Audio & Mikrofon
 | **Claude Desktop (MCP)** | **Claude Desktop**: *Mit Claude Desktop verbinden*, danach *Claude neu starten* · **Claude Code**: *Mit Claude Code verbinden* · *Von Hand eintragen*: Konfiguration zum **Kopieren** |
 | **Speicher & Datenschutz** | **Speicherort**: wo Aufnahmen, Datenbank und Stimmabdrücke liegen – *Ändern …* → Laufwerk wählen (eingebaut, extern, NVMe, NAS) → **Umziehen**; REKORD kopiert alles, startet neu, der alte Ordner bleibt als Sicherheitskopie · **KI-Modelle**: wo Sprachmodelle und lokale KI liegen – eigenes Laufwerk möglich, *Ändern …* nimmt vorhandene Modelle mit · **Eingangsordner**: Dateien, die hier landen, werden automatisch verarbeitet · **Was verlässt das Gerät?** · **Mit dem Computer starten**: REKORD läuft ab dem Einschalten im Hintergrund, der Eingangsordner wird sofort verarbeitet · **Hilfe**: *Einführung starten*, *Anleitung ↗* · **Version & Updates**: *Nach Updates suchen*, **Jetzt auf … aktualisieren**, *Automatisch nach Updates suchen* (siehe [Updates](#updates)) · **Beenden** → *REKORD beenden* |
 
-In der **bisherigen Ansicht** (startet, wo das REKORD-Fenster nicht geht) gibt es zusätzlich: **Dichte** *Luftig* / *Kompakt* · **Audio-Verarbeitung** (Rauschunterdrückung, Echo-Unterdrückung, automatische Lautstärke des Browsers) · **Live-Erkennung** an/aus (aus spart Akku am Handy) · **Bildschirm wach halten**.
 
 ---
 
@@ -331,7 +330,6 @@ Die Installations-Zeile von oben funktioniert weiterhin auch als Update.
 | **Claude Desktop sieht REKORD nicht** | Claude ganz beenden und neu öffnen (*Claude neu starten*). Steht unter *Claude Desktop (MCP)* **Verbunden**? |
 | **Falsche Person erkannt** | Im Transkript auf den Namen tippen → richtigen Namen eingeben, *Stimme merken* bleibt an |
 | **REKORD beenden** | Fenster schließen (läuft eine Aufnahme, wird sie vorher gespeichert). Mit *Mit dem Computer starten* läuft REKORD im Hintergrund weiter – ganz beenden: *Einstellungen* → ganz unten **REKORD beenden** |
-| **Lieber die bisherige Ansicht** | REKORD mit der Umgebungsvariable `REKORD_CLASSIC=1` starten – dann öffnet sich alles wie vor Version 1.1. |
 | **Fenster bleibt leer / Fehler suchen** | REKORD schreibt Meldungen in **rekord.log**: Mac `~/Library/Application Support/REKORD/`, Windows `%APPDATA%\REKORD\`, Linux `~/.config/REKORD/`. Beim [Problem melden](https://github.com/KimJongUnNK/rekord/issues/new) gern mitschicken. |
 | **Zwei REKORD-Fenster / alte Version** | Ab 1.0.8 nicht mehr möglich (siehe [Updates](#updates)). Einmalig von einer älteren Version: alle REKORD-Fenster schließen, dann die neue öffnen. |
 | **Backup** | Den **Speicherort**-Ordner kopieren (steht unter *Einstellungen → Speicher & Datenschutz*). Da liegt alles drin. |
@@ -371,4 +369,4 @@ Oder von Hand – alle Dateien liegen auf der [Release-Seite](https://github.com
 | Arch, Manjaro, EndeavourOS | `sudo pacman -U rekord-*.pkg.tar.zst` |
 | Ohne root | `tar xzf REKORD-*-Linux-x86_64.tar.gz && ./rekord-*/install.sh` |
 
-REKORD öffnet unter Linux sein eigenes Fenster (X11 und Wayland). Fehlt dem System etwas dafür – z. B. auf einem Server ohne Bildschirm –, öffnet sich die bisherige Ansicht im Browser. REKORD braucht keine offenen Firewall-Ports – es ist nur auf diesem Computer erreichbar.
+REKORD öffnet unter Linux sein eigenes Fenster (X11 und Wayland). Fehlt dem System etwas dafür – z. B. auf einem Server ohne Bildschirm –, sagt REKORD, warum (eine Browser-Version gibt es nicht mehr); ohne Bildschirm geht `rekord process datei.m4a` in der Kommandozeile. REKORD braucht keine offenen Firewall-Ports – es ist nur auf diesem Computer erreichbar.
