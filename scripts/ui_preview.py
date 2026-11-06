@@ -204,7 +204,7 @@ def main(out: Path) -> int:
     call(win.findChild(QObject, "confirmDlg"), "accept")
     if not wait_for(lambda: all(db.get_recording(j) is None for j in junk), 4) or len(db.list_recordings()) != before - 2:
         problems_extra.append("library: 'Auswählen → löschen' didn't delete exactly the ticked recordings")
-    if libp.property("selecting"):
+    if not wait_for(lambda: not libp.property("selecting"), 4):  # ends when the hub's answer is back (async)
         problems_extra.append("library: still selecting after deleting")
     lm = win.findChild(QObject, "loadModelsButton")
     if lm is None or not lm.property("visible") or lm.property("text") != "Jetzt laden":
