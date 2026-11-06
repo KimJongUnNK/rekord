@@ -169,6 +169,21 @@ def test_copy_takes_the_edited_version(qt):
     assert "#c00000" in m.html() and "font-size:24pt" in m.html() and m.text() == "rot und groß"
 
 
+def test_quitting_after_copying_doesnt_crash(tmp_path):
+    """The clipboard outlives Python at quit: a QMimeData made in Python crashed REKORD on quit (segfault)."""
+    import subprocess
+    import sys
+    code = ("from PySide6.QtGui import QGuiApplication\n"
+            "app = QGuiApplication(['t'])\n"
+            "from rekord.app import richtext\n"
+            "richtext.copy_rich('# T\\n- **fett**')\n"
+            "richtext.copy_rich('x', '<p><b>x</b></p>')\n"
+            "print('ok')\n")
+    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", REKORD_HOME=str(tmp_path))
+    r = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0 and "ok" in r.stdout, (r.returncode, r.stderr[-800:])
+
+
 def test_timestamps_in_the_formatted_view_jump_in_the_audio():
     h = richtext.display_html('<p style="x:1">Start [01:05] und [1:02:03]</p>', "#FF5A1F")
     assert 'href="seek:65"' in h and 'href="seek:3723"' in h and 'style="x:1"' in h

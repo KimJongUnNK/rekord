@@ -9,8 +9,8 @@ from __future__ import annotations
 import re
 
 from PySide6.QtCore import QMimeData, QObject, Slot
-from PySide6.QtGui import QColor, QFont, QGuiApplication, QTextBlockFormat, QTextCharFormat, QTextCursor, QTextDocument, \
-    QTextListFormat
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QStandardItem, QStandardItemModel, QTextBlockFormat, \
+    QTextCharFormat, QTextCursor, QTextDocument, QTextListFormat
 
 FONTS = ["Aptos", "Calibri", "Arial", "Helvetica", "Georgia", "Times New Roman", "Verdana", "Courier New"]
 SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72]
@@ -290,9 +290,20 @@ def for_word(html: str) -> str:
     return re.sub(r"<body[^>]*>", "<body>", html or "", count=1)
 
 
+def _mime() -> QMimeData:
+    """An empty QMimeData made by Qt itself. One made in Python (QMimeData()) is a PySide subclass: the clipboard
+    still holds it when REKORD quits, deletes it after Python is gone – and the app crashes on quit (segfault)."""
+    model = QStandardItemModel()
+    model.appendRow(QStandardItem(""))
+    m = model.mimeData([model.index(0, 0)])
+    for f in m.formats():
+        m.removeFormat(f)
+    return m
+
+
 def copy_rich(markdown: str, html: str = "") -> None:
     """On the clipboard as real formatting (HTML for Word & co.) plus clean text without Markdown marks."""
-    m = QMimeData()
+    m = _mime()
     if html:
         d = QTextDocument()
         d.setHtml(html)
