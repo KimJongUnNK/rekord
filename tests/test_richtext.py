@@ -134,6 +134,21 @@ def test_headings_and_lists(qt):
     assert f.state(d, 0, 0)["heading"] == 0 and not f.markdown(d).startswith("#")
 
 
+def test_markdown_reads_the_formats_not_the_installed_fonts(qt):
+    """Qt's own toMarkdown() asks the system font whether text is bold – on Windows without that font, bold was lost.
+    Ours reads the format: same Markdown on every computer, and it reads back into the same Markdown."""
+    src = ("## Entscheidungen\n\n- Launch am **Freitag**\n  - Plan *B* ~~nie~~ [Link](https://x.at)\n- Rest\n\n"
+           "1. eins\n2. zwei\n\n- [ ] offen\n- [x] erledigt\n\n| Wer | Was |\n|---|---|\n| **Max** | 3 \\* 4 |\n\nEnde")
+    d = QTextDocument()
+    d.setMarkdown(src)
+    f = richtext.Formatter()
+    assert f.markdown(d) == src
+    t = d.toPlainText()
+    f.setFont(d, 0, len(t), "Keine Solche Schrift 123")  # a font nobody has
+    f.toggle(d, t.find("Ende"), t.find("Ende") + 4, "underline")
+    assert f.markdown(d) == src  # still bold, and underline adds nothing
+
+
 def test_load_prefers_the_formatted_version(qt):
     f, d = richtext.Formatter(), QTextDocument()
     f.load(d, "# Titel\n- **fett**", "")

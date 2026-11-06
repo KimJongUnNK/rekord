@@ -81,15 +81,7 @@ class Formatter(QObject):
         """The text for the AI, search and Markdown export – Markdown knows no underline/colour/size, so those stay
         only in the HTML (underline would otherwise turn into stray "_")."""
         d = _doc(qdoc)
-        if d is None:
-            return ""
-        copy = d.clone()
-        c = QTextCursor(copy)
-        c.select(QTextCursor.Document)
-        f = QTextCharFormat()
-        f.setFontUnderline(False)
-        c.mergeCharFormat(f)
-        return copy.toMarkdown().strip()
+        return to_markdown(d) if d is not None else ""
 
     # ---------------------------------------------------------------- the selection
     @staticmethod
@@ -282,6 +274,113 @@ class Formatter(QObject):
     @Slot(result="QVariantList")
     def sizes(self) -> list:
         return SIZES
+
+
+# ---------------------------------------------------------------- QTextDocument → Markdown
+# Not QTextDocument.toMarkdown(): it decides bold/italic by the font the system actually finds (QFontInfo) – on a
+# computer without that font (or Windows without a screen) bold silently became plain text. This reads the formats.
+
+def _flags(f: QTextCharFormat, heading: bool) -> tuple:
+    return (not heading and f.fontWeight() >= QFont.DemiBold, f.fontItalic(), f.fontStrikeOut(),
+            f.anchorHref() if f.isAnchor() else "")
+
+
+def _inline(block, heading: bool = False) -> str:
+    runs: list[list] = []  # [flags, text] – neighbours with the same flags joined (colour/size split fragments)
+    it = block.begin()
+    while not it.atEnd():
+        fr = it.fragment()
+        if fr.isValid():
+            fl = _flags(fr.charFormat(), heading)
+            text = fr.text().replace("\u2028", "\n").replace("\ufffc", "")
+            if runs and runs[-1][0] == fl:
+                runs[-1][1] += text
+            else:
+                runs.append([fl, text])
+        it += 1
+    out = []
+    for (bold, italic, strike, href), text in runs:
+        text = re.sub(r"([*`\\])", r"\\\1", text)
+        core = text.strip()
+        if not core or not (bold or italic or strike or href):
+            out.append(text)
+            continue
+        lead, trail = text[:len(text) - len(text.lstrip())], text[len(text.rstrip()):]
+        if href:
+            core = f"[{core}]({href})"
+        mark = ("**" if bold else "") + ("*" if italic else "") + ("~~" if strike else "")
+        out.append(f"{lead}{mark}{core}{mark[::-1]}{trail}")
+    return "".join(out).replace("\n", "  \n")
+
+
+def _table(t) -> list[str]:
+    rows = []
+    for r in range(t.rows()):
+        cells = []
+        for c in range(t.columns()):
+            cell, parts = t.cellAt(r, c), []
+            it = cell.begin()
+            while not it.atEnd():
+                b = it.currentBlock()
+                if b.isValid():
+                    # the header row is bold anyway: no "**" there
+                    parts.append(_inline(b, heading=r == 0).replace("|", "\\|").replace("  \n", " "))
+                it += 1
+            cells.append(" ".join(p for p in parts if p).strip())
+        rows.append("| " + " | ".join(cells) + " |")
+        if r == 0:
+            rows.append("|" + "---|" * t.columns())
+    return rows
+
+
+def to_markdown(d: QTextDocument) -> str:
+    """Headings, bold, italic, strikethrough, links, bullet/numbered/to-do lists (nested) and tables. Underline, colour,
+    size and font have no Markdown – they live in the stored HTML."""
+    lines: list[str] = []
+    prev_list = None
+    done_tables = set()
+    blk = d.begin()
+    while blk.isValid():
+        t = QTextCursor(blk).currentTable()
+        if t is not None:
+            key = t.firstPosition()
+            if key not in done_tables:
+                done_tables.add(key)
+                if lines and lines[-1] != "":
+                    lines.append("")
+                lines += _table(t)
+                lines.append("")
+                prev_list = None
+            blk = blk.next()
+            continue
+        bf, lst = blk.blockFormat(), blk.textList()
+        level = bf.headingLevel()
+        text = _inline(blk, heading=bool(level))
+        if lst is not None:
+            lf = lst.format()
+            pad = "  " * max(0, lf.indent() - 1)
+            numbered = lf.style() in (QTextListFormat.ListDecimal, QTextListFormat.ListLowerAlpha,
+                                      QTextListFormat.ListUpperAlpha, QTextListFormat.ListLowerRoman,
+                                      QTextListFormat.ListUpperRoman)
+            bullet = f"{lst.itemNumber(blk) + 1}." if numbered else "-"
+            marker = bf.marker()
+            box = "[x] " if marker == QTextBlockFormat.MarkerType.Checked else \
+                "[ ] " if marker == QTextBlockFormat.MarkerType.Unchecked else ""
+            new = prev_list is None or (lf.indent() <= 1 and lst != prev_list and prev_list.format().indent() <= 1)
+            if new and lines and lines[-1] != "":
+                lines.append("")  # another list (bullets after numbers): its own block
+            lines.append(f"{pad}{bullet} {box}{text}".rstrip())
+            prev_list = lst
+        else:
+            if lines and lines[-1] != "":
+                lines.append("")
+            if level:
+                lines.append("#" * min(6, level) + " " + text.strip())
+            elif text.strip():
+                lines.append(text)
+            prev_list = None
+        blk = blk.next()
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
 def for_word(html: str) -> str:
