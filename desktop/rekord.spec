@@ -14,7 +14,7 @@ for pkg in ("sherpa_onnx", "av", "webview", "uvicorn", "anthropic", "openai", "z
         datas += d; binaries += b; hidden += h
     except Exception:
         pass
-datas += [(os.path.join(ROOT, "rekord", "web"), os.path.join("rekord", "web")),  # previous interface + iPhone pairing page
+datas += [(os.path.join(ROOT, "rekord", "web"), os.path.join("rekord", "web")),  # previous interface + the app icon
           (os.path.join(ROOT, "rekord", "app", "qml"), os.path.join("rekord", "app", "qml")),  # REKORD's window (Qt Quick)
           (os.path.join(ROOT, "rekord", "data"), os.path.join("rekord", "data"))]  # word list for the Unterlagen
 

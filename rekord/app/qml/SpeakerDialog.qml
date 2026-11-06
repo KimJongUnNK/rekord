@@ -18,6 +18,11 @@ Sheet {
         open()
         nameF.forceActiveFocus()
     }
+    function noise() {  // not a person: a cough, music, a door – out of transcript, summary and export
+        page.app.call("PATCH", "/api/speakers/" + sp.id, { name: "Geräusch" },
+                      () => { page.app.toast("Als Geräusch ausgeblendet – nicht im Protokoll, nicht im Export"); page.reload() })
+        close()
+    }
     function save() {
         const app = page.app
         if (merge.value !== "") {
@@ -58,6 +63,13 @@ Sheet {
                 options: [{ value: "", label: "—" }].concat(d.others.map(o => ({ value: String(o.id), label: o.name })))
                 value: ""
             }
+        }
+        Btn {
+            objectName: "speakerNoise"
+            visible: d.sp.name !== "Geräusch"
+            small: true; kind: "ghost"; iconName: "trash"
+            text: "Ist ein Geräusch – alle Zeilen ausblenden"
+            onClicked: d.noise()
         }
         RowLayout {
             Layout.fillWidth: true

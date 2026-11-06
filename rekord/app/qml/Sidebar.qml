@@ -148,6 +148,68 @@ Rectangle {
             HoverHandler { cursorShape: Qt.PointingHandCursor }
         }
 
+        // ---- being transcribed right now: where, how far – and stop, right here next to "Datei transkribieren"
+        Rectangle {
+            id: job
+            objectName: "sideJob"
+            readonly property var w: library.working
+            visible: !!w.rid
+            Layout.fillWidth: true
+            Layout.preferredHeight: side.narrow ? 44 : jobCol.implicitHeight + 18
+            radius: 12
+            color: Theme.card
+            border.width: 1
+            border.color: Theme.line
+            MouseArea {  // the row opens the recording; the stop button stops
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: side.app.openRecording(job.w.rid)
+            }
+            ColumnLayout {
+                id: jobCol
+                visible: !side.narrow
+                anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                anchors.margins: 9
+                anchors.leftMargin: 12
+                spacing: 5
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+                        Text {
+                            Layout.fillWidth: true
+                            text: job.w.title || ""
+                            elide: Text.ElideRight
+                            font.family: Theme.text; font.pixelSize: 13; font.weight: Font.Bold; color: Theme.fg
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: (job.w.stage || "") + " · " + Math.round((job.w.progress || 0) * 100) + " %"
+                                  + (job.w.waiting ? " · " + job.w.waiting + " wartet" + (job.w.waiting > 1 ? "en" : "") : "")
+                            elide: Text.ElideRight
+                            font.family: Theme.text; font.pixelSize: 11; color: Theme.fg3
+                        }
+                    }
+                    Btn {
+                        objectName: "sideStop"
+                        small: true; kind: "danger"; iconName: "stop"; text: "Stopp"
+                        onClicked: library.cancel(job.w.rid)
+                        ToolTip.visible: hovered; ToolTip.delay: 300
+                        ToolTip.text: "Transkription sofort stoppen – die Aufnahme bleibt (danach „Nochmal“ oder löschen)"
+                    }
+                }
+                Bar { Layout.fillWidth: true; value: job.w.progress || 0 }
+            }
+            Btn {  // narrow sidebar: just the stop button
+                visible: side.narrow
+                anchors.centerIn: parent
+                small: true; kind: "danger"; iconName: "stop"
+                onClicked: library.cancel(job.w.rid)
+            }
+        }
+
         // ---- navigation
         Item {
             Layout.fillWidth: true

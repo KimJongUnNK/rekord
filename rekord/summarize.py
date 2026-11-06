@@ -1,11 +1,14 @@
 """Summaries, multi-template ('multidimensional') summaries, Ask-a-recording and Ask-everything."""
 from __future__ import annotations
 
+import logging
 import re
 from typing import Callable, Iterator
 
 from . import config, db
 from .llm import providers, templates
+
+log = logging.getLogger("rekord.summarize")
 
 LANG = {"de": "Deutsch", "en": "Englisch", "auto": "der Sprache des Gesprächs"}
 
@@ -27,7 +30,7 @@ def transcript_text(rid: str) -> str:
     sp = {s["id"]: s["name"] for s in db.list_speakers(rid)}
     hl = rec.get("highlights") or []
     lines = []
-    for seg in db.list_segments(rid):
+    for seg in db.spoken_segments(rid):
         star = " ★" if any(seg["start"] - 3 <= h <= seg["end"] + 3 for h in hl) else ""
         lines.append(f"[{fmt_time(seg['start'])}] {sp.get(seg['speaker_id'], 'Unbekannt')}{star}: {seg['text']}")
     return "\n".join(lines)
@@ -36,7 +39,7 @@ def transcript_text(rid: str) -> str:
 def speaker_stats(rid: str) -> str:
     sp = {s["id"]: s["name"] for s in db.list_speakers(rid)}
     talk: dict[str, float] = {}
-    for seg in db.list_segments(rid):
+    for seg in db.spoken_segments(rid):
         n = sp.get(seg["speaker_id"], "Unbekannt")
         talk[n] = talk.get(n, 0) + seg["end"] - seg["start"]
     total = sum(talk.values()) or 1
@@ -112,6 +115,64 @@ def _docs(settings: dict, rid: str) -> str:
     return context.prompt_block(rid, docs_budget(settings))
 
 
+MINDMAP_FIX = """Du ordnest eine Mind Map neu. Sie ist zu flach: Fasse die Einträge zu 4-6 Oberthemen (Ästen) zusammen, jeder mit
+2-5 Unterpunkten. Nichts weglassen, nichts erfinden, kurze Einträge (höchstens 6 Wörter).
+Antworte NUR mit der verschachtelten Markdown-Liste, 2 Leerzeichen Einrückung pro Ebene:
+- Hauptthema
+  - Ast
+    - Punkt"""
+
+
+def finish_mindmap(settings: dict, content: str) -> str:
+    """Small local models often ignore the nesting and write one long flat list – a "mind map" without branches or
+    lines. Then the AI sorts it into branches once more (with the flat list as input). Clean-up either way."""
+    from .app import md
+    if not md.is_flat(content):
+        return content
+    try:
+        fixed = providers.complete(settings, MINDMAP_FIX, [{"role": "user", "content": content}], 4000)
+    except providers.LLMError as e:
+        log.warning("mind map stays flat: %s", e)
+        return content
+    if fixed.strip() and not md.is_flat(fixed):
+        log.info("mind map was flat – sorted into branches")
+        return fixed.strip()
+    return content
+
+
+EDIT_SYSTEM = """Du überarbeitest eine Zusammenfassung (Markdown) nach der Anweisung des Nutzers.
+Regeln:
+- Setze die Anweisung genau um – auch Format-Wünsche: welche Zeichen (z. B. „keine Sternchen“, „Spiegelstriche statt Punkte“,
+  „Emojis weg“, „nummeriert“), Länge, Ton, Sprache, Reihenfolge, Überschriften.
+- Alles, was die Anweisung nicht betrifft, bleibt wie es ist – auch Zeitstempel [mm:ss] und Namen.
+- Neue Inhalte nur aus dem Transkript (falls mitgegeben) – nichts erfinden.
+- Antworte NUR mit der vollständigen überarbeiteten Zusammenfassung, ohne Vorrede, ohne Codeblock."""
+
+
+def edit_summary(sid: int, instruction: str, settings: dict | None = None) -> str:
+    """"Sag der KI, was sie ändern soll" for a summary – the old version stays for Rückgängig."""
+    instruction = (instruction or "").strip()
+    sm = db.get_summary(sid)
+    if sm is None:
+        raise KeyError(sid)
+    if not instruction:
+        raise providers.LLMError("Schreib, was die KI ändern soll.")
+    settings = settings or config.load()
+    transcript = prepared_transcript(settings, sm["recording_id"], reserve=len(sm["content"]) + 2000)
+    user = (f"<transkript>\n{transcript}\n</transkript>\n\n<zusammenfassung>\n{sm['content']}\n</zusammenfassung>\n\n"
+            f"<anweisung>\n{instruction}\n</anweisung>")
+    out = providers.complete(settings, EDIT_SYSTEM, [{"role": "user", "content": user}], 8000)
+    out = re.sub(r"<think>.*?</think>", "", out or "", flags=re.S).strip()
+    out = re.sub(r"^```(?:markdown|md)?\s*\n(.*?)\n```\s*$", r"\1", out, flags=re.S).strip()
+    if not out:
+        raise providers.LLMError("Die KI hat nichts zurückgegeben – Anweisung etwas genauer formulieren.")
+    if sm["template_id"] == "mindmap":
+        out = finish_mindmap(settings, out)
+    db.update_summary(sid, out, keep_prev=True)
+    log.info("summary %s changed by the AI: %s", sid, instruction[:80])
+    return out
+
+
 def generate_stream(rid: str, template_id: str) -> Iterator[str]:
     settings = config.load()
     rec = db.get_recording(rid)
@@ -138,6 +199,8 @@ def generate(rid: str, template_id: str, on_delta: Callable[[str], None] | None 
         if on_delta:
             on_delta(d)
     content = "".join(out).strip()
+    if template_id == "mindmap":
+        content = finish_mindmap(settings, content)
     sid = db.add_summary(rid, template_id, tpl["name"], content, settings["llm"]["provider"], providers.model_name(settings))
     maybe_title(rid, content)
     return {"id": sid, "content": content, "title": tpl["name"]}
@@ -203,7 +266,7 @@ def retrieve(question: str, limit: int = 40) -> list[dict]:
     # add neighbours for context
     out, seen = [], set()
     for h in hits:
-        segs = db.list_segments(h["recording_id"])
+        segs = db.spoken_segments(h["recording_id"])
         idx = next((i for i, s in enumerate(segs) if s["id"] == h["id"]), None)
         if idx is None:
             continue

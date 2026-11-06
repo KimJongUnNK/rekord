@@ -10,7 +10,13 @@ Item {
     property string q: ""
     property bool follow: true
     readonly property var segs: page.rec ? page.rec.segments : []
-    readonly property var shown: q ? segs.filter(s => (s.text || "").toLowerCase().indexOf(q) >= 0 || page.spk(s.speaker_id).name.toLowerCase().indexOf(q) >= 0) : segs
+    // "Geräusch": lines that are only a sound – out of sight unless asked for
+    property bool showNoise: false
+    readonly property var noiseIds: (page.rec ? page.rec.speakers : []).filter(s => s.name === "Geräusch").map(s => s.id)
+    readonly property var spoken: noiseIds.length ? segs.filter(s => noiseIds.indexOf(s.speaker_id) < 0) : segs
+    readonly property int noiseCount: segs.length - spoken.length
+    readonly property var base: showNoise ? segs : spoken
+    readonly property var shown: q ? base.filter(s => (s.text || "").toLowerCase().indexOf(q) >= 0 || page.spk(s.speaker_id).name.toLowerCase().indexOf(q) >= 0) : base
     readonly property var hl: page.rec && page.rec.highlights ? page.rec.highlights : []
     readonly property var stills: page.rec && page.rec.frames ? page.rec.frames : []  // from a video: what was on screen
     property int active: -1
@@ -130,7 +136,16 @@ Item {
             Btn { small: true; text: "Suchen & Ersetzen"; onClicked: frep.start() }
             Check { text: "Mitscrollen"; checked: v.follow; onToggled: v.follow = checked; font.pixelSize: 13 }
             Item { Layout.fillWidth: true }
-            Muted { text: v.q ? v.shown.length + " von " + v.segs.length : v.segs.length + " Sätze"; font.pixelSize: 13 }
+            Btn {
+                objectName: "noiseToggle"
+                visible: v.noiseCount > 0
+                small: true; kind: "ghost"
+                text: v.showNoise ? "Geräusche ausblenden" : (v.noiseCount === 1 ? "1 Geräusch" : v.noiseCount + " Geräusche") + " ausgeblendet · zeigen"
+                onClicked: v.showNoise = !v.showNoise
+                ToolTip.visible: hovered; ToolTip.delay: 400
+                ToolTip.text: "Zeilen mit der Rolle „Geräusch“ – Husten, Musik, was die KI als Wort gehört hat. Sie stehen nicht im Protokoll und nicht im Export."
+            }
+            Muted { text: v.q ? v.shown.length + " von " + v.base.length : v.base.length + " Sätze"; font.pixelSize: 13 }
         }
         ListView {
             id: list

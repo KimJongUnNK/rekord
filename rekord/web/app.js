@@ -12,6 +12,7 @@ const IS_LOCAL = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)
 const IS_MOBILE = /iPhone|iPad|Android/i.test(navigator.userAgent);
 const gbFmt = (n) => (n || 0).toLocaleString("de-AT", { maximumFractionDigits: 1 }) + " GB";
 const UNKNOWN = "Nicht erkannte Stimme", UNKNOWN_COLOR_JS = "#8A877F";  // all voices REKORD doesn't know – one entry, never "Sprecher 1, 2, 3"
+const NOISE = "Geräusch";  // a role from the start: lines that are only a sound – hidden from transcript, summary, export
 const LECTURER = "Vortragende Person", AUDIENCE = "Publikum";  // „Vorlesung“: the main voice and everyone else
 const unnamed = (n) => n === UNKNOWN || n === LECTURER || n === AUDIENCE || /^Sprecher \d+$/.test(n || "");  // voices still to be named
 const initials = (n) => n === UNKNOWN || n === AUDIENCE ? "?" : (n || "?").replace(/^Sprecher\s*/, "S").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
@@ -339,6 +340,14 @@ async function viewLibrary() {
     if (!files.length) return;
     const fd = new FormData();
     files.forEach((f) => fd.append("files", f));
+    const media = files.filter((f) => !/\.(pdf|docx?|pptx?|xlsx?|odt|odp|ods|rtf|txt|md|html?|epub|srt|vtt|jpe?g|png|heic|webp)$/i.test(f.name));
+    if (media.length > 1) {  // several at once: one transcript (parts of one lecture …) – or each on its own
+      const r = await dialog(`<h2>${media.length} Dateien – eine Aufnahme oder einzeln?</h2>
+        <p class="muted">Eine Aufnahme: die Dateien kommen nach Namen sortiert hintereinander (Teil 1, Teil 2 …), ein Transkript, Sprecher über alle Teile erkannt. Einzeln: jede Datei wird eine eigene Aufnahme.</p>
+        <div class="row"><span class="spacer"></span><button class="btn" value="cancel">Abbrechen</button><button class="btn" value="single">Einzeln</button><button class="btn primary" value="one">Eine Aufnahme</button></div>`);
+      if (r !== "one" && r !== "single") return;
+      if (r === "one") fd.append("combine", "true");
+    }
     toast(`${files.length} Datei(en) werden hochgeladen …`);
     try { await api("/api/recordings", { method: "POST", body: fd }); toast("Importiert – Verarbeitung läuft."); load(); }
     catch (e) { toast("Import fehlgeschlagen: " + e.message); }
@@ -1009,11 +1018,12 @@ async function viewDetail(id) {
     const cur = spk(sg.speaker_id);
     if (!knownNames.length) { try { knownNames = (await api("/api/profiles")).items.map((x) => x.name); } catch (e) {} }
     const sameVoice = sg.voice != null ? segs().filter((x) => x.speaker_id === sg.speaker_id && x.voice === sg.voice).length : 1;
-    const names = [...new Set([...rec.speakers.filter((x) => x.name !== UNKNOWN && !/^Sprecher \d+$/.test(x.name)).map((x) => x.name), ...knownNames])].filter((n) => n !== cur.name);
+    const names = [...new Set([...rec.speakers.filter((x) => x.name !== UNKNOWN && x.name !== NOISE && !/^Sprecher \d+$/.test(x.name)).map((x) => x.name), ...knownNames])].filter((n) => n !== cur.name);
     const r = await dialog(`<h2>Wer sagt das?</h2>
       <blockquote class="read-text" style="font-size:15px">„${esc(sg.text)}“</blockquote>
       <div class="row"><button type="button" class="btn sm" id="al-play">▶ Anhören</button><span class="muted">${fmtTime(sg.start)} · jetzt: ${esc(cur.name)}</span></div>
-      ${names.length ? `<div class="row" style="gap:8px">${names.map((n) => `<button type="button" class="btn sm" data-pick="${esc(n)}">${esc(n)}</button>`).join("")}</div>` : ""}
+      ${names.length ? `<div class="row" style="gap:8px;max-height:180px;overflow-y:auto">${names.map((n) => `<button type="button" class="btn sm" data-pick="${esc(n)}">${esc(n)}</button>`).join("")}</div>` : ""}
+      ${cur.name !== NOISE ? `<div><button type="button" class="btn ghost sm" id="al-noise">Ist ein Geräusch – ausblenden</button></div>` : ""}
       <input type="text" id="al-name" placeholder="…oder neuer Name" autocomplete="off">
       ${sameVoice > 1 ? `<label class="row"><input type="checkbox" id="al-all-voice" checked> Alle ${sameVoice} Sätze dieser Stimme</label>` : ""}
       <label class="row"><input type="checkbox" id="al-rem" checked> Stimme dabei lernen${tip("remember")}</label>
@@ -1023,13 +1033,14 @@ async function viewDetail(id) {
       $("#al-play", b).onclick = () => { audio.currentTime = sg.start; playUntil = sg.end; audio.play().catch(() => {}); };
       $$("[data-pick]", b).forEach((x) => x.onclick = () => { $("#al-name", b).value = x.dataset.pick; b.closest("dialog").close("ok"); });
       $("#al-all", b).onclick = () => b.closest("dialog").close("all");
+      if ($("#al-noise", b)) $("#al-noise", b).onclick = () => { $("#al-name", b).value = NOISE; $("#al-rem", b).checked = false; b.closest("dialog").close("ok"); };
     });
     if (r === "all") { editSpeaker(sg.speaker_id); return; }
     const name = r === "ok" && $("#al-name").value.trim();
     if (!name) return;
     try {
       await api(`/api/segments/${segId}/assign`, { method: "POST", json: { name, remember: $("#al-rem").checked, whole_voice: !!($("#al-all-voice") && $("#al-all-voice").checked) } });
-      toast($("#al-rem").checked ? `${name} ✓ – Stimme gelernt` : `${name} ✓`);
+      toast(name === NOISE ? "Als Geräusch ausgeblendet – nicht im Protokoll, nicht im Export" : $("#al-rem").checked ? `${name} ✓ – Stimme gelernt` : `${name} ✓`);
       await reload(true);
     } catch (e) { toast(e.message, 6000); }
   }
@@ -1122,8 +1133,13 @@ async function viewDetail(id) {
   };
   $$("#tabs button").forEach((b) => b.onclick = () => showTab(b.dataset.tab));
 
+  let showNoise = false;  // lines given to "Geräusch" stay out of sight unless asked for
   function tabTranscript() {
     const hl = rec.highlights || [];
+    const noiseIds = rec.speakers.filter((x) => x.name === NOISE).map((x) => x.id);
+    const spokenSegs = segs().filter((x) => !noiseIds.includes(x.speaker_id));
+    const noiseCount = segs().length - spokenSegs.length;
+    const listed = showNoise ? segs() : spokenSegs;
     if (!segs().length) { $("#tab").innerHTML = `<div class="empty"><p>${rec.status === "done" ? "Keine Sprache erkannt." : "Transkript entsteht gerade …"}</p></div>`; return; }
     const h = rec.history || {};
     $("#tab").innerHTML = `<form class="row" id="taiform" style="margin-bottom:10px;gap:8px">
@@ -1134,8 +1150,9 @@ async function viewDetail(id) {
       <div class="row" style="margin-bottom:12px">
         <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" id="tfind" placeholder="Im Transkript suchen"></label>
         <button class="btn sm" id="frep">Suchen & Ersetzen</button>
-        <label class="row muted" style="font-size:13px"><input type="checkbox" id="ascroll" ${prefs.autoscroll ? "checked" : ""}> Mitscrollen</label></div>
-      <div class="seg-list" id="segs">${segs().map((s) => {
+        <label class="row muted" style="font-size:13px"><input type="checkbox" id="ascroll" ${prefs.autoscroll ? "checked" : ""}> Mitscrollen</label>
+        ${noiseCount ? `<button type="button" class="btn ghost sm" id="tnoise" title="Zeilen mit der Rolle „Geräusch“ – stehen nicht im Protokoll und nicht im Export">${showNoise ? "Geräusche ausblenden" : `${noiseCount === 1 ? "1 Geräusch" : noiseCount + " Geräusche"} ausgeblendet · zeigen`}</button>` : ""}</div>
+      <div class="seg-list" id="segs">${listed.map((s) => {
         const p = spk(s.speaker_id);
         const isHl = hl.some((h) => h >= s.start - 2 && h <= s.end + 2);
         return `<div class="tseg${isHl ? " hl" : ""}" data-id="${s.id}" style="--c:${p.color}">
@@ -1151,6 +1168,7 @@ async function viewDetail(id) {
       });
     });
     $("#ascroll").onchange = (e) => setPref("autoscroll", e.target.checked);
+    if ($("#tnoise")) $("#tnoise").onclick = () => { showNoise = !showNoise; tabTranscript(); };
     $("#tfind").addEventListener("input", debounce((e) => {
       const q = e.target.value.trim().toLowerCase();
       $$("#segs .tseg").forEach((row) => {
@@ -1225,8 +1243,18 @@ async function viewDetail(id) {
     el.innerHTML = `<div class="sum-head"><span class="eyebrow">${esc(s.title)}</span><span class="muted" style="font-size:12px">${s.model ? esc(s.model) + " · " : ""}${fmtDate(s.created_at)}</span>
       <span class="spacer"></span><button class="btn ghost sm icon" data-a="copy" title="Kopieren"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg></button>
       <button class="btn ghost sm icon" data-a="edit" title="Bearbeiten"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button>
-      <button class="btn ghost sm icon" data-a="del" title="Löschen"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg></button></div><div class="md"></div>`;
+      <button class="btn ghost sm icon" data-a="del" title="Löschen"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg></button></div>
+      <form class="row" data-a="aiform" style="gap:8px;margin:8px 0"><input type="text" data-a="ai" style="flex:1" placeholder="Sag der KI, was sie ändern soll – z. B. „keine Sternchen“, „kürzer“, „To-dos als Tabelle“">
+        <button class="btn primary sm">Ändern</button>${s.prev ? `<button type="button" class="btn ghost sm" data-a="undo">↶ Rückgängig</button>` : ""}</form><div class="md"></div>`;
     renderMd($(".md", el), s.content, s.id);
+    $('[data-a="aiform"]', el).onsubmit = async (e) => {
+      e.preventDefault();
+      const inp = $('[data-a="ai"]', el), t = inp.value.trim(); if (!t) return;
+      inp.disabled = true; toast("KI überarbeitet …");
+      try { await api(`/api/summaries/${s.id}/ai`, { method: "POST", json: { instruction: t } }); toast("Geändert – „Rückgängig“ holt die vorige Fassung zurück."); reload(); }
+      catch (err) { toast(err.message, 6000); inp.disabled = false; }
+    };
+    if ($('[data-a="undo"]', el)) $('[data-a="undo"]', el).onclick = async () => { await api(`/api/summaries/${s.id}/undo`, { method: "POST" }); toast("Rückgängig"); reload(); };
     $('[data-a="copy"]', el).onclick = () => { navigator.clipboard.writeText(s.content); toast("Kopiert (Markdown)"); };
     $('[data-a="del"]', el).onclick = async () => { if (await confirmBox("Zusammenfassung löschen?", s.title)) { await api(`/api/summaries/${s.id}`, { method: "DELETE" }); reload(); } };
     $('[data-a="edit"]', el).onclick = async () => {
@@ -1261,7 +1289,12 @@ async function viewDetail(id) {
     $("#tab").innerHTML = `<div class="row" style="margin-bottom:14px"><button class="btn ${mm ? "" : "primary"}" id="mmgen" ${!segs().length ? "disabled" : ""}>${mm ? "Neu erstellen" : "Mind Map erstellen"}</button>
       ${mm ? `<button class="btn" id="mmsvg">SVG speichern</button><button class="btn" id="mmpng">PNG speichern</button>` : ""}</div>
       <div class="mindmap" id="mm">${mm ? "" : `<div class="empty"><p>Die KI baut aus dem Gespräch eine Mind Map.</p></div>`}</div>`;
-    if (mm) $("#mm").innerHTML = mindmapSvg(MD.outline(mm.content));
+    if (mm) {  // drawn by REKORD like in the window: lines, sub-points, nothing cut off
+      const cs = getComputedStyle(document.documentElement), c = (v) => encodeURIComponent(cs.getPropertyValue(v).trim());
+      fetch(`/api/summaries/${mm.id}/mindmap.svg?fg=${c("--fg")}&fg2=${c("--fg2")}&bg=${c("--card")}`, { headers: token() ? { "X-Rekord-Token": token() } : {} })
+        .then((r) => r.ok ? r.text() : Promise.reject()).then((svg) => { if ($("#mm")) $("#mm").innerHTML = svg; })
+        .catch(() => { if ($("#mm")) $("#mm").innerHTML = mindmapSvg(MD.outline(mm.content)); });
+    }
     $("#mmgen").onclick = async () => {
       $("#mmgen").disabled = true; $("#mm").innerHTML = `<div class="empty"><span class="dot busy"></span> Mind Map entsteht …</div>`;
       const ok = await generate("mindmap", document.createElement("div"));

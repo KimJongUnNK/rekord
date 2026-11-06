@@ -350,7 +350,7 @@ Page {
                     title: "Transkription"
                     Field {
                         label: "Sprache"; tip: "lang"; hint: "Fest einstellen = am genauesten. Automatisch erkennt sie pro Satz – kurze Sätze bekommen die Hauptsprache der Aufnahme."
-                        Select { Layout.maximumWidth: 300; options: page.opts(page.langs); value: page.s ? page.s.language : ""; onPicked: (v) => page.save({ language: v }) }
+                        Select { objectName: "langSelect"; Layout.maximumWidth: 300; options: page.opts(page.langs); value: page.s ? page.s.language : ""; onPicked: (v) => page.save({ language: v }) }
                     }
                     Field {
                         label: "Passend zu diesem Computer"; tip: "asrauto"

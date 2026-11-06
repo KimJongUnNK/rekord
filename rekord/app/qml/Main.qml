@@ -93,6 +93,22 @@ ApplicationWindow {
     function importFiles() { importDialog.open() }
     // every way in (button, dialog, drop, ⌘V, menu bar) ends the same: one file → its recording opens right away
     function importUrls(urls) {
+        const media = urls.filter(u => !library.isDoc(u))
+        if (media.length > 1) {  // several files at once: one transcript (parts of one lecture …) – or each on its own
+            win.confirm(media.length + " Dateien – eine Aufnahme oder einzeln?",
+                        "Eine Aufnahme: die Dateien kommen nach Namen sortiert hintereinander (Teil 1, Teil 2 …), ein Transkript, "
+                        + "Sprecher über alle Teile erkannt. Einzeln: jede Datei wird eine eigene Aufnahme.",
+                        "Eine Aufnahme", () => {
+                            if (library.importCombined(urls) > 0) {
+                                const rid = library.lastImportedId()
+                                if (rid) win.openRecording(rid, 0)
+                            }
+                        }, false, "Einzeln", () => win.importSeparately(urls))
+            return media.length
+        }
+        return win.importSeparately(urls)
+    }
+    function importSeparately(urls) {
         const n = library.importFiles(urls)
         const rid = n === 1 ? library.lastImportedId() : ""
         if (rid) win.openRecording(rid, 0)
@@ -175,7 +191,7 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            LibraryPage { id: libraryPage; app: win; anchors.fill: parent; shown: win.shownPage === "library" }
+            LibraryPage { id: libraryPage; objectName: "libraryPage"; app: win; anchors.fill: parent; shown: win.shownPage === "library" }
             DetailPage { id: detailPage; app: win; anchors.fill: parent; shown: win.shownPage === "detail" }
             LivePage { app: win; anchors.fill: parent; shown: win.shownPage === "live" }
             PeoplePage { app: win; anchors.fill: parent; shown: win.shownPage === "people" }
@@ -269,7 +285,7 @@ ApplicationWindow {
         onClosed: win.welcomeOpen = false
     }
 
-    ConfirmDialog { id: confirmDlg }
+    ConfirmDialog { id: confirmDlg; objectName: "confirmDlg" }
     PromptDialog { id: promptDlg }
 
     Sheet {  // closing while recording

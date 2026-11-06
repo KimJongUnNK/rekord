@@ -91,6 +91,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS segments_fts USING fts5(
 );
 """
 
+NOISE = "Geräusch"  # a role from the start: lines that are just a sound – hidden from transcript, summary, export, search
+NOISE_COLOR = "#55555A"
 PALETTE = ["#FF5A1F", "#2D7FF9", "#16A34A", "#E11D74", "#A855F7", "#EAB308", "#0EA5E9", "#F97316", "#14B8A6", "#64748B"]
 
 _local = threading.local()
@@ -114,6 +116,7 @@ MIGRATIONS = {"recordings": {"title_locked": "INTEGER DEFAULT 0", "participants"
                              "context_fixes": "TEXT DEFAULT '[]'",  # corrections from the Unterlagen
                              "transcript_undo": "TEXT DEFAULT '{}'"},  # the lines before the last AI change  # corrections from the Unterlagen: [{from,to,count,by,off}]
               "speakers": {"voices": "INTEGER DEFAULT 1"},
+              "summaries": {"prev": "TEXT"},  # the version before the last "Sag der KI, was sie ändern soll" (Rückgängig)
               "segments": {"voice": "INTEGER",
                            "orig": "TEXT"}}  # what the recognizer wrote, while Unterlagen-corrections changed the line  # which unknown voice (cluster) a line in the bucket belongs to  # >1: the "Nicht erkannte Stimme" bucket holds several people
 
@@ -311,6 +314,13 @@ def list_segments(rid: str) -> list[dict]:
         "SELECT * FROM segments WHERE recording_id=? ORDER BY start", (rid,)).fetchall()]
 
 
+def spoken_segments(rid: str) -> list[dict]:
+    """The transcript without the lines given to "Geräusch" – what summaries, questions, exports and search see."""
+    return [dict(r) for r in connect().execute(
+        "SELECT s.* FROM segments s LEFT JOIN speakers sp ON sp.id=s.speaker_id "
+        "WHERE s.recording_id=? AND (sp.name IS NULL OR sp.name != ?) ORDER BY s.start", (rid, NOISE)).fetchall()]
+
+
 def update_segment(seg_id: int, text: str | None = None, speaker_id: int | None = None) -> None:
     with tx() as c:
         if text is not None:  # your own edit: the line is yours now – undoing Unterlagen-corrections leaves it alone
@@ -375,8 +385,8 @@ def fts_query(q: str) -> str:
 def search_segments(q: str, rid: str | None = None, limit: int = 40) -> list[dict]:
     sql = ("SELECT s.*, r.title AS recording_title, r.created_at AS recording_date, sp.name AS speaker, bm25(segments_fts) AS score "
            "FROM segments_fts f JOIN segments s ON s.id=f.segment_id JOIN recordings r ON r.id=s.recording_id "
-           "LEFT JOIN speakers sp ON sp.id=s.speaker_id WHERE segments_fts MATCH ?")
-    args: list = [fts_query(q)]
+           "LEFT JOIN speakers sp ON sp.id=s.speaker_id WHERE segments_fts MATCH ? AND (sp.name IS NULL OR sp.name != ?)")
+    args: list = [fts_query(q), NOISE]
     if rid:
         sql += " AND f.recording_id=?"
         args.append(rid)
@@ -439,14 +449,33 @@ def add_summary(rid: str, template_id: str, title: str, content: str, provider: 
                          (rid, template_id, title, content, provider, model, time.time())).lastrowid
 
 
+def get_summary(sid: int) -> dict | None:
+    r = connect().execute("SELECT * FROM summaries WHERE id=?", (sid,)).fetchone()
+    return dict(r) if r else None
+
+
 def list_summaries(rid: str) -> list[dict]:
     return [dict(r) for r in connect().execute(
         "SELECT * FROM summaries WHERE recording_id=? ORDER BY created_at DESC", (rid,)).fetchall()]
 
 
-def update_summary(sid: int, content: str) -> None:
+def update_summary(sid: int, content: str, keep_prev: bool = False) -> None:
+    """keep_prev: the current text is kept as the version to go back to (Rückgängig)."""
     with tx() as c:
-        c.execute("UPDATE summaries SET content=? WHERE id=?", (content, sid))
+        if keep_prev:
+            c.execute("UPDATE summaries SET prev=content, content=? WHERE id=?", (content, sid))
+        else:
+            c.execute("UPDATE summaries SET content=? WHERE id=?", (content, sid))
+
+
+def undo_summary(sid: int) -> bool:
+    """Back to the version before the last AI change – and that change becomes the one to redo (swap)."""
+    with tx() as c:
+        r = c.execute("SELECT content, prev FROM summaries WHERE id=?", (sid,)).fetchone()
+        if not r or r["prev"] is None:
+            return False
+        c.execute("UPDATE summaries SET content=?, prev=? WHERE id=?", (r["prev"], r["content"], sid))
+    return True
 
 
 def delete_summary(sid: int) -> None:

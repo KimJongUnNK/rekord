@@ -30,7 +30,7 @@ class EditError(RuntimeError):
 
 
 def _lines(rid: str) -> tuple[list[dict], list[str]]:
-    segs = db.list_segments(rid)
+    segs = db.spoken_segments(rid)
     sp = {s["id"]: s["name"] for s in db.list_speakers(rid)}
     return segs, [f"[{s['id']}] {sp.get(s['speaker_id'], 'Unbekannt')}: {s['text']}" for s in segs]
 

@@ -16,6 +16,8 @@ AbstractButton {
     required property string folder
     required property var speakers
     required property string source
+    property bool selecting: false   // Aufnahmen → Auswählen: a checkbox instead of opening
+    property bool picked: false
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
     implicitHeight: 78
@@ -43,9 +45,20 @@ AbstractButton {
 
     contentItem: RowLayout {
         spacing: 16
+        Rectangle {  // the checkbox while selecting
+            objectName: "rowPick"
+            visible: row.selecting
+            Layout.leftMargin: 18
+            Layout.preferredWidth: 22; Layout.preferredHeight: 22
+            radius: 6
+            color: row.picked ? Theme.accent : Theme.bg
+            border.width: row.picked ? 0 : 1.5
+            border.color: row.hovered ? Theme.fg3 : Theme.line2
+            Icon { anchors.centerIn: parent; width: 15; height: 15; name: "check"; stroke: 2.4; color: Theme.onAccent; visible: row.picked }
+        }
         // speakers as overlapping dots
         Item {
-            Layout.leftMargin: 18
+            Layout.leftMargin: row.selecting ? 0 : 18
             Layout.preferredWidth: 58
             Layout.preferredHeight: 40
             Rectangle {

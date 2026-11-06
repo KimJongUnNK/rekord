@@ -137,6 +137,40 @@ Item {
                                                                   () => v.page.app.call("DELETE", "/api/summaries/" + sc.modelData.id, null, () => v.page.reload()))
                                 }
                             }
+                            RowLayout {  // tell the AI what to change: "keine Sternchen", "kürzer", "To-dos als Tabelle", "mit Emojis"
+                                Layout.fillWidth: true
+                                spacing: 8
+                                property bool busy: false
+                                id: aiRow
+                                function run() {
+                                    const t = aiField.text.trim()
+                                    if (!t || busy) return
+                                    busy = true
+                                    v.page.app.call("POST", "/api/summaries/" + sc.modelData.id + "/ai", { instruction: t }, () => {
+                                        aiRow.busy = false
+                                        aiField.text = ""
+                                        v.page.app.toast("Geändert – „Rückgängig“ holt die vorige Fassung zurück.")
+                                        v.page.reload()
+                                    }, (err) => { aiRow.busy = false; v.page.app.toast("KI: " + err) })
+                                }
+                                Input {
+                                    id: aiField
+                                    objectName: "summaryAi"
+                                    Layout.fillWidth: true
+                                    enabled: !aiRow.busy
+                                    placeholderText: "Sag der KI, was sie ändern soll – z. B. „keine Sternchen“, „kürzer“, „Spiegelstriche statt Punkte“, „To-dos als Tabelle“"
+                                    onAccepted: aiRow.run()
+                                }
+                                BusyIndicator { visible: aiRow.busy; running: visible; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
+                                Btn { kind: "primary"; small: true; iconName: "spark"; text: "Ändern"; enabled: !aiRow.busy && aiField.text.trim() !== ""; onClicked: aiRow.run() }
+                                Btn {
+                                    objectName: "summaryUndo"
+                                    visible: !!sc.modelData.prev
+                                    kind: "ghost"; small: true; text: "↶ Rückgängig"
+                                    ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Zur Fassung vor der letzten KI-Änderung – nochmal klicken: wieder zurück"
+                                    onClicked: v.page.app.call("POST", "/api/summaries/" + sc.modelData.id + "/undo", null, () => { v.page.app.toast("Rückgängig"); v.page.reload() })
+                                }
+                            }
                             Markdown {
                                 Layout.fillWidth: true
                                 source: sc.modelData.content

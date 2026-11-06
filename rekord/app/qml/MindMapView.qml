@@ -3,6 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import QtCore
+import QtQuick.Shapes
 import "."
 
 // The topics as a map: the AI builds it, REKORD draws it; save as SVG or PNG.
@@ -13,6 +14,14 @@ Item {
     readonly property var mm: page.rec ? page.rec.summaries.find(s => s.template_id === "mindmap") : null
     readonly property var layout: mm ? rekord.mindmap(mm.content) : ({ nodes: [], edges: [], width: 0, height: 0 })
 
+    function change() {
+        const t = mmAi.text.trim()
+        if (!t || busy || !mm) return
+        busy = true
+        page.app.call("POST", "/api/summaries/" + mm.id + "/ai", { instruction: t },
+                      () => { v.busy = false; mmAi.text = ""; v.page.reload() },
+                      (err) => { v.busy = false; v.page.app.toast("Mind Map: " + err) })
+    }
     function create() {
         busy = true
         page.app.stream("/api/recordings/" + page.rid + "/summaries", { template_id: "mindmap" }, null,
@@ -53,6 +62,25 @@ Item {
             Btn { visible: !!v.mm; text: "PNG speichern"; onClicked: { saveDlg.kind = "png"; saveDlg.selectedFile = saveDlg.currentFolder + "/" + rekord.safeName(v.page.rec.title + " – Mind Map") + ".png"; saveDlg.open() } }
             BusyIndicator { running: v.busy; visible: v.busy; Layout.preferredWidth: 22; Layout.preferredHeight: 22 }
         }
+        RowLayout {  // "mehr Unterpunkte", "Ast Abschreibungen genauer", "auf Englisch"
+            visible: !!v.mm
+            Layout.fillWidth: true
+            spacing: 8
+            Input {
+                id: mmAi
+                objectName: "mindmapAi"
+                Layout.fillWidth: true
+                enabled: !v.busy
+                placeholderText: "Sag der KI, was sie an der Mind Map ändern soll – z. B. „mehr Unterpunkte“, „Abschreibungen genauer“"
+                onAccepted: v.change()
+            }
+            Btn { kind: "primary"; small: true; iconName: "spark"; text: "Ändern"; enabled: !v.busy && mmAi.text.trim() !== ""; onClicked: v.change() }
+            Btn {
+                visible: !!(v.mm && v.mm.prev)
+                kind: "ghost"; small: true; text: "↶ Rückgängig"
+                onClicked: v.page.app.call("POST", "/api/summaries/" + v.mm.id + "/undo", null, () => v.page.reload())
+            }
+        }
         Card {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -71,24 +99,25 @@ Item {
                     width: v.layout.width
                     height: v.layout.height
                     color: Theme.card
-                    Canvas {
-                        id: edges
-                        anchors.fill: parent
-                        property var edgeData: v.layout.edges
-                        onEdgeDataChanged: requestPaint()
-                        Connections { target: Theme; function onDarkChanged() { edges.requestPaint() } }
-                        onPaint: {
-                            const c = getContext("2d")
-                            c.reset()
-                            for (const e of edgeData) {
-                                const mx = (e.x1 + e.x2) / 2
-                                c.beginPath()
-                                c.moveTo(e.x1, e.y1)
-                                c.bezierCurveTo(mx, e.y1, mx, e.y2, e.x2, e.y2)
-                                c.strokeStyle = e.color || Theme.fg3
-                                c.globalAlpha = 0.75
-                                c.lineWidth = e.width
-                                c.stroke()
+                    Repeater {  // the lines: drawn by Qt itself (a Canvas sometimes stayed empty)
+                        objectName: "mindmapEdges"
+                        model: v.layout.edges
+                        delegate: Shape {
+                            required property var modelData
+                            anchors.fill: parent
+                            preferredRendererType: Shape.CurveRenderer
+                            opacity: 0.8
+                            ShapePath {
+                                strokeColor: modelData.color || Theme.fg3
+                                strokeWidth: modelData.width
+                                fillColor: "transparent"
+                                capStyle: ShapePath.RoundCap
+                                startX: modelData.x1; startY: modelData.y1
+                                PathCubic {
+                                    x: modelData.x2; y: modelData.y2
+                                    control1X: (modelData.x1 + modelData.x2) / 2; control1Y: modelData.y1
+                                    control2X: (modelData.x1 + modelData.x2) / 2; control2Y: modelData.y2
+                                }
                             }
                         }
                     }
@@ -100,7 +129,7 @@ Item {
                             y: modelData.y
                             Rectangle {  // the center
                                 visible: modelData.depth === 0
-                                x: -10; y: -20; width: 214; height: 40; radius: 20
+                                x: -10; y: -20; width: modelData.w || 214; height: 40; radius: 20
                                 color: Theme.fg
                                 Text {
                                     anchors.centerIn: parent

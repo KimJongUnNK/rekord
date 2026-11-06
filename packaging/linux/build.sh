@@ -8,7 +8,7 @@ set -euo pipefail
 SRC="$(readlink -f "$1")"; VER="$2"; OUT="$(mkdir -p "$3" && readlink -f "$3")"
 HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
-ICON256="$ROOT/desktop/icon.png"; ICON512="$ROOT/rekord/web/icons/icon-512.png"
+ICON256="$ROOT/desktop/icon-256.png"; ICON512="$ROOT/rekord/web/icons/app-512.png"
 DESC="Lokaler KI-Notizrekorder: aufnehmen, transkribieren, live erkennen wer spricht, zusammenfassen mit Claude/ChatGPT/Ollama."
 URL="https://github.com/KimJongUnNK/rekord"
 MAINT="Emil Boenke <KimJongUnNK@users.noreply.github.com>"

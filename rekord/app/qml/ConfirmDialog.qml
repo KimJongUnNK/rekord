@@ -17,6 +17,7 @@ Sheet {
         altLabel = alt || ""; onAlt = altFn || null
         open()
     }
+    function accept() { const fn = d.onOk; d.close(); if (fn) fn() }
     width: Math.min(parent ? parent.width - 48 : 480, 480)
     contentItem: ColumnLayout {
         spacing: 14
@@ -37,7 +38,7 @@ Sheet {
             Btn {
                 kind: d.danger ? "danger" : "primary"
                 text: d.okLabel
-                onClicked: { const fn = d.onOk; d.close(); if (fn) fn() }
+                onClicked: d.accept()
             }
         }
     }

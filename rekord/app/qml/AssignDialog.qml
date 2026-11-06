@@ -20,6 +20,7 @@ Sheet {
         rec.speakers.filter(x => !page.unnamed(x.name)).forEach(x => set[x.name] = 1)
         page.knownNames.forEach(n => set[n] = 1)
         delete set[cur.name]
+        delete set["Geräusch"]  // has its own button
         names = Object.keys(set)
         newName.text = ""
         all.checked = true
@@ -31,7 +32,8 @@ Sheet {
         if (!name) return
         const remember = rem.checked
         page.app.call("POST", "/api/segments/" + seg.id + "/assign", { name: name, remember: remember, whole_voice: d.sameVoice > 1 && all.checked },
-                      () => { page.app.toast(remember ? name + " ✓ – Stimme gelernt" : name + " ✓"); page.reload() })
+                      () => { page.app.toast(name === "Geräusch" ? "Als Geräusch ausgeblendet – nicht im Protokoll, nicht im Export"
+                                             : remember ? name + " ✓ – Stimme gelernt" : name + " ✓"); page.reload() })
         close()
     }
     contentItem: ColumnLayout {
@@ -55,16 +57,32 @@ Sheet {
             Btn { small: true; iconName: "play"; text: "Anhören"; onClicked: player.playRange(d.seg.start, d.seg.end) }
             Muted { text: d.page.fmt(d.seg.start || 0) + " · jetzt: " + (d.cur.name || "") }
         }
-        Flow {
+        ScrollView {  // many known people: the names scroll, the dialog stays inside the window
+            id: namesView
+            objectName: "assignNames"
             Layout.fillWidth: true
-            spacing: 8
+            Layout.preferredHeight: Math.min(namesFlow.implicitHeight, 180)
             visible: d.names.length > 0
-            Repeater {
-                model: d.names
-                delegate: Btn { required property string modelData; small: true; text: modelData; onClicked: d.assign(modelData) }
+            contentWidth: availableWidth
+            clip: true
+            Flow {
+                id: namesFlow
+                width: namesView.availableWidth
+                spacing: 8
+                Repeater {
+                    model: d.names
+                    delegate: Btn { required property string modelData; small: true; text: modelData; onClicked: d.assign(modelData) }
+                }
             }
         }
         Input { id: newName; Layout.fillWidth: true; placeholderText: "…oder neuer Name"; onAccepted: d.assign(text) }
+        Btn {  // a cough, music, a door – not speech: out of transcript, summary and export
+            objectName: "assignNoise"
+            visible: d.cur.name !== "Geräusch"
+            small: true; kind: "ghost"; iconName: "trash"
+            text: d.sameVoice > 1 && all.checked ? "Ist ein Geräusch – alle " + d.sameVoice + " ausblenden" : "Ist ein Geräusch – ausblenden"
+            onClicked: { rem.checked = false; d.assign("Geräusch") }
+        }
         Check { id: all; visible: d.sameVoice > 1; text: "Alle " + d.sameVoice + " Sätze dieser Stimme" }
         RowLayout { Check { id: rem; text: "Stimme dabei lernen" } Tip { key: "remember" } }
         Btn {

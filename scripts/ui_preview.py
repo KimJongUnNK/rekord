@@ -186,6 +186,26 @@ def main(out: Path) -> int:
         QMetaObject.invokeMethod(obj, fn, *[Q_ARG("QVariant", a) for a in args])
 
     shot("library")
+    # several at once: Auswählen → tick two → "2 löschen" → confirm – both gone, the rest stays
+    junk = [db.create_recording(f"Falsche Datei {i}", "", source="import")["id"] for i in (1, 2)]
+    for j in junk:
+        db.update_recording(j, status="done")
+    o["library"].refresh()
+    wait(0.4)
+    libp = win.findChild(QObject, "libraryPage")
+    libp.setProperty("selecting", True)
+    for j in junk:
+        call(libp, "togglePick", j)
+    wait(0.3)
+    shot("library-select")
+    before = len(db.list_recordings())
+    call(libp, "deletePicked")
+    wait(0.3)
+    call(win.findChild(QObject, "confirmDlg"), "accept")
+    if not wait_for(lambda: all(db.get_recording(j) is None for j in junk), 4) or len(db.list_recordings()) != before - 2:
+        problems_extra.append("library: 'Auswählen → löschen' didn't delete exactly the ticked recordings")
+    if libp.property("selecting"):
+        problems_extra.append("library: still selecting after deleting")
     lm = win.findChild(QObject, "loadModelsButton")
     if lm is None or not lm.property("visible") or lm.property("text") != "Jetzt laden":
         problems_extra.append("library: no 'Jetzt laden' for the missing speech models")
@@ -264,6 +284,10 @@ def main(out: Path) -> int:
     seg = next(x for x in db.list_segments(ids["rid"]) if x.get("voice") == 7)
     call(detail, "assignLine", seg["id"])
     shot("detail-assign")
+    an = win.findChild(QObject, "assignDlg")
+    nb = an.findChild(QObject, "assignNoise") if an else None
+    if nb is None or not nb.property("visible"):
+        problems_extra.append("assign: no 'Ist ein Geräusch' button")
     win.findChild(QObject, "assignDlg").close()
     wait(0.4)
     assert rec is not None
@@ -271,6 +295,12 @@ def main(out: Path) -> int:
     call(win, "openRecording", ids["processing"], 0)
     wait(1.2)
     shot("detail-processing")
+    # transcribing: a stop button right next to "Datei transkribieren", from every page
+    o["library"].refresh()
+    wait(0.3)
+    sj, ss = win.findChild(QObject, "sideJob"), win.findChild(QObject, "sideStop")
+    if sj is None or not sj.property("visible") or ss is None or not ss.property("visible"):
+        problems_extra.append("sidebar: no stop button while a file is being transcribed")
     for name in ("cancelButton", "cancelDeleteButton"):
         b = win.findChild(QObject, "detailPage").findChild(QObject, name)
         if b is None or not b.property("visible"):
@@ -419,6 +449,18 @@ def main(out: Path) -> int:
     for key in ("ai", "asr", "models", "int", "data"):
         call(settings, "jump", key)
         shot(f"settings-{key}")
+        if key == "asr":  # a long drop-down (the languages): the list must show several entries and scroll
+            lang = settings.findChild(QObject, "langSelect")
+            if lang is None:
+                problems_extra.append("select: no language drop-down found")
+            else:
+                call(lang, "openList")
+                wait(0.5)
+                shot("settings-select-open")
+                h, ch = lang.property("listHeight"), lang.property("listContentHeight")
+                if h < 38 * 5 or ch <= h:
+                    problems_extra.append(f"select: the list doesn't show several entries and scroll (height {h}, content {ch})")
+                call(lang, "closeList")
     # both engines selectable: faster-whisper chosen → its models, where it runs, a load button
     config.save({"asr_engine": "faster-whisper", "faster_whisper_model": "large-v3-turbo"})
     call(settings, "load")

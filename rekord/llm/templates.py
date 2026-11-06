@@ -124,8 +124,17 @@ Hinweis am Ende: 'Keine Rechtsberatung.'"""),
 Tabelle | Sprecher | Redeanteil (aus Statistik) | Hauptthemen | Haltung |. Danach je Person 2-3 Sätze: Position, Anliegen, Zusagen.
 Dann: Dynamik im Gespräch (Wer hat dominiert, wo gab es Konflikt/Einigkeit)."""),
     T("mindmap", "Mind Map", "Analyse", "Gesprächsstruktur als Mind Map",
-      """Gib NUR eine verschachtelte Markdown-Liste aus (keinen anderen Text, keine Überschriften).
-Erste Zeile: '- <Hauptthema>' . Darunter 3-7 Äste mit je 2-5 Unterpunkten (max 3 Ebenen, je max 6 Wörter)."""),
+      """Gib NUR eine verschachtelte Markdown-Liste aus – keinen anderen Text, keine Überschriften, kein Codeblock.
+Aufbau (Einrückung: genau 2 Leerzeichen pro Ebene):
+- Hauptthema des Gesprächs
+  - Ast 1 (ein Oberthema)
+    - konkreter Punkt aus dem Gespräch
+    - konkreter Punkt aus dem Gespräch
+  - Ast 2
+    - …
+Regeln: 4-6 Äste, jeder Ast mit 2-5 Unterpunkten (Ebene 3 nur, wenn nötig). Jeder Eintrag höchstens 6 Wörter.
+Fasse zusammen, was zusammengehört – keine lange flache Liste. Konkret statt allgemein: Begriffe, Zahlen, Namen, Ergebnisse
+aus dem Gespräch („Abschreibung: 5 Jahre linear“ statt „Abschreibungen“). Nichts erfinden."""),
     T("qa", "FAQ aus dem Gespräch", "Analyse", "Fragen & Antworten zum Nachschlagen",
       """# FAQ
 Erstelle 8-15 Fragen, die jemand, der nicht dabei war, stellen würde, mit präzisen Antworten aus dem Gespräch und [mm:ss]."""),

@@ -101,7 +101,7 @@ def build(port: int, keep_running: bool | None = None) -> Window | None:
     app.setApplicationDisplayName("REKORD")
     app.setOrganizationName("REKORD")
     app.setDesktopFileName("rekord")
-    app.setQuitOnLastWindowClosed(False)  # Main.qml decides: quit, or keep running for the iPhone (autostart)
+    app.setQuitOnLastWindowClosed(False)  # Main.qml decides: quit, or keep running in the background (autostart)
     icon = _icon_path()
     if icon:
         app.setWindowIcon(QIcon(str(icon)))
@@ -167,7 +167,8 @@ def _keep_running() -> bool:
 
 
 def _icon_path() -> Path | None:
-    p = Path(__file__).parent.parent / "web" / "icons" / "icon-512.png"
+    # the rounded app icon – macOS shows it in the Dock while REKORD runs (the square one looked cut off there)
+    p = Path(__file__).parent.parent / "web" / "icons" / "app-512.png"
     return p if p.is_file() else None
 
 
