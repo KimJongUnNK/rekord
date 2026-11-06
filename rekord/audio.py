@@ -132,6 +132,44 @@ def encode_m4a(samples: np.ndarray, path: str | Path, sr: int = SR, bitrate: int
             out.mux(pkt)
 
 
+SPEECH_LEVEL = 0.1  # ≈ -20 dBFS: where Whisper and the speech detection work best
+MAX_GAIN = 31.6  # at most +30 dB – more only lifts the noise
+_CHUNK = SR * 60  # one minute at a time: a 3-hour lecture doesn't need a second copy in memory
+
+
+def speech_level(x: np.ndarray) -> float:
+    """How loud the speech is: the loud 20-ms frames (95th percentile), so pauses and silence don't count."""
+    frame = SR // 50
+    rms = []
+    for i in range(0, len(x) - frame + 1, _CHUNK):
+        c = x[i:i + _CHUNK]
+        n = len(c) // frame * frame
+        if n:
+            rms.append(np.sqrt(np.mean(np.square(c[:n].reshape(-1, frame), dtype=np.float32), axis=1)))
+    return float(np.percentile(np.concatenate(rms), 95)) if rms else 0.0
+
+
+def boost(x: np.ndarray, target: float = SPEECH_LEVEL, max_gain: float = MAX_GAIN) -> tuple[np.ndarray, float]:
+    """Quiet recordings louder before transcribing – a phone at the back of the lecture hall, a quiet call. Only for
+    the analysis: the stored recording stays as it is. Loud enough already: unchanged (never quieter). Peaks are
+    softly limited instead of clipped. Returns the samples and the gain (1.0 = unchanged)."""
+    level = speech_level(x)
+    if level < 1e-5:  # silence: nothing to lift
+        return x, 1.0
+    gain = min(max_gain, target / level)
+    if gain < 1.4:  # less than +3 dB: not worth it
+        return x, 1.0
+    y = np.multiply(x, np.float32(gain), dtype=np.float32)
+    knee = np.float32(0.9)
+    for i in range(0, len(y), _CHUNK):
+        c = y[i:i + _CHUNK]
+        over = np.abs(c) > knee
+        if over.any():
+            a = np.abs(c[over])
+            c[over] = np.sign(c[over]) * (knee + (1 - knee) * np.tanh((a - knee) / (1 - knee)))
+    return y, float(gain)
+
+
 def peaks(samples: np.ndarray, n: int = 800) -> list[float]:
     """Downsampled waveform envelope for the UI (0..1)."""
     if len(samples) == 0:

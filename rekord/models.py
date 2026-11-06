@@ -145,6 +145,62 @@ def engine(settings: dict) -> str:
     return "sherpa"
 
 
+def _hardware() -> dict:
+    """Memory, processor cores and graphics of this computer – read once."""
+    from .llm import ollama
+    hw = dict(ollama.hardware())
+    hw["cores"] = os.cpu_count() or 4
+    if faster_whisper_available():
+        from .engines import asr
+        hw["cuda"] = asr.cuda_devices() > 0
+    else:
+        hw["cuda"] = False
+    return hw
+
+
+def recommend_asr(hw: dict | None = None) -> dict:
+    """The speech model that fits this computer: as accurate as it can be while a one-hour recording is still done
+    in reasonable time. NVIDIA card (and faster-whisper there): turbo on the card. Otherwise Whisper ONNX on the
+    processor – turbo from 16 GB and 8 cores (Apple M chips, newer PCs), small for usual laptops, base below."""
+    hw = _hardware() if hw is None else hw
+    ram, cores = float(hw.get("ram_gb") or 8), int(hw.get("cores") or 4)
+    if ram >= 15 and cores >= 8:
+        onnx = "whisper-turbo"
+    elif ram >= 7 and cores >= 4:
+        onnx = "whisper-small"
+    else:
+        onnx = "whisper-base"
+    out = {"asr_engine": "sherpa", "asr_model": onnx, "faster_whisper_model": "large-v3-turbo"}
+    gpu = (" · Apple-Chip" if hw.get("gpu") == "apple" else
+           " · NVIDIA-Grafikkarte" if hw.get("cuda") or hw.get("gpu") == "nvidia" else "")
+    label = f"{ram:.0f} GB RAM · {cores} Kerne{gpu}"
+    if hw.get("cuda") and faster_whisper_available():
+        vram = float(hw.get("vram_gb") or 0)
+        out.update(asr_engine="faster-whisper", faster_whisper_model="large-v3-turbo" if vram == 0 or vram >= 4 else "small")
+        out["model"] = FW_PREFIX + out["faster_whisper_model"]
+    else:
+        out["model"] = onnx
+    out["name"], out["label"] = name(out["model"]), label
+    return out
+
+
+def apply_recommended(force: bool = False) -> dict | None:
+    """Automatic model choice (the default): set what fits this computer. A model the user picked stays
+    (asr_auto is then off). Returns the recommendation when something changed."""
+    s = config.load()
+    if not (force or s.get("asr_auto", True)):
+        return None
+    rec = recommend_asr()
+    patch = {k: rec[k] for k in ("asr_engine", "asr_model", "faster_whisper_model") if s.get(k) != rec[k]}
+    if force:
+        patch["asr_auto"] = True
+    if patch:
+        config.save(patch)
+        log.info("speech model for this computer (%s): %s", rec["label"], rec["name"])
+        return rec
+    return None
+
+
 ENGLISH_ONLY = {"whisper-distil-large-v3", FW_PREFIX + "distil-large-v3"}
 _MULTILINGUAL = ["whisper-turbo", "whisper-small", "whisper-medium", "whisper-large-v3", "whisper-base", "whisper-tiny"]
 

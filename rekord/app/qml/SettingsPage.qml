@@ -353,6 +353,20 @@ Page {
                         Select { Layout.maximumWidth: 300; options: page.opts(page.langs); value: page.s ? page.s.language : ""; onPicked: (v) => page.save({ language: v }) }
                     }
                     Field {
+                        label: "Passend zu diesem Computer"; tip: "asrauto"
+                        readonly property var rec: page.st ? (page.st.asr_recommended || {}) : {}
+                        hint: rec.name ? "Erkannt: " + rec.label + " → " + rec.name : "REKORD liest Arbeitsspeicher, Prozessor und Grafikchip aus."
+                        Check {
+                            objectName: "asrAuto"
+                            text: "Modell automatisch wählen (empfohlen)"
+                            checked: page.s ? page.s.asr_auto !== false : true
+                            onToggled: {
+                                page.save({ asr_auto: checked })
+                                if (checked) Qt.callLater(() => { page.loadModels(); page.app.call("GET", "/api/status", null, (r) => page.st = r) })
+                            }
+                        }
+                    }
+                    Field {
                         label: "Engine"; tip: "engine"
                         hint: page.s && page.s.asr_engine === "faster-whisper" && page.st && page.st.fw_device
                               ? "Läuft hier auf: " + page.st.fw_device + ". Wortgenaue Zeiten, hört Begriffe aus Vokabular und Unterlagen."
