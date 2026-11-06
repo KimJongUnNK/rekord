@@ -78,7 +78,7 @@ const TIPS = {
   enrollmode: "<b>Text vorlesen</b>: Die Person liest ihren eigenen Text – am genauesten. <b>Einfach reden lassen</b>: Die Person redet über irgendwas, oder du lässt jemanden reden, der sowieso spricht (z. B. den Prof in der Vorlesung) – kurze Zwischenrufe anderer lässt REKORD weg. <b>Aus Aufnahme lernen</b>: Die Stimme aus einer fertigen Aufnahme nehmen. Gezählt werden nur Sekunden, in denen wirklich gesprochen wird.",
   room: "Alle Stimmen dieser Aufnahme mit ihrem Redeanteil. Eine unbekannte Stimme antippen und Namen eingeben – ab sofort wird sie erkannt.",
   remember: "Speichert den Stimmabdruck dieser Person. In künftigen Aufnahmen erkennt REKORD sie automatisch mit Namen. Jede Bestätigung macht die Erkennung besser.",
-  naming: "Hier stehen Stimmen, die REKORD noch nicht kennt. Anhören, Namen eingeben, <b>Merken</b> – ab der nächsten Aufnahme werden sie automatisch erkannt. Hat sich jemand vorgestellt („Hier ist Emil“), schlägt REKORD den Namen vor.",
+  naming: "Hier stehen Stimmen, die REKORD noch nicht kennt. Anhören, Namen eingeben, <b>Merken</b> – ab der nächsten Aufnahme werden sie automatisch erkannt. Hat sich jemand vorgestellt („Hier ist Emil“), schlägt REKORD den Namen vor. <b>Später</b> klappt es zusammen – <b>Jetzt benennen</b> holt es zurück.",
   people: "Ein Stimmabdruck ist eine Zahlenreihe, die beschreibt, wie jemand klingt. Er bleibt auf diesem Computer. Je öfter du einen Namen bestätigst, desto zuverlässiger erkennt REKORD die Person.",
 };
 
