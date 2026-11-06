@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -20,6 +21,22 @@ UNKNOWN_LABEL = 999
 UNKNOWN_COLOR = "#8A877F"
 LECTURER, AUDIENCE = "Vortragende Person", "Publikum"  # „Vorlesung“: one main voice, everyone else collected
 LECTURER_LABEL = 998
+NOISE, NOISE_COLOR, NOISE_LABEL = db.NOISE, db.NOISE_COLOR, 997
+# what Whisper "hears" in a cough, music or silence: a sound tag, or the subtitle lines it learned from TV
+_SOUND_TAG = re.compile(r"^\W*[\[(*♪♫<].{0,40}[\])*♪♫>]\W*$")
+_PHANTOM = ("amara.org", "untertitel der amara", "untertitel im auftrag", "untertitelung des", "untertitelung im auftrag",
+            "untertitel von stephanie", "vielen dank fürs zuschauen", "danke fürs zuschauen", "thanks for watching",
+            "thank you for watching", "subtitles by the amara")
+
+
+def is_noise(text: str) -> bool:
+    """A line that is only a sound: [Musik], *hustet*, (Applaus), ♪ – no letters at all – or a phantom phrase
+    Whisper writes into noise ("Untertitel der Amara.org-Community", "Vielen Dank fürs Zuschauen")."""
+    t = (text or "").strip()
+    if not t or not re.search(r"\w", t) or _SOUND_TAG.match(t):
+        return True
+    low = t.lower()
+    return len(t.split()) <= 12 and any(p in low for p in _PHANTOM)
 LECTURER_COLOR = "#FF5A1F"
 
 
@@ -151,6 +168,14 @@ def process(rid: str, on_event=None) -> dict:
         elif lecturer is not None and seg["label"] == lecturer:
             seg["label"] = LECTURER_LABEL
 
+    # a sound, not speech → the role "Geräusch": hidden from transcript, summary and export (can be undone)
+    noisy = [x for x in segs if is_noise(x["text"])]
+    for seg in noisy:
+        seg["label"], seg["voice"] = NOISE_LABEL, None
+    if noisy:
+        speakers.append({"label": NOISE_LABEL, "name": NOISE, "color": NOISE_COLOR, "profile_id": None, "match_score": 0})
+        log.info("%s: %d lines were only a sound – given to %s", rid, len(noisy), NOISE)
+
     # drop speakers that ended up without words
     used = {x["label"] for x in segs}
     speakers = [sp for sp in speakers if sp["label"] in used] or speakers[:1]
@@ -242,6 +267,9 @@ def assign_segment(seg_id: int, name: str, remember: bool = True, whole_voice: b
     """"Wer sagt das?" for a transcript line: move it – or, with whole_voice, every line of that unknown voice – to a
     person (created if needed). With remember, that audio also trains the person's voiceprint."""
     name = name.strip()
+    noise = name.lower() == NOISE.lower()
+    if noise:  # a sound has no voice to learn
+        name, remember = NOISE, False
     row = db.connect().execute("SELECT * FROM segments WHERE id=?", (seg_id,)).fetchone()
     if row is None or not name:
         raise KeyError(seg_id)
@@ -250,10 +278,10 @@ def assign_segment(seg_id: int, name: str, remember: bool = True, whole_voice: b
     lines = [seg]
     if whole_voice and seg.get("voice") is not None:
         lines = [x for x in db.list_segments(rid) if x["speaker_id"] == old and x.get("voice") == seg["voice"]]
-    profile = next((p for p in db.list_profiles(with_embedding=True) if p["name"].lower() == name.lower()), None)
+    profile = None if noise else next((p for p in db.list_profiles(with_embedding=True) if p["name"].lower() == name.lower()), None)
     target = next((x for x in db.list_speakers(rid) if x["name"].lower() == name.lower() and x["id"] != old), None)
     if target is None:
-        color = profile["color"] if profile else db.PALETTE[len(db.list_speakers(rid)) % len(db.PALETTE)]
+        color = NOISE_COLOR if noise else profile["color"] if profile else db.PALETTE[len(db.list_speakers(rid)) % len(db.PALETTE)]
         tid = db.add_speaker(rid, profile["name"] if profile else name, color, profile["id"] if profile else None)
     else:
         tid = target["id"]

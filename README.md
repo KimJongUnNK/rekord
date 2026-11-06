@@ -148,7 +148,7 @@ Nimm mit der Sprachmemo-App deines Handys auf und leg die Datei in den **Eingang
 Ja. Vor der Aufnahme **Vorlesung** wählen: Mitzählen musst du nicht. REKORD erkennt die vortragende Person und sammelt Fragen aus dem Hörsaal unter „Publikum“. Danach gibt es automatisch einen **Lernzettel** mit Kernaussagen, Definitionen und Prüfungsrelevantem. Die Stimme des Profs lernt REKORD, indem du ihn **einfach reden lässt** oder sie **aus einer Aufnahme** nimmst – vorlesen muss niemand etwas.
 
 **Ist das eine Web-App?**
-Nein. REKORD ist am Computer ein **echtes Programm** mit eigenem Fenster (Mac, Windows, Linux) – ab Version 1.3 komplett: Aufnahmen, Live, Fragen, Personen, Vorlagen, Einstellungen und die Einführung. Mehr dazu in der [Anleitung](docs/ANLEITUNG.md#das-rekord-fenster).
+Nein. REKORD ist am Computer ein **echtes Programm** mit eigenem Fenster (Mac, Windows, Linux) – komplett: Aufnahmen, Live, Fragen, Personen, Vorlagen, Einstellungen und die Einführung. Eine Browser-Version gibt es nicht. Mehr dazu in der [Anleitung](docs/ANLEITUNG.md#das-rekord-fenster).
 
 **Welche Sprachen versteht REKORD?**
 Rund 99 Sprachen, auch gemischt im selben Gespräch. Am genauesten, wenn du die Sprache in den Einstellungen fest einstellst.
@@ -209,7 +209,7 @@ Alles ab hier brauchst du zum Benutzen **nicht**.
  Mac / Windows / Linux – alles auf diesem Computer (127.0.0.1)
  ┌───────────────────────────────────────────────┐
  │ Live:  VAD → Stimmabdruck → Person? → Whisper │  ◄── REKORD-Fenster (Qt)
- │        („Lisa spricht", Mitschrift)            │  ◄── Browser
+ │        („Lisa spricht", Mitschrift)            │
  │ Danach: pyannote-Segmentierung → Feintrennung │  ◄── Claude Desktop (MCP)
  │        → Personen-Abgleich → Whisper → KI     │
  │ SQLite + FTS5 · Audio · Modelle · ~/Rekord    │

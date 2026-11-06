@@ -25,10 +25,12 @@ def _wav(seconds=1.0) -> bytes:
     return buf.getvalue()
 
 
-def test_index_and_pwa_assets(client):
-    assert "REKORD" in client.get("/").text
-    assert client.get("/manifest.webmanifest").json()["short_name"] == "REKORD"
-    assert client.get("/static/app.js").status_code == 200
+def test_no_web_interface_only_a_hint_and_the_icons(client):
+    """REKORD is the app on the computer: / only says so, the old web interface is gone."""
+    r = client.get("/")
+    assert r.status_code == 200 and "REKORD läuft" in r.text and "App" in r.text
+    for gone in ("/static/app.js", "/manifest.webmanifest", "/sw.js"):
+        assert client.get(gone).status_code == 404, gone
     assert client.get("/icons/icon-192.png").headers["content-type"] == "image/png"
     assert client.get("/icons/../server.py").status_code == 404
 
@@ -100,9 +102,9 @@ def test_lan_is_only_for_the_iphone_app(client):
     lan = TestClient(app, client=("192.168.1.50", 5000))
     assert lan.get("/api/status").status_code == 401
     tok = config.load()["pair_token"]
-    for path in ("/", "/static/app.js", f"/?token={tok}", "/manifest.webmanifest", "/setup", "/rekord.mobileconfig"):
+    for path in ("/", f"/?token={tok}", "/icons/icon-192.png"):
         r = lan.get(path, headers={"X-Rekord-Token": tok})
-        assert r.status_code == 403 and "REKORD-App" in r.text, path  # no web version on the phone
+        assert r.status_code == 403 and "Schnittstelle" in r.text, path  # nothing but the API from outside
     assert lan.get("/api/status", headers={"X-Rekord-Token": tok}).status_code == 200
     assert lan.get(f"/api/status?token={tok}").status_code == 200  # the app's audio player uses the query form
     fresh = TestClient(app, client=("192.168.1.51", 5000))

@@ -17,8 +17,8 @@ def _ts(t: float, sep: str) -> str:
 
 def _data(rid: str):
     rec = db.get_recording(rid)
-    sp = {s["id"]: s["name"] for s in db.list_speakers(rid)}
-    segs = db.list_segments(rid)
+    sp = {s["id"]: s["name"] for s in db.list_speakers(rid) if s["name"] != db.NOISE}
+    segs = db.spoken_segments(rid)  # "Geräusch" lines stay out
     return rec, sp, segs
 
 

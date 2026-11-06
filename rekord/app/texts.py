@@ -1,35 +1,23 @@
-"""Texts shared with the previous interface: the ⓘ help (rekord/web/help.js stays the one place they're written)
-and the reading texts for "Person einsprechen" (every person gets their own, ~45 s)."""
+"""Texts of the window: the ⓘ help (rekord/data/help.json) and the reading texts for "Person einsprechen"
+(rekord/data/reading.json – every person gets their own, ~45 s)."""
 from __future__ import annotations
 
 import functools
+import json
 import random
-import re
 from pathlib import Path
 
-WEB = Path(__file__).resolve().parent.parent / "web"
+DATA = Path(__file__).resolve().parent.parent / "data"
 
 
 @functools.lru_cache(maxsize=1)
 def tips() -> dict[str, str]:
-    src = (WEB / "help.js").read_text("utf-8")
-    body = src[src.index("const TIPS = {"):]
-    body = body[: body.index("\n};")]
-    out = {}
-    for m in re.finditer(r'^\s*"?([\w.]+)"?:\s*"((?:[^"\\]|\\.)*)",?\s*$', body, re.M):
-        out[m[1]] = m[2].replace('\\"', '"').replace("\\'", "'")
-    return out
+    return json.loads((DATA / "help.json").read_text("utf-8"))
 
 
 @functools.lru_cache(maxsize=1)
 def _pools() -> dict[str, list[str]]:
-    src = (WEB / "app.js").read_text("utf-8")
-    out = {}
-    for key, name in (("de", "READ_POOL"), ("en", "READ_POOL_EN")):
-        block = src[src.index(f"const {name} = ["):]
-        block = block[: block.index("];")]
-        out[key] = re.findall(r'^\s*"((?:[^"\\]|\\.)*)",?\s*$', block, re.M)
-    return out
+    return json.loads((DATA / "reading.json").read_text("utf-8"))
 
 
 def reading_text(name: str, variant: int = 0, lang: str = "de") -> str:

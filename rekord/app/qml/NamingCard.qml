@@ -55,7 +55,7 @@ Card {
     function save(r, name) {
         name = name.trim()
         if (!name) { page.app.toast("Namen eingeben"); return }
-        const done = () => { page.app.toast(name + ": Stimme gemerkt ✓"); page.reload() }
+        const done = () => { page.app.toast(name === "Geräusch" ? "Als Geräusch ausgeblendet" : name + ": Stimme gemerkt ✓"); page.reload() }
         if (r.single) page.app.call("PATCH", "/api/speakers/" + r.sid, { name: name, remember: true }, done)
         else page.app.call("POST", "/api/segments/" + r.lines[0].id + "/assign", { name: name, remember: true, whole_voice: true }, done)
     }
@@ -82,47 +82,68 @@ Card {
             text: (card.rows.length > 1 ? card.rows.length + " Stimmen hat REKORD nicht erkannt." : "Eine Stimme hat REKORD nicht erkannt.")
                 + " Anhören, Namen eingeben, Merken – ab der nächsten Aufnahme wird sie automatisch erkannt."
         }
-        Repeater {
-            model: card.later ? [] : card.rows
-            delegate: RowLayout {
-                id: row
-                required property var modelData
-                Layout.fillWidth: true
+        ScrollView {  // a lecture can bring many voices: the list scrolls, the page stays usable
+            id: rowsView
+            objectName: "namingRows"
+            visible: !card.later
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(rowsCol.implicitHeight, Math.max(150, card.page.height * 0.32))
+            contentWidth: availableWidth
+            clip: true
+            ColumnLayout {
+                id: rowsCol
+                width: rowsView.availableWidth
                 spacing: 10
-                Rectangle {
-                    width: 34; height: 34; radius: 17; color: "#8A877F"
-                    Text { anchors.centerIn: parent; text: "?"; color: "#FFFFFF"; font.pixelSize: 15; font.weight: Font.Black }
-                }
-                Btn {
-                    small: true; iconName: "play"
-                    ToolTip.visible: hovered; ToolTip.text: "Anhören"
-                    onClicked: {
-                        const mine = row.modelData.lines.slice().sort((a, b) => (b.end - b.start) - (a.end - a.start))
-                        if (mine.length) player.playRange(mine[0].start, mine[0].end)
-                    }
-                }
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 1
-                    Text {
-                        text: "Ab " + card.page.fmt(row.modelData.lines[0].start) + " · " + row.modelData.lines.length + (row.modelData.lines.length === 1 ? " Satz" : " Sätze")
-                        font.family: Theme.text; font.pixelSize: 13; font.weight: Font.Bold; color: Theme.fg
-                    }
-                    Text {
+                Repeater {
+                    model: card.later ? [] : card.rows
+                    delegate: RowLayout {
+                        id: row
+                        required property var modelData
                         Layout.fillWidth: true
-                        text: "„" + (row.modelData.lines[0].text || "").slice(0, 90) + "“"
-                        elide: Text.ElideRight
-                        font.family: Theme.text; font.pixelSize: 12; color: Theme.fg2
+                        spacing: 10
+                        Rectangle {
+                            width: 34; height: 34; radius: 17; color: "#8A877F"
+                            Text { anchors.centerIn: parent; text: "?"; color: "#FFFFFF"; font.pixelSize: 15; font.weight: Font.Black }
+                        }
+                        Btn {
+                            small: true; iconName: "play"
+                            ToolTip.visible: hovered; ToolTip.text: "Anhören"
+                            onClicked: {
+                                const mine = row.modelData.lines.slice().sort((a, b) => (b.end - b.start) - (a.end - a.start))
+                                if (mine.length) player.playRange(mine[0].start, mine[0].end)
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 1
+                            Text {
+                                text: "Ab " + card.page.fmt(row.modelData.lines[0].start) + " · " + row.modelData.lines.length + (row.modelData.lines.length === 1 ? " Satz" : " Sätze")
+                                font.family: Theme.text; font.pixelSize: 13; font.weight: Font.Bold; color: Theme.fg
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "„" + (row.modelData.lines[0].text || "").slice(0, 90) + "“"
+                                elide: Text.ElideRight
+                                font.family: Theme.text; font.pixelSize: 12; color: Theme.fg2
+                            }
+                        }
+                        NameField {
+                            id: nf
+                            Layout.preferredWidth: 190
+                            names: card.names
+                            text: row.modelData.suggest
+                            onAccepted: card.save(row.modelData, nf.text)
+                        }
+                        Btn { kind: "primary"; small: true; text: "Merken"; onClicked: card.save(row.modelData, nf.text) }
+                        Btn {
+                            objectName: "namingNoise"
+                            kind: "ghost"; small: true; text: "Geräusch"
+                            ToolTip.visible: hovered; ToolTip.delay: 400
+                            ToolTip.text: "Keine Stimme, nur ein Geräusch – raus aus Transkript, Protokoll und Export"
+                            onClicked: card.save(row.modelData, "Geräusch")
+                        }
                     }
                 }
-                NameField {
-                    id: nf
-                    Layout.preferredWidth: 190
-                    names: card.names
-                    text: row.modelData.suggest
-                    onAccepted: card.save(row.modelData, nf.text)
-                }
-                Btn { kind: "primary"; small: true; text: "Merken"; onClicked: card.save(row.modelData, nf.text) }
             }
         }
     }

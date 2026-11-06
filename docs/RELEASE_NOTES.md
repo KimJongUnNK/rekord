@@ -36,6 +36,18 @@ Kommt der Hinweis nicht: unten links auf **Nach Updates suchen** klicken.
 Beim ersten Start lädt REKORD einmalig die Sprachmodelle (~700 MB), danach läuft alles offline.
 Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**
 
+## Neu in 1.4.4
+
+- 🗂️ **Mehrere Dateien → ein Transkript.** Teil 1 und Teil 2 der Vorlesung zusammen auswählen oder reinziehen → **Eine Aufnahme**: nach Namen sortiert hintereinander, einmal transkribiert, Sprecher über alle Teile.
+- 🧠 **Mind Maps mit Ästen und Linien.** Die Linien fehlen nicht mehr, Texte werden nicht mehr abgeschnitten. Liefert die KI eine flache Liste, sortiert REKORD sie selbst in Äste mit Unterpunkten.
+- ✍️ **Der KI sagen, was sie an der Zusammenfassung ändern soll.** „Keine Sternchen“, „kürzer“, „Spiegelstriche statt Punkte“, „To-dos als Tabelle“ → **Ändern** – mit **Rückgängig**. Genauso bei der Mind Map.
+- 🔇 **Rolle „Geräusch“.** Husten, Musik oder was die KI als Wort gehört hat: Satz antippen → *Ist ein Geräusch*. Diese Zeilen verschwinden aus Transkript, Protokoll, Export und Suche. Typische Fälle („[Musik]“, „Untertitel der Amara.org-Community“) erkennt REKORD selbst.
+- ⏹️ **Stopp gleich neben „Datei transkribieren“.** Links siehst du, was gerade transkribiert wird – mit Fortschritt und **Stopp**, von jeder Seite aus.
+- ☑️ **Mehrere Aufnahmen auf einmal löschen.** *Aufnahmen → Auswählen*, antippen, **N löschen**.
+- 📜 **Alles scrollt.** Ausklappmenüs mit vielen Einträgen, „Wer ist das?“ mit vielen Stimmen, der Dialog „Wer sagt das?“ – und die ganze Aufnahme-Seite, wenn das Fenster klein ist.
+- 🧹 **Nur noch die App.** Die Browser-Version ist weg – REKORD ist das Programm auf deinem Computer. Weniger Ballast, schnellere Updates.
+- 🟧 **Rundes App-Icon** im Dock und in der Taskleiste – und oben in der Mac-Menüleiste ein schlichtes, einfarbiges Symbol wie bei allen anderen Apps (voller Punkt = nimmt gerade auf).
+
 ## Neu in 1.4.3
 
 - 🖥️ **Das richtige Modell für deinen Rechner – automatisch.** REKORD liest Arbeitsspeicher, Prozessorkerne und Grafikchip aus und stellt die Spracherkennung passend ein: NVIDIA-Karte → faster-whisper turbo, Apple M-Chip / starker PC (ab 16 GB, 8 Kerne) → Whisper turbo, normaler Laptop → small, schwacher Rechner → base. Unter *Einstellungen → Transkription* steht, was erkannt wurde. Selbst gewählt? Bleibt.

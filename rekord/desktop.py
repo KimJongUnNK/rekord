@@ -1,6 +1,5 @@
 """Desktop app for Windows/macOS/Linux: the hub runs in-process, the window is REKORD's native program
-(Qt Quick, rekord/app). Where that can't start, the previous interface opens instead: a webview window or,
-without a webview, the browser."""
+(Qt Quick, rekord/app). There is no web interface any more: where the window can't start, REKORD says why."""
 from __future__ import annotations
 
 import json
@@ -11,7 +10,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-import webbrowser
+import webbrowser  # links (Key erstellen, Anleitung …) open in the normal browser
 
 
 def _port_open(port: int) -> bool:
@@ -85,16 +84,7 @@ def focus() -> bool:
     if focus_hook is not None:
         focus_hook()
         return True
-    try:
-        import webview
-        for w in webview.windows:
-            w.restore()
-            w.show()
-            w.on_top = True
-            w.on_top = False
-        return bool(webview.windows)
-    except Exception:  # noqa: BLE001
-        return False
+    return False
 
 
 def _allow_focus() -> None:
@@ -109,21 +99,23 @@ def _allow_focus() -> None:
 def _show(url: str, port: int, info: dict, host: str = "127.0.0.1") -> None:
     """REKORD already runs: bring its window to the front. Runs it only in the background (started with the
     computer), this start takes its place – the native window needs the engine in its own process. While that
-    background REKORD records (e.g. from the iPhone) it stays, and the previous interface shows it instead."""
+    background REKORD records it stays; this start takes over as soon as the recording is saved."""
     if info.get("window"):
         _allow_focus()
         if _post(port, "/api/window/focus") == 200:
             return
     from . import app
-    if app.usable() and _take_over(port):
+    if not app.usable():
+        _no_window(app.why())
+    if _take_over(port):
         _start_hub(host, port)
         _ui(url, port, host)
         return
-    _window(url, own_hub=False, port=port)
+    _after_recording(url, port, host)
 
 
 def _ui(url: str, port: int, host: str, restarted: bool = False) -> None:
-    """The window for the hub in this process: the native program, or the previous interface where it can't start."""
+    """The window for the hub in this process – or, where it can't start, a clear message why."""
     from . import app
     if app.usable() and app.run(port) == 0:
         _end()
@@ -137,7 +129,7 @@ def _ui(url: str, port: int, host: str, restarted: bool = False) -> None:
             pass
         print(msg, flush=True)
         os._exit(3)
-    _window(url, own_hub=True, restarted=restarted, port=port, host=host)
+    _no_window(app.why() or "das Fenster ließ sich nicht laden")
 
 
 def _end() -> None:
@@ -212,39 +204,49 @@ def _watch(port: int, host: str, take_over: bool) -> None:
             os._exit(0)  # … and this old one closes
 
 
-def _window(url: str, own_hub: bool, restarted: bool = False, port: int = 8765, host: str = "127.0.0.1",
-            take_over: bool = False) -> None:
-    """Native window (pywebview) or, where there is none, the browser. Without our own hub there is nothing
-    to keep alive after the browser opened."""
-    global window_open
+def _after_recording(url: str, port: int, host: str) -> None:
+    """An older REKORD is recording right now: never cut that off. Wait until it's saved, then take its place and
+    open the window."""
+    from . import __version__
+    print(f"REKORD nimmt gerade auf – REKORD {__version__} öffnet sich, sobald die Aufnahme gespeichert ist.", flush=True)
+    _notify("REKORD nimmt gerade auf – das Fenster öffnet sich, sobald die Aufnahme gespeichert ist.")
+    _watch(port, host, take_over=True)  # returns once this process runs the hub
+    _ui(url, port, host)
+
+
+def _notify(msg: str) -> None:
+    """A message without a window (macOS notification, Linux notify-send, Windows message box) – best effort."""
+    import subprocess
+
+    from .system import child_env
     try:
-        import webview  # pip install pywebview
-    except ImportError:
-        webview = None
-    if webview is not None:
-        try:
-            webview.create_window("REKORD", url, width=1320, height=860, min_size=(380, 600))
-            from . import config
-            if own_hub:
-                window_open = True
-            else:
-                threading.Thread(target=_watch, args=(port, host, take_over), daemon=True, name="watch-hub").start()
-            # not private: otherwise the window forgets this device's settings (theme, accent, mic …) on every start
-            webview.start(private_mode=False, storage_path=str(config.pointer_path().parent / "webview"))
-            window_open = False
-            return
-        except Exception as e:  # noqa: BLE001 - no GUI backend (e.g. Linux without WebKitGTK/Qt)
-            window_open = False
-            print(f"Kein natives Fenster ({e}) – öffne im Browser.")
-    if not restarted:  # the open browser tab reconnects by itself
-        open_url(url)
-    if take_over:  # browser mode: wait here until the old version has finished recording, then take over
-        _watch(port, host, take_over=True)
-        own_hub = True
-    if own_hub:
-        print(f"REKORD läuft: {url}  – beenden über Einstellungen → „REKORD beenden“ oder Strg+C.")
-        while True:
-            time.sleep(3600)
+        if sys.platform == "darwin":
+            subprocess.run(["osascript", "-e", f'display notification "{msg}" with title "REKORD"'], timeout=5, check=False)
+        elif sys.platform == "win32":
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, msg, "REKORD", 0x40)
+        else:
+            subprocess.run(["notify-send", "REKORD", msg], env=child_env(), timeout=5, check=False,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _no_window(reason: str) -> None:
+    """The window can't start here (e.g. Linux without a desktop, missing system libraries). There is no web page
+    to fall back to – say why, clearly, and end."""
+    msg = ("REKORD kann sein Fenster hier nicht öffnen" + (f": {reason}" if reason else "") +
+           ". REKORD braucht eine Desktop-Umgebung (Mac, Windows, Linux mit Bildschirm). Ohne Fenster: "
+           "„rekord process datei.m4a“ in der Kommandozeile, oder „rekord mcp“ für Claude Desktop.")
+    print(msg, flush=True)
+    _notify(msg)
+    _end_code(1)
+
+
+def _end_code(code: int) -> None:
+    import logging
+    logging.shutdown()
+    os._exit(code)
 
 
 def run(port: int = 8765, lan: bool = False, background: bool = False) -> None:
@@ -272,7 +274,7 @@ def run(port: int = 8765, lan: bool = False, background: bool = False) -> None:
         # the old version is recording right now: never cut that off – take over as soon as it's finished
         print(f"REKORD {info.get('version')} nimmt gerade auf – {__version__} übernimmt danach.")
         if not background:
-            _window(url, own_hub=False, port=port, host=host, take_over=True)
+            _after_recording(url, port, host)
             return
         _watch(port, host, take_over=True)
     else:

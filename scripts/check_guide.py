@@ -1,5 +1,5 @@
-"""Checks that docs/ANLEITUNG.md covers every menu item, tab, button and settings field – of the REKORD window
-(rekord/app/qml) and of the previous interface (rekord/web, still used where the window can't start).
+"""Checks that docs/ANLEITUNG.md covers every menu item, tab, button and settings field of the REKORD window
+(rekord/app/qml – there is no web interface any more).
 
 Labels are pulled from the UI source, so new UI elements show up here until the guide mentions them.
 Run: python scripts/check_guide.py   (exit code 1 = gaps)
@@ -13,10 +13,12 @@ if hasattr(sys.stdout, "reconfigure"):  # Windows consoles (cp1252) can't print 
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parent.parent
-app = (ROOT / "rekord/web/app.js").read_text("utf-8")
-app = re.sub(r'\$\{tip\("?[\w.]+"?\)\}', "", app)  # the ⓘ next to a label is not part of its name
-index = (ROOT / "rekord/web/index.html").read_text("utf-8")
 guide = (ROOT / "docs/ANLEITUNG.md").read_text("utf-8")
+QML = ROOT / "rekord/app/qml"
+
+
+def qml(name: str) -> str:
+    return (QML / name).read_text("utf-8")
 
 
 def norm(s: str) -> str:
@@ -27,32 +29,19 @@ def norm(s: str) -> str:
 G = norm(guide)
 groups: dict[str, set[str]] = {}
 
-groups["Menü (links)"] = set(re.findall(r'data-nav="\w+"[^>]*><svg.*?</svg><span[^>]*>([^<]+)</span>', index))
-groups["Einstellungen: Bereiche"] = set(re.findall(r'\["\w+", "([^"]+)"\]', app.split("const sections = [")[1].split("];")[0]))
-groups["Aufnahme: Reiter"] = set(re.findall(r'<button data-tab="\w+"[^>]*>([^<]+)</button>', app))
-groups["Aufnahme: … Menü"] = {m.split(" (")[0] for m in re.findall(r'<button class="btn(?: danger)?" value="(?:reprocess|reid|title|delete)">([^<]+)</button>', app)}
-groups["Einstellungen: Felder"] = {re.split(r"<span class=\"hint\">", m)[0] for m in re.findall(r'class="field"><(?:div class="lbl"|label[^>]*)>(.*?)</(?:div|label)>', app)}
-groups["Einstellungen: Auswahl"] = set(re.findall(r'\["(?:system|light|dark|comfortable|compact|mic|mic\+system|lecture)", "([^"]+)"[,\]]', app))
-groups["KI-Anbieter"] = set(re.findall(r'\["(?:anthropic|openai|ollama|compatible|none)", "([^"]+)", "', app))
-groups["Live"] = {"Wer ist dabei?", "Vorstellungsrunde", "Im Raum", "Mitschrift", "Pause"} \
-    | set(re.findall(r'<button data-m="[^"]+"[^>]*>([^<]+)</button>', app))
-groups["Export"] = set(re.findall(r'\["(?:md|docx|txt|srt|vtt|json)", "([^"]+)"', app)) | {"Zwischenablage", "PDF", "Audio"}
-groups["Knöpfe"] = set(re.findall(r'id="(?:enroll|new|clr|gen|frep|mmgen|mcp-copy|quit|ltest|mic-test|oll-setup|cd-connect|cc-connect'
-                                  r'|cd-restart|fw-open|key-get)"[^>]*>([^<]+)<', app))
-groups["Knöpfe"] |= {"Importieren", "Suchen & Ersetzen", "Stimme merken", "zusammenführen", "Mind Map erstellen", "Laden", "Testen"}
-pc = app[app.index("const provCfg = () => {"):app.index('$$("#prov .prov")')]
-groups["KI: Felder je Anbieter"] = set(re.findall(r'<label for="\w+">([^<]+)<span', pc)) | set(re.findall(r'keyField\("([^"]+)"', pc)) \
-    | set(re.findall(r'class="lbl">([^<]+)<', pc))
-
-groups["Erster Start"] = set(re.findall(r'data-ob="\w+"><b>([^<]+)</b>', app)) | set(re.findall(r'data-ob="none"[^>]*>([^<]+)<', app))
-welcome_js = (ROOT / "rekord/web/welcome.js").read_text("utf-8")
-groups["Einführung (erster Start)"] = set(re.findall(r'Schritt \$\{i \+ 1\} · ([^<]+)</div>', welcome_js)) | {"Erste Aufnahme", "Zur App", "Überspringen"}
+detail = qml("DetailPage.qml")
+groups["Menü (links)"] = set(re.findall(r'label: "([^"]+)", icon:', qml("Sidebar.qml")))
+groups["Aufnahme: Reiter"] = set(re.findall(r'"([^"]+)"', detail.split("readonly property var tabs:")[1].split("]")[0]))
+groups["Aufnahme: … Menü"] = {m.split(" (")[0].rstrip(" …") for m in re.findall(r'MenuItem \{ text: "([^"]+)"', detail)}
+groups["KI-Anbieter"] = set(re.findall(r'\["(?:anthropic|openai|ollama|compatible|none)", "([^"]+)", "', qml("SettingsPage.qml")))
+groups["Live"] = {"Wer ist dabei?", "Vorstellungsrunde", "Im Raum", "Mitschrift", "Pause"}
+groups["Export"] = set(re.findall(r'k: "\w+", n: "([^"]+)"', qml("ExportView.qml"))) - {"In Zwischenablage"} | {"Zwischenablage"}
+groups["Knöpfe"] = {"Datei transkribieren", "Suchen & Ersetzen", "Stimme merken", "zusammenführen", "Mind Map erstellen", "Laden",
+                    "Testen", "Auswählen", "Audio anhängen", "Unterlagen", "Transkription stoppen", "Jetzt benennen"}
 groups["Wer ist dabei? / Wer ist das?"] = {"Wie viele sprechen?", "Wer davon ist bekannt?", "Aufnahme starten", "Wer ist das?", "Merken",
-                                          "Wer sagt das?", "Zuordnen", "Nicht erkannte Stimme", "Anderer Text", "Stimme speichern"} \
-    | set(re.findall(r'data-v="[^"]+">([^<]+)</button>', re.search(r'id="w-meet".*?</div>', app, re.S)[0])) \
-    | {"Wo findet das Meeting statt?"}
-groups["Einsprechen"] = set(re.findall(r'<button type="button" data-m="\w+">([^<]+)</button>', app.split("async function enrollDialog")[1])) \
-    | {"Anderer Text", "Gesprächsidee", "Stimme lernen", "Stimme speichern"}
+                                          "Wer sagt das?", "Zuordnen", "Nicht erkannte Stimme", "Anderer Text", "Stimme speichern",
+                                          "Wo findet das Meeting statt?", "Geräusch"}
+groups["Einsprechen"] = {"Anderer Text", "Gesprächsidee", "Stimme lernen", "Stimme speichern"}
 groups["Speicherort"] = {"Speicherort", "KI-Modelle", "Laufwerk fehlt", "Nochmal prüfen", "Neu auf diesem Computer anfangen", "Umziehen"}
 
 # ---- the REKORD window (Qt Quick)

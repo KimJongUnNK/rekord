@@ -4,6 +4,7 @@ recording is fully worked out while you're in another program."""
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import QMetaObject, QObject, Slot
@@ -24,6 +25,27 @@ def describe(state: str, elapsed: str, hidden: bool) -> str:
     return "REKORD – läuft im Hintergrund" if hidden else "REKORD"
 
 
+ICONS = Path(__file__).resolve().parent.parent / "web" / "icons"
+
+
+def menu_bar_icon(recording: bool = False):
+    """macOS: a template image (black + transparency) – macOS draws it in the menu bar's own colour, light or dark,
+    like the other icons there. A ring = ready, a filled dot = recording. None elsewhere (the coloured icon fits the
+    Windows/Linux notification area)."""
+    if sys.platform != "darwin":
+        return None
+    from PySide6.QtGui import QIcon
+    name = "tray-rec" if recording else "tray"
+    if not (ICONS / f"{name}.png").is_file():
+        return None
+    icon = QIcon()
+    icon.addFile(str(ICONS / f"{name}.png"))
+    if (ICONS / f"{name}@2x.png").is_file():
+        icon.addFile(str(ICONS / f"{name}@2x.png"))
+    icon.setIsMask(True)
+    return icon
+
+
 class Tray(QObject):
     def __init__(self, app, win, state, live, api, icon: Path | None = None, parent=None):
         super().__init__(parent)
@@ -37,7 +59,8 @@ class Tray(QObject):
         if not isinstance(app, QApplication) or not QSystemTrayIcon.isSystemTrayAvailable():
             return
         from PySide6.QtGui import QIcon
-        self._tray = QSystemTrayIcon(QIcon(str(icon)) if icon else app.windowIcon(), self)
+        self._recording = False
+        self._tray = QSystemTrayIcon(menu_bar_icon() or (QIcon(str(icon)) if icon else app.windowIcon()), self)
         self._menu = QMenu()
         self._menu.addAction("REKORD öffnen", self.show_window)
         self._rec = self._menu.addAction("Aufnehmen", self._record)
@@ -65,6 +88,12 @@ class Tray(QObject):
         self._tray.setToolTip(describe(st, self._live.property("elapsedText"), not self._win.isVisible()))
         self._rec.setText("Aufnahme stoppen & speichern" if st in ("recording", "paused") else "Aufnehmen")
         self._rec.setEnabled(st in ("idle", "recording", "paused"))
+        recording = st == "recording"
+        if recording != self._recording:  # the dot in the menu bar fills while REKORD records
+            self._recording = recording
+            mac = menu_bar_icon(recording)
+            if mac is not None:
+                self._tray.setIcon(mac)
 
     @Slot()
     def show_window(self) -> None:

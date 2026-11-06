@@ -9,10 +9,52 @@ Page {
     required property var app
     function focusSearch() { search.forceActiveFocus(); search.selectAll() }
 
-    ColumnLayout {
+    // ---- several at once: Auswählen → tick → Löschen
+    property bool selecting: false
+    property var picked: ({})
+    readonly property int pickedCount: Object.keys(picked).length
+    function togglePick(rid) {
+        const m = Object.assign({}, picked)
+        if (m[rid]) delete m[rid]
+        else m[rid] = true
+        picked = m
+    }
+    function pickAll() {
+        const m = {}
+        for (const r of library.model.rids()) m[r] = true
+        picked = pickedCount === library.model.count ? {} : m
+    }
+    function stopSelecting() { selecting = false; picked = {} }
+    function deletePicked() {
+        const ids = Object.keys(picked)
+        if (!ids.length) return
+        app.confirm(ids.length === 1 ? "1 Aufnahme löschen?" : ids.length + " Aufnahmen löschen?",
+                    "Audio, Transkript, Zusammenfassungen und Unterlagen werden endgültig entfernt. Laufende Auswertungen werden gestoppt.",
+                    "Löschen", () => app.call("POST", "/api/recordings/delete", { ids: ids }, (r) => {
+                        app.toast(r.deleted === 1 ? "1 Aufnahme gelöscht" : r.deleted + " Aufnahmen gelöscht")
+                        page.stopSelecting()
+                        library.refresh()
+                    }), true)
+    }
+    Shortcut { sequence: "Esc"; enabled: page.selecting && page.shown; onActivated: page.stopSelecting() }
+
+    // a small window: the page scrolls, the list keeps a usable height
+    Flickable {
+        id: pageFlick
         anchors.fill: parent
-        anchors.margins: 36
-        anchors.bottomMargin: 0
+        contentWidth: width
+        contentHeight: body.height + 36
+        interactive: contentHeight > height + 1
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+        ScrollBar.vertical: ScrollBar { policy: pageFlick.interactive ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
+
+    ColumnLayout {
+        id: body
+        x: 36
+        y: 36
+        width: pageFlick.width - 72
+        height: Math.max(pageFlick.height - 36, implicitHeight)
         spacing: 20
 
         // ---- header
@@ -65,6 +107,17 @@ Page {
                     onTextChanged: library.search(text)
                     Keys.onEscapePressed: { text = ""; focus = false }
                 }
+            }
+            Btn {
+                objectName: "selectButton"
+                visible: list.count > 0
+                kind: page.selecting ? "primary" : "ghost"
+                text: page.selecting ? "Fertig" : "Auswählen"
+                iconName: page.selecting ? "" : "check"
+                onClicked: page.selecting ? page.stopSelecting() : page.selecting = true
+                ToolTip.visible: hovered && !page.selecting
+                ToolTip.delay: 500
+                ToolTip.text: "Mehrere Aufnahmen auf einmal löschen"
             }
             Btn {
                 text: "Datei transkribieren"
@@ -165,11 +218,50 @@ Page {
             }
         }
 
+        // ---- selecting: what's ticked, delete it in one go
+        Rectangle {
+            objectName: "selectBar"
+            visible: page.selecting
+            Layout.fillWidth: true
+            Layout.preferredHeight: 54
+            radius: Theme.radius
+            color: Theme.accentSoft
+            border.width: 1
+            border.color: Theme.accentLine
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 18
+                anchors.rightMargin: 10
+                spacing: 10
+                Text {
+                    text: page.pickedCount === 0 ? "Aufnahmen antippen, um sie auszuwählen"
+                        : page.pickedCount === 1 ? "1 ausgewählt" : page.pickedCount + " ausgewählt"
+                    font.family: Theme.text; font.pixelSize: 15; font.weight: Font.Bold; color: Theme.fg
+                }
+                Item { Layout.fillWidth: true }
+                Btn {
+                    objectName: "pickAll"
+                    small: true; kind: "ghost"
+                    text: page.pickedCount === library.model.count && page.pickedCount > 0 ? "Keine" : "Alle"
+                    onClicked: page.pickAll()
+                }
+                Btn {
+                    objectName: "deletePicked"
+                    small: true; kind: "danger"; iconName: "trash"
+                    enabled: page.pickedCount > 0
+                    text: page.pickedCount > 0 ? page.pickedCount + " löschen" : "Löschen"
+                    onClicked: page.deletePicked()
+                }
+            }
+        }
+
         // ---- list
         ListView {
             id: list
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.minimumHeight: 320
+            Layout.preferredHeight: 320
             clip: true
             spacing: 10
             model: library.model
@@ -178,7 +270,9 @@ Page {
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
             delegate: RecordingRow {
                 width: list.width - 14
-                onClicked: page.app.openRecording(rid)
+                selecting: page.selecting
+                picked: !!page.picked[rid]
+                onClicked: page.selecting ? page.togglePick(rid) : page.app.openRecording(rid)
             }
             add: Transition {
                 ParallelAnimation {
@@ -234,5 +328,6 @@ Page {
                 }
             }
         }
+    }
     }
 }

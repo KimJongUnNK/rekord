@@ -87,6 +87,11 @@ class ListModel(QAbstractListModel):
     def items(self) -> list[dict]:
         return list(self._items)
 
+    @Slot(result="QVariantList")
+    def rids(self) -> list[str]:
+        """The ids in the list (Aufnahmen → Auswählen → Alle)."""
+        return [it.get("rid") for it in self._items if it.get("rid")]
+
     @Property(int, notify=countChanged)
     def count(self) -> int:
         return len(self._items)
@@ -142,11 +147,13 @@ class Library(QObject):
     """Aufnahmen: list, search, folders, import – kept current by the processing events."""
     changed = Signal()
     toast = Signal(str)
+    workingChanged = Signal()
     _job = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._model = ListModel(REC_ROLES, self)
+        self._working: dict = {}
         self._query, self._folder, self._folders = "", "", []
         self._job.connect(self._apply_job, Qt.QueuedConnection)
         jobs.subscribe(self._job.emit)  # worker thread → UI thread
@@ -156,6 +163,28 @@ class Library(QObject):
     @Property(QObject, constant=True)
     def model(self):
         return self._model
+
+    @Property("QVariantMap", notify=workingChanged)
+    def working(self):
+        """What's being transcribed right now – for the bar under "Datei transkribieren" with its stop button:
+        {rid, title, stage, progress, waiting} or {} when nothing runs."""
+        return self._working
+
+    def _update_working(self) -> None:
+        try:
+            rows = [dict(r) for r in db.connect().execute(
+                "SELECT id, title, status, stage, progress FROM recordings WHERE status IN ('queued','processing') "
+                "ORDER BY status='processing' DESC, created_at").fetchall()]
+        except Exception:  # noqa: BLE001 - e.g. data drive missing
+            rows = []
+        w = {}
+        if rows:
+            cur = rows[0]
+            w = {"rid": cur["id"], "title": cur["title"] or "Aufnahme", "stage": cur["stage"] or "In Warteschlange",
+                 "progress": float(cur["progress"] or 0), "waiting": len(rows) - 1}
+        if w != self._working:
+            self._working = w
+            self.workingChanged.emit()
 
     @Property("QStringList", notify=changed)
     def folders(self):
@@ -179,6 +208,7 @@ class Library(QObject):
             items = []
         self._model.set_items([_rec_row(r) for r in items])
         self.changed.emit()
+        self._update_working()
 
     @Slot(str)
     def search(self, q: str) -> None:
@@ -249,6 +279,54 @@ class Library(QObject):
                 else " – keine Berechtigung, die Datei zu lesen." if denied else " – Datei nicht lesbar oder nicht mehr da."))
         self.refresh()
         return n
+
+    @Slot("QVariantList", result=int)
+    def importCombined(self, urls) -> int:  # noqa: N802 - QML API
+        """Several files → ONE recording with one transcript: part 1, part 2 … of a lecture, a meeting recorded on two
+        devices, voice memos that belong together. Sorted by name (Teil 1 before Teil 2), put one after another, analysed
+        once as a whole – speakers recognised across all parts. Documents picked along become its Unterlagen.
+        Returns how many audio/video files went in (the recording's id: lastImportedId)."""
+        import re as _re
+        paths = [_to_path(u) for u in urls]
+        docs = [p for p in paths if context.is_doc(p)]
+        media = sorted((p for p in paths if p not in docs and audio.accepted(p)),
+                       key=lambda p: [int(t) if t.isdigit() else t.lower() for t in _re.split(r"(\d+)", p.name)])
+        skipped = [p.name for p in paths if p not in docs and p not in media]
+        if len(media) < 2:
+            return self.importFiles(urls)
+        first, rest = media[0], media[1:]
+        rid = uuid.uuid4().hex[:12]
+        config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+        dest = config.AUDIO_DIR / f"{rid}{first.suffix.lower()}"
+        try:
+            shutil.copyfile(first, dest)
+        except OSError as e:
+            dest.unlink(missing_ok=True)
+            self.toast.emit(f"Kein Zugriff auf {first.name}: {e}")
+            return 0
+        title = _re.sub(r"[\s_-]*(teil|part|tl\.?)?[\s_-]*\d+\s*$", "", first.stem, flags=_re.I).strip() or first.stem
+        db.create_recording(title, str(dest), source="import", rec_id=rid)
+        db.update_recording(rid, status="queued", stage=f"Fügt {len(media)} Dateien zusammen")
+        self._last_ids = [rid]
+
+        def work():
+            from .. import pipeline
+            try:
+                pipeline.append_files(rid, [str(p) for p in rest])
+            except Exception as e:  # noqa: BLE001 - one bad file: say which, keep what worked
+                log.warning("combine %s: %s", rid, e)
+                self.toast.emit(f"Zusammenfügen: {e}")
+            if docs:
+                _, problems = attach_docs(rid, docs)
+                if problems:
+                    self.toast.emit(" · ".join(problems[:2]))
+            jobs.enqueue(rid)
+        threading.Thread(target=work, daemon=True, name=f"combine-{rid}").start()
+        self.toast.emit(f"{len(media)} Dateien → eine Aufnahme „{title}“ – wird zusammen transkribiert")
+        if skipped:
+            self.toast.emit("Kein Ton gefunden: " + ", ".join(skipped[:3]))
+        self.refresh()
+        return len(media)
 
     @Slot(str)
     def cancel(self, rid: str) -> None:
@@ -378,6 +456,7 @@ class Library(QObject):
     def _apply_job(self, ev: dict) -> None:
         if ev.get("type") == "progress" and ev.get("id"):
             st = f"{ev.get('stage') or 'Verarbeitet'} · {round(float(ev.get('progress') or 0) * 100)} %"
+            self._update_working()
             if self._model.update_where("rid", ev["id"], {"status": "processing", "statusText": st,
                                                           "progress": float(ev.get("progress") or 0)}):
                 return
@@ -1171,7 +1250,7 @@ class VoiceRecorder(QObject):
             x = self._rs(x)
         self._parts.append(x)
         self._buf = np.concatenate([self._buf, x])
-        step = live.SR // 10  # judged every 0.1 s, like the previous interface
+        step = live.SR // 10  # judged every 0.1 s
         while len(self._buf) >= step:
             block, self._buf = self._buf[:step], self._buf[step:]
             rms = float(np.sqrt(np.mean(block ** 2)))

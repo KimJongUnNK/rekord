@@ -366,13 +366,13 @@ def _hub(version, live=(), window=False, shutdown_code=200):
 
 def test_second_start_brings_the_window_to_the_front(monkeypatch):
     hub = _hub(__version__, window=True)
-    opened = []
-    monkeypatch.setattr(desktop, "_window", lambda *a, **k: opened.append(k))
+    started = []
+    monkeypatch.setattr(desktop, "_start_hub", lambda host, port: started.append(port))
     try:
         desktop._show("http://x", hub.port, desktop._status(hub.port))
     finally:
         hub.stop()
-    assert hub.focus == [1] and opened == []  # no second window
+    assert hub.focus == [1] and started == []  # no second window
 
 
 def test_hub_without_window_gets_one(monkeypatch):
@@ -380,46 +380,56 @@ def test_hub_without_window_gets_one(monkeypatch):
     native window – that needs the engine in its own process."""
     from rekord import app
     hub = _hub(__version__, window=False)
-    opened, started, ui = [], [], []
+    started, ui = [], []
     monkeypatch.setattr(app, "usable", lambda: True)
-    monkeypatch.setattr(desktop, "_window", lambda *a, **k: opened.append(k))
     monkeypatch.setattr(desktop, "_start_hub", lambda host, port: started.append(port))
     monkeypatch.setattr(desktop, "_ui", lambda url, port, host, restarted=False: ui.append(port))
     try:
         desktop._show("http://x", hub.port, desktop._status(hub.port))
     finally:
         hub.stop()
-    assert hub.focus == [] and opened == [] and started == ui == [hub.port]
+    assert hub.focus == [] and started == ui == [hub.port]
 
 
 def test_background_hub_that_records_keeps_running(monkeypatch):
-    """The background REKORD records (e.g. from the iPhone): never cut off – the previous interface shows it."""
+    """The background REKORD records: never cut off – this start waits and opens the window once it's saved."""
     from rekord import app
     hub = _hub(__version__, window=False, live=[{"id": "r1"}], shutdown_code=409)
-    opened, started = [], []
+    waited, started = [], []
     monkeypatch.setattr(app, "usable", lambda: True)
-    monkeypatch.setattr(desktop, "_window", lambda *a, **k: opened.append(k))
+    monkeypatch.setattr(desktop, "_after_recording", lambda url, port, host: waited.append(port))
     monkeypatch.setattr(desktop, "_start_hub", lambda host, port: started.append(port))
     try:
         desktop._show("http://x", hub.port, desktop._status(hub.port))
         assert desktop._status(hub.port) is not None  # still running
     finally:
         hub.stop()
-    assert started == [] and opened and opened[0]["own_hub"] is False
+    assert started == [] and waited == [hub.port]
 
 
-def test_without_native_window_the_previous_interface_opens(monkeypatch):
+def test_without_native_window_it_says_why_no_web_page(monkeypatch, capsys):
+    """No web interface any more: where the window can't start, REKORD says why – it doesn't open a browser."""
+    import webbrowser
+
     from rekord import app
+
+    class Ended(Exception):
+        pass
     hub = _hub(__version__, window=False)
-    opened = []
+    notes, ended = [], []
     monkeypatch.setattr(app, "usable", lambda: False)
-    monkeypatch.setattr(desktop, "_window", lambda *a, **k: opened.append(k))
+    monkeypatch.setattr(app, "why", lambda: "kein Bildschirm (DISPLAY fehlt)")
+    monkeypatch.setattr(desktop, "_notify", notes.append)
+    monkeypatch.setattr(desktop, "_end_code", lambda code: ended.append(code) or (_ for _ in ()).throw(Ended()))
+    monkeypatch.setattr(webbrowser, "open", lambda *a, **k: pytest.fail("no browser"))
     try:
-        desktop._show("http://x", hub.port, desktop._status(hub.port))
+        with pytest.raises(Ended):
+            desktop._show("http://x", hub.port, desktop._status(hub.port))
         assert desktop._status(hub.port) is not None  # the background REKORD stays
     finally:
         hub.stop()
-    assert opened and opened[0]["own_hub"] is False
+    out = capsys.readouterr().out
+    assert ended == [1] and "kann sein Fenster hier nicht öffnen: kein Bildschirm" in out and notes
 
 
 def test_newer_version_takes_over_from_an_old_one():
@@ -516,3 +526,25 @@ def test_starts_without_a_console(tmp_path):
     finally:
         p.kill()
         p.wait()
+
+
+def test_swap_waits_when_windows_briefly_locks_the_folder(tmp_path, monkeypatch):
+    """Windows: a virus scanner holds a just-unpacked file for a moment → "Access denied" on the folder rename.
+    The update waits and tries again instead of failing."""
+    import os as _os
+    root, new, work = tmp_path / "app", tmp_path / "new", tmp_path / "work"
+    for d in (root, new, work):
+        d.mkdir()
+    (root / "v").write_text("old")
+    (new / "v").write_text("new")
+    real, calls = _os.rename, []
+
+    def flaky(src, dst):
+        calls.append(src)
+        if len(calls) <= 2:
+            raise PermissionError(5, "Access is denied")
+        real(src, dst)
+    monkeypatch.setattr(updater.os, "rename", flaky)
+    monkeypatch.setattr(updater.time, "sleep", lambda s: None)
+    updater._swap(root, new, work)
+    assert (root / "v").read_text() == "new" and (work / "old" / "v").read_text() == "old" and len(calls) == 4

@@ -12,7 +12,7 @@ Item {
     signal accepted()
     implicitHeight: 38
     implicitWidth: 200
-    readonly property var matches: names.filter(n => !field.text || n.toLowerCase().indexOf(field.text.toLowerCase()) >= 0).slice(0, 12)
+    readonly property var matches: names.filter(n => !field.text || n.toLowerCase().indexOf(field.text.toLowerCase()) >= 0)  // all of them – the list scrolls
     Input {
         id: field
         anchors.fill: parent
@@ -32,16 +32,20 @@ Item {
         y: f.height + 4
         width: f.width
         padding: 4
-        height: Math.min(260, list.contentHeight + 8)
+        height: Math.min(8 * 36 + 8, list.contentHeight + 8)
         visible: opened && f.matches.length > 0
         background: Rectangle { radius: 10; color: Theme.card; border.width: 1; border.color: Theme.line }
         contentItem: ListView {
             id: list
+            objectName: "nameList"
             clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { policy: list.contentHeight > list.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff }
             model: f.matches
             delegate: ItemDelegate {
                 required property string modelData
-                width: list.width
+                width: list.width - (list.contentHeight > list.height ? 10 : 0)
+                height: 36
                 contentItem: Text { text: modelData; font.family: Theme.text; font.pixelSize: 14; color: Theme.fg }
                 background: Rectangle { radius: 6; color: parent.hovered ? Theme.card2 : "transparent" }
                 onClicked: { field.text = modelData; pop.close(); field.forceActiveFocus() }

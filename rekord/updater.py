@@ -277,14 +277,27 @@ def _download(asset: dict, dest: Path) -> Path:
     return dest
 
 
+def _rename(src: Path, dst: Path, tries: int = 12) -> None:
+    """os.rename that waits a moment when Windows says "Access denied": a virus scanner or the search index briefly
+    holds a just-unpacked file inside the folder, and a folder with an open file can't be renamed. Up to ~6 s."""
+    for i in range(tries):
+        try:
+            os.rename(src, dst)
+            return
+        except PermissionError:
+            if i == tries - 1:
+                raise
+            time.sleep(0.1 * (i + 1))
+
+
 def _swap(root: Path, new: Path, work: Path) -> None:
     """Old app aside (deleted at the next start), new app in its place – two renames on the same drive."""
     old = work / ("old" + root.suffix)
-    os.rename(root, old)
+    _rename(root, old)
     try:
-        os.rename(new, root)
+        _rename(new, root)
     except OSError:
-        os.rename(old, root)
+        _rename(old, root)
         raise
 
 

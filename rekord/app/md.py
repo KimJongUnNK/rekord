@@ -132,40 +132,74 @@ def toggle_task(src: str, line_no: int) -> str:
     return "\n".join(lines)
 
 
+def _clean_list(src: str) -> list[str]:
+    """What a model wraps around its list: <think>…</think>, ``` fences, "Hier ist die Mind Map:" – out."""
+    t = re.sub(r"<think>.*?</think>", "", str(src or ""), flags=re.S)
+    return [ln.replace("\u00a0", " ").rstrip() for ln in t.split("\n") if not ln.strip().startswith("```")]
+
+
 def outline(src: str) -> dict:
-    """Nested list / headings → tree for the mind map. Lists belong under the heading above them."""
+    """Nested list / headings → tree for the mind map. Lists belong under the heading above them. Any indentation
+    works (2 or 4 spaces, tabs) – the smallest step counts as one level."""
+    lines = _clean_list(src)
+    item = re.compile(r"^(\s*)(?:[-*+•–]|\d+[.)])\s+(.*)$")
+    indents = sorted({len(m[1].replace("\t", "    ")) for ln in lines if (m := item.match(ln)) and m[1]})
+    unit = indents[0] if indents else 2
     root = {"text": "", "children": []}
     stack = [(-1, root)]
     base = 0  # list items sit one level below the last heading
-    for raw in str(src).split("\n"):
-        h = re.match(r"^(#{1,4})\s+(.*)$", raw)
-        m = h or re.match(r"^(\s*)(?:[-*+]|\d+[.)])\s+(.*)$", raw)
+    for raw in lines:
+        h = re.match(r"^(#{1,4})\s+(.*)$", raw.strip())
+        m = h or item.match(raw)
         if not m:
             continue
         if h:
             depth = len(h[1]) - 1
             base = depth + 1
         else:
-            depth = base + len(m[1].replace("\t", "  ")) // 2
-        node = {"text": re.sub(r"\[[^\]]*\]", "", m[2].replace("**", "")).strip(), "children": []}
+            depth = base + round(len(m[1].replace("\t", "    ")) / unit)
+        text = re.sub(r"\[[^\]]*\]", "", m[2].replace("**", "").replace("__", "")).strip().strip("*").strip()
+        if not text:
+            continue
+        node = {"text": text, "children": []}
         while stack and stack[-1][0] >= depth:
             stack.pop()
         stack[-1][1]["children"].append(node)
         stack.append((depth, node))
-    return root["children"][0] if len(root["children"]) == 1 else {"text": "Gespräch", "children": root["children"]}
+    kids = root["children"]
+    if len(kids) == 1:
+        return kids[0]
+    if kids and len(kids) > 2 and not kids[0]["children"] and all(not k["children"] for k in kids):
+        return {"text": kids[0]["text"], "children": kids[1:]}  # all flat: the first line is the topic
+    return {"text": "Gespräch", "children": kids}
+
+
+def is_flat(src: str) -> bool:
+    """A mind map without sub-points (or a dozen branches in a row) – a small model ignored the nesting."""
+    tree = outline(src)
+    return not any(c["children"] for c in tree["children"]) or len(tree["children"]) > 9
 
 
 PALETTE = ["#FF5A1F", "#2D7FF9", "#16A34A", "#E11D74", "#A855F7", "#EAB308", "#0EA5E9", "#F97316"]
-LH, COLW, PAD = 30, 250, 24
+LH, PAD, GAP = 30, 24, 46
+CHAR = {0: 8.6, 1: 8.4, 2: 7.3}  # px per character (bold 15 / bold 14 / 13)
+MAXC = 52  # longer texts are shortened (with …) – a whole sentence isn't a branch
+
+
+def _w(text: str, depth: int) -> float:
+    return len(text) * CHAR.get(depth, 7.0)
 
 
 def mindmap(src: str) -> dict:
-    """Layout of the mind map (horizontal tree): nodes with x/y/depth/color, curved edges, overall size."""
+    """Layout of the mind map (horizontal tree): nodes with x/y/depth/color/width, curved edges, overall size. Each
+    column is as wide as its longest text – nothing cut off at a fixed length."""
     tree = outline(src)
+    trunc = lambda s, n: s if len(s) <= n else s[: n - 1] + "…"  # noqa: E731
     y = [0]
 
     def measure(n, depth):
         n["depth"] = depth
+        n["text"] = trunc(n["text"], 40 if depth == 0 else MAXC)
         if not n["children"]:
             n["y"] = y[0]
             y[0] += LH
@@ -181,22 +215,27 @@ def mindmap(src: str) -> dict:
             walk(c, f)
     for i, c in enumerate(tree["children"]):
         walk(c, lambda n, col=PALETTE[i % len(PALETTE)]: n.__setitem__("color", col))
-    depth = [0]
-    walk(tree, lambda n: depth.__setitem__(0, max(depth[0], n["depth"])))
-    x = lambda d: PAD + d * COLW  # noqa: E731
-    trunc = lambda s, n: s if len(s) <= n else s[: n - 1] + "…"  # noqa: E731
+    widest: dict[int, float] = {}
+    walk(tree, lambda n: widest.__setitem__(n["depth"], max(widest.get(n["depth"], 0), _w(n["text"], n["depth"]))))
+    center_w = max(140.0, widest.get(0, 0) + 34)
+    col_x = {0: PAD}
+    col_x[1] = PAD + center_w + GAP
+    for d in range(2, max(widest) + 1):
+        col_x[d] = col_x[d - 1] + 16 + widest[d - 1] + GAP
     nodes, edges = [], []
 
     def emit(n):
-        tx, ty = x(n["depth"]), n["y"] + PAD
-        nodes.append({"x": tx, "y": ty, "depth": n["depth"], "text": trunc(n["text"], 24 if n["depth"] == 0 else 30),
-                      "color": n.get("color", "")})
+        tx, ty = col_x[n["depth"]], n["y"] + PAD
+        nodes.append({"x": tx, "y": ty, "depth": n["depth"], "text": n["text"], "color": n.get("color", ""),
+                      "w": center_w if n["depth"] == 0 else _w(n["text"], n["depth"])})
         for c in n["children"]:
-            x1 = x(0) + 204 if n["depth"] == 0 else tx + 14 + min(len(n["text"]), 30) * (8.2 if n["depth"] == 1 else 7.2)
-            edges.append({"x1": x1, "y1": ty, "x2": x(c["depth"]) - 6, "y2": c["y"] + PAD, "color": c.get("color", ""),
+            x1 = tx + center_w - 10 if n["depth"] == 0 else tx + 12 + _w(n["text"], n["depth"])
+            edges.append({"x1": x1, "y1": ty, "x2": col_x[c["depth"]] - 7, "y2": c["y"] + PAD, "color": c.get("color", ""),
                           "width": 2.5 if c["depth"] == 1 else 1.5})
     walk(tree, emit)
-    return {"nodes": nodes, "edges": edges, "width": (depth[0] + 1) * COLW + PAD * 2, "height": max(y[0], LH) + PAD * 2}
+    last = max(widest)
+    width = col_x[last] + (16 + widest[last] if last else center_w) + PAD
+    return {"nodes": nodes, "edges": edges, "width": round(width), "height": max(y[0], LH) + PAD * 2}
 
 
 def mindmap_svg(src: str, fg: str = "#111111", fg2: str = "#55534E", bg: str = "#FFFFFF") -> str:
@@ -208,8 +247,8 @@ def mindmap_svg(src: str, fg: str = "#111111", fg2: str = "#55534E", bg: str = "
                    f'stroke="{e["color"] or fg2}" stroke-width="{e["width"]}" opacity=".75"/>')
     for n in m["nodes"]:
         if n["depth"] == 0:
-            out.append(f'<rect x="{n["x"] - 10}" y="{n["y"] - 20}" width="214" height="40" rx="20" fill="{fg}"/>'
-                       f'<text x="{n["x"] + 97}" y="{n["y"] + 5}" text-anchor="middle" font-size="15" font-weight="800" fill="{bg}">{esc(n["text"])}</text>')
+            out.append(f'<rect x="{n["x"] - 10}" y="{n["y"] - 20}" width="{n["w"]}" height="40" rx="20" fill="{fg}"/>'
+                       f'<text x="{n["x"] - 10 + n["w"] / 2}" y="{n["y"] + 5}" text-anchor="middle" font-size="15" font-weight="800" fill="{bg}">{esc(n["text"])}</text>')
         else:
             big = n["depth"] == 1
             out.append(f'<circle cx="{n["x"] - 2}" cy="{n["y"]}" r="{5 if big else 3.5}" fill="{n["color"]}"/>'

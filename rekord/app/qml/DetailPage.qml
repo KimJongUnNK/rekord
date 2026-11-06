@@ -84,7 +84,10 @@ Page {
         if (rec) for (const s of rec.segments) t[s.speaker_id] = (t[s.speaker_id] || 0) + s.end - s.start
         return t
     }
-    readonly property real talkTotal: Object.values(talk).reduce((a, b) => a + b, 0) || 1
+    readonly property real talkTotal: {  // who talked how much – a sound isn't talking
+        const noise = rec ? rec.speakers.filter(x => x.name === "Geräusch").map(x => x.id) : []
+        return Object.keys(talk).filter(k => noise.indexOf(Number(k)) < 0).reduce((a, k) => a + talk[k], 0) || 1
+    }
 
     onShownChanged: if (!shown) player.pause()
     Connections {
@@ -118,10 +121,24 @@ Page {
     SpeakerDialog { id: speakerDlg; objectName: "speakerDlg"; page: page }
     AssignDialog { id: assignDlg; objectName: "assignDlg"; page: page }
 
-    ColumnLayout {
+    // a small window (next to other programs): the whole page scrolls, the tab below keeps a usable height
+    Flickable {
+        id: pageFlick
+        objectName: "detailFlick"
         anchors.fill: parent
-        anchors.margins: 32
-        anchors.bottomMargin: 20
+        contentWidth: width
+        contentHeight: body.height + 52
+        interactive: contentHeight > height + 1
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+        ScrollBar.vertical: ScrollBar { policy: pageFlick.interactive ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
+
+    ColumnLayout {
+        id: body
+        x: 32
+        y: 32
+        width: pageFlick.width - 64
+        height: Math.max(pageFlick.height - 52, implicitHeight)
         spacing: 14
 
         // ---- header
@@ -244,9 +261,9 @@ Page {
                     Btn {  // the wrong file, or not now: stop the analysis – the recording stays
                         objectName: "cancelButton"
                         visible: page.analysing
-                        small: true
+                        kind: "danger"
                         iconName: "stop"
-                        text: "Stoppen"
+                        text: "Transkription stoppen"
                         onClicked: page.app.call("POST", "/api/recordings/" + page.rid + "/cancel", null, () => { page.app.toast("Auswertung gestoppt"); page.reload() })
                         ToolTip.visible: hovered
                         ToolTip.delay: 400
@@ -307,7 +324,8 @@ Page {
                                 spacing: 0
                                 Text { text: sb.modelData.name; font.family: Theme.text; font.pixelSize: 14; font.weight: Font.Bold; color: Theme.fg }
                                 Text {
-                                    text: Math.round((page.talk[sb.modelData.id] || 0) / page.talkTotal * 100) + " % · "
+                                    text: sb.modelData.name === "Geräusch" ? "ausgeblendet · nicht im Protokoll"
+                                          : Math.round((page.talk[sb.modelData.id] || 0) / page.talkTotal * 100) + " % · "
                                           + (sb.modelData.profile_id ? "erkannt" + (sb.modelData.match_score && sb.modelData.match_score < 1 ? " " + Math.round(sb.modelData.match_score * 100) + " %" : "")
                                                                      : (sb.modelData.voices > 1 ? sb.modelData.voices + " Stimmen" : "nicht erkannt"))
                                     font.family: Theme.text; font.pixelSize: 12; color: Theme.fg3
@@ -334,7 +352,8 @@ Page {
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumHeight: 220
+            Layout.minimumHeight: 420
+            Layout.preferredHeight: 420
             currentIndex: page.tab
             SummaryView { page: page }
             TranscriptView { page: page }
@@ -352,5 +371,6 @@ Page {
             DocsView { id: docsView; page: page }
             ExportView { page: page }
         }
+    }
     }
 }

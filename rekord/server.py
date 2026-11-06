@@ -23,7 +23,6 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 
 from . import __version__, audio, config, context, db, export, frames, jobs, live, models, pipeline, summarize, updater
 from .engines import asr
@@ -232,7 +231,7 @@ async def auth(request: Request, call_next):
     if path == "/api/pair/claim":  # the app trades the 6-digit code for its key
         return await call_next(request)
     if not (path.startswith("/api/") or path.startswith("/ws/")):
-        return FileResponse(WEB / "pair.html", status_code=403)
+        return JSONResponse({"detail": "Nur die Schnittstelle – REKORD ist eine App auf dem Computer"}, status_code=403)
     tok = request.headers.get("x-rekord-token") or request.query_params.get("token")
     if not _token_ok(tok):
         return JSONResponse({"detail": "Nicht gekoppelt – in der REKORD-App mit dem Code vom Computer koppeln"}, status_code=401)
@@ -244,24 +243,18 @@ def _ws_ok(ws: WebSocket) -> bool:
     return _is_local(host) or _token_ok(ws.query_params.get("token") or ws.headers.get("x-rekord-token"))
 
 
-# ------------------------------------------------------------------ static / PWA
+# ------------------------------------------------------------------ no web interface: REKORD is the app on the computer
 
-app.mount("/static", StaticFiles(directory=WEB), name="static")
+INDEX = """<!doctype html><html lang="de"><meta charset="utf-8"><title>REKORD</title>
+<body style="font-family:-apple-system,Segoe UI,sans-serif;background:#0B0B0C;color:#F6F5F2;display:grid;place-items:center;height:100vh;margin:0">
+<div style="text-align:center"><h1 style="font-size:44px;margin:0">REKORD läuft.</h1>
+<p style="color:#A8A6A0">REKORD ist eine App auf deinem Computer – öffne sie über das REKORD-Symbol.<br>
+Hier läuft nur die Schnittstelle (für Claude Desktop und Werkzeuge).</p></div></body></html>"""
 
 
 @app.get("/")
 def index():
-    return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
-
-
-@app.get("/manifest.webmanifest")
-def manifest():
-    return FileResponse(WEB / "manifest.webmanifest", media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
-
-
-@app.get("/sw.js")
-def sw():
-    return FileResponse(WEB / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+    return Response(INDEX, media_type="text/html; charset=utf-8", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/icons/{name}")
@@ -820,8 +813,10 @@ def recordings(q: str = "", folder: str | None = None):
 
 @app.post("/api/recordings")
 async def upload(files: list[UploadFile] = File(...), title: str = Form(""), highlights: str = Form("[]"),
-                 source: str = Form("import"), folder: str = Form(""), participants: str = Form("")):
-    out, docs = [], []
+                 source: str = Form("import"), folder: str = Form(""), participants: str = Form(""),
+                 combine: bool = Form(False)):
+    """Files → recordings. combine: several audio/video files → ONE recording (sorted by name, one transcript)."""
+    out, docs, names = [], [], {}
     tmp = Path(tempfile.mkdtemp(prefix="rekord-docs-"))
     for f in files:
         if context.is_doc(f.filename or ""):  # a PDF, slides … sent along: they become the recording's Unterlagen
@@ -847,6 +842,20 @@ async def upload(files: list[UploadFile] = File(...), title: str = Form(""), hig
         if participants:
             db.update_recording(rid, participants=json.loads(participants))
         out.append(rec)
+        names[rid] = f.filename or ""
+    if combine and len(out) > 1:
+        out.sort(key=lambda r: [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", names[r["id"]])])
+        first, rest = out[0], out[1:]
+        try:
+            await asyncio.to_thread(pipeline.append_files, first["id"], [r["audio_path"] for r in rest])
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        for r in rest:  # their sound is in the first one now
+            Path(r["audio_path"]).unlink(missing_ok=True)
+            db.delete_recording(r["id"])
+        if not title:
+            db.update_recording(first["id"], title=re.sub(r"[\s_-]*(teil|part)?[\s_-]*\d+\s*$", "", first["title"], flags=re.I).strip() or first["title"])
+        out = [db.get_recording(first["id"])]
     errors = []
     try:
         if docs and not out:
@@ -889,6 +898,20 @@ def delete_recording(rid: str):
     context.remove_all(rid)
     db.delete_recording(rid)
     return {"ok": True}
+
+
+@app.post("/api/recordings/delete")
+async def delete_recordings(request: Request):
+    """Several at once (Aufnahmen → Auswählen → Löschen). Unknown ids are skipped."""
+    ids = (await request.json()).get("ids") or []
+    done = 0
+    for rid in ids:
+        try:
+            delete_recording(str(rid))
+            done += 1
+        except HTTPException:
+            pass
+    return {"ok": True, "deleted": done}
 
 
 # ------------------------------------------------------------------ Unterlagen (documents for context)
@@ -1126,6 +1149,9 @@ async def patch_speaker(sid: int, request: Request):
     if sp is None:
         raise HTTPException(404)
     name = (b.get("name") or sp["name"]).strip()
+    if name.lower() == db.NOISE.lower():  # "is a sound": hidden everywhere, no voice to learn
+        db.update_speaker(sid, name=db.NOISE, color=db.NOISE_COLOR, profile_id=None)
+        return {"ok": True}
     if b.get("remember"):
         try:
             prof = await asyncio.to_thread(pipeline.remember_speaker, sp["recording_id"], sid, name)
@@ -1290,6 +1316,8 @@ async def summarize_rec(rid: str, request: Request):
 
     def save(content: str):
         content = content.strip()
+        if content and tid == "mindmap":
+            content = summarize.finish_mindmap(s, content)  # flat list from a small model → branches
         if content:
             db.add_summary(rid, tid, tpl["name"], content, s["llm"]["provider"], providers.model_name(s))
             summarize.maybe_title(rid, content)
@@ -1300,6 +1328,39 @@ async def summarize_rec(rid: str, request: Request):
 async def patch_summary(sid: int, request: Request):
     db.update_summary(sid, (await request.json())["content"])
     return {"ok": True}
+
+
+@app.post("/api/summaries/{sid}/ai")
+async def summary_ai(sid: int, request: Request):
+    """Tell the AI what to change in a summary ("keine Sternchen", "kürzer", "mit Emojis", "To-dos als Tabelle")."""
+    b = await request.json()
+    if db.get_summary(sid) is None:
+        raise HTTPException(404)
+    try:
+        content = await asyncio.to_thread(summarize.edit_summary, sid, b.get("instruction", ""))
+    except providers.LLMError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "content": content, "can_undo": True}
+
+
+@app.post("/api/summaries/{sid}/undo")
+def summary_undo(sid: int):
+    if db.get_summary(sid) is None:
+        raise HTTPException(404)
+    done = db.undo_summary(sid)
+    return {"ok": True, "done": done, "content": db.get_summary(sid)["content"]}
+
+
+@app.get("/api/summaries/{sid}/mindmap.svg")
+def mindmap_svg(sid: int, fg: str = "#111111", fg2: str = "#55534E", bg: str = "#FFFFFF"):
+    """The mind map drawn like in the window (same layout, lines, no cut-off texts) – for the browser view and saving."""
+    from .app import md
+    sm = db.get_summary(sid)
+    if sm is None:
+        raise HTTPException(404)
+    color = lambda c, d: c if re.fullmatch(r"#[0-9A-Fa-f]{3,8}|rgba?\([0-9., ]+\)", c or "") else d  # noqa: E731
+    return Response(md.mindmap_svg(sm["content"], color(fg, "#111111"), color(fg2, "#55534E"), color(bg, "#FFFFFF")),
+                    media_type="image/svg+xml")
 
 
 @app.delete("/api/summaries/{sid}")

@@ -139,23 +139,21 @@ def test_headcount_caps_live_voices():
 # ------------------------------------------------------------------ ⓘ help texts
 
 def _tips():
-    help_js = (ROOT / "rekord/web/help.js").read_text("utf-8")
-    return set(re.findall(r"^\s{2}(\w+): \"", help_js, re.M))
+    import json
+    return set(json.loads((ROOT / "rekord/data/help.json").read_text("utf-8")))
 
 
-def test_every_tip_used_exists():
+def test_every_tip_used_in_the_window_exists():
     used = set()
-    for f in ("app.js", "welcome.js"):
-        used |= set(re.findall(r'tip\("(\w+)"\)', (ROOT / "rekord/web" / f).read_text("utf-8")))
-    app = (ROOT / "rekord/web/app.js").read_text("utf-8")
-    used |= {"noiseSuppression", "echoCancellation", "autoGainControl"}  # tip(k) in the audio-processing loop
-    assert "${tip(k)}" in app
+    for f in (ROOT / "rekord/app/qml").glob("*.qml"):
+        used |= set(re.findall(r'(?:\bkey|\btip):\s*"(\w+)"', f.read_text("utf-8")))
+    assert len(used) > 30
     assert used - _tips() == set(), used - _tips()
 
 
 def test_every_settings_field_has_an_info_tip():
-    app = (ROOT / "rekord/web/app.js").read_text("utf-8")
-    labels = re.findall(r'class="field"><(?:div class="lbl"|label[^>]*)>(.*?)(?:<span class="hint"|</div>|</label>)', app)
-    assert len(labels) > 35
-    missing = [l for l in labels if "${tip(" not in l and "${label}" not in l]
+    qml = (ROOT / "rekord/app/qml/SettingsPage.qml").read_text("utf-8")
+    fields = re.findall(r'^\s*label: "([^"]+)"([^\n]*)', qml, re.M)  # every Field's label line
+    assert len(fields) > 30
+    missing = [label for label, rest in fields if "tip:" not in rest]
     assert not missing, f"Einstellungen ohne ⓘ: {missing}"
