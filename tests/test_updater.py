@@ -526,3 +526,25 @@ def test_starts_without_a_console(tmp_path):
     finally:
         p.kill()
         p.wait()
+
+
+def test_swap_waits_when_windows_briefly_locks_the_folder(tmp_path, monkeypatch):
+    """Windows: a virus scanner holds a just-unpacked file for a moment → "Access denied" on the folder rename.
+    The update waits and tries again instead of failing."""
+    import os as _os
+    root, new, work = tmp_path / "app", tmp_path / "new", tmp_path / "work"
+    for d in (root, new, work):
+        d.mkdir()
+    (root / "v").write_text("old")
+    (new / "v").write_text("new")
+    real, calls = _os.rename, []
+
+    def flaky(src, dst):
+        calls.append(src)
+        if len(calls) <= 2:
+            raise PermissionError(5, "Access is denied")
+        real(src, dst)
+    monkeypatch.setattr(updater.os, "rename", flaky)
+    monkeypatch.setattr(updater.time, "sleep", lambda s: None)
+    updater._swap(root, new, work)
+    assert (root / "v").read_text() == "new" and (work / "old" / "v").read_text() == "old" and len(calls) == 4
