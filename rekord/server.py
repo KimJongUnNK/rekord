@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import io
 import json
 import logging
@@ -130,6 +131,7 @@ def repair_engine() -> None:
         if config.load().get("asr_engine") == "faster-whisper" and not models.faster_whisper_available():
             config.save({"asr_engine": "sherpa"})
             log.info("faster-whisper not installed – engine set back to Whisper ONNX")
+        models.apply_recommended()  # automatic: the model that fits this computer (RAM, cores, graphics)
     except Exception as e:  # noqa: BLE001 - e.g. data drive missing
         log.info("repair engine: %s", e)
 
@@ -291,6 +293,15 @@ def lan_ips() -> list[str]:
     return ([primary] if primary and not primary.startswith("127.") else []) + rest
 
 
+@functools.lru_cache(maxsize=1)
+def _asr_recommended() -> dict:
+    try:
+        return models.recommend_asr()
+    except Exception as e:  # noqa: BLE001 - reading the hardware must never break the status
+        log.info("hardware: %s", e)
+        return {}
+
+
 @app.get("/api/status")
 def status():
     s = config.load()
@@ -308,6 +319,7 @@ def status():
         "live": live.active(),
         "faster_whisper": asr.faster_whisper_available(),
         "fw_device": asr.fw_device() if asr.faster_whisper_available() else "",
+        "asr_recommended": _asr_recommended(),
         "home": str(config.HOME),
         "inbox": str(config.INBOX_DIR),
         "python": sys.executable,
@@ -361,7 +373,15 @@ async def put_settings(request: Request):
             k.pop("api_key")
         k.pop("has_key", None)
     patch.pop("providers", None)
+    if patch.get("asr_auto") is not True and {"asr_engine", "asr_model", "faster_whisper_model"} & set(patch):
+        patch["asr_auto"] = False  # picked by hand: REKORD doesn't change it again
     s = config.save(patch)
+    if patch.get("asr_auto") is True:
+        models.apply_recommended(force=True)
+        s = config.load()
+        want = models.FW_PREFIX + s["faster_whisper_model"] if models.engine(s) == "faster-whisper" else s["asr_model"]
+        if not models.installed(want):
+            models.download_async(want)  # the model that fits: loaded right away, with progress
     asr._sherpa.cache_clear()
     asr._faster.cache_clear()
     for p in ("openai", "compatible"):  # key or server entered, no model yet → pick one (no "Laden → auswählen")

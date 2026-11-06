@@ -36,6 +36,11 @@ Kommt der Hinweis nicht: unten links auf **Nach Updates suchen** klicken.
 Beim ersten Start lädt REKORD einmalig die Sprachmodelle (~700 MB), danach läuft alles offline.
 Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**
 
+## Neu in 1.4.3
+
+- 🖥️ **Das richtige Modell für deinen Rechner – automatisch.** REKORD liest Arbeitsspeicher, Prozessorkerne und Grafikchip aus und stellt die Spracherkennung passend ein: NVIDIA-Karte → faster-whisper turbo, Apple M-Chip / starker PC (ab 16 GB, 8 Kerne) → Whisper turbo, normaler Laptop → small, schwacher Rechner → base. Unter *Einstellungen → Transkription* steht, was erkannt wurde. Selbst gewählt? Bleibt.
+- 🔊 **Leise Aufnahmen werden lauter.** Handy hinten im Hörsaal, leiser Call: REKORD hebt die Sprache vor dem Transkribieren auf die ideale Lautstärke (bis +30 dB, ohne Übersteuern). Deine Datei bleibt unverändert.
+
 ## Neu in 1.4.2
 
 - 🎧 **Angehängte Audios lassen sich anhören.** Nach *Audio anhängen* (z. B. Teil 2 der Vorlesung) spielte der Player noch die alte Datei – Spulen ging nur bis zum Ende von Teil 1 und sprang dann zum Anfang. Jetzt lädt er die ganze Aufnahme, die Stelle bleibt.

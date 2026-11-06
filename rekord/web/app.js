@@ -2143,6 +2143,8 @@ async function viewSettings() {
     <section class="set-sec" id="s-asr"><h2>Transkription</h2><div class="card">
       <div class="field"><label for="lang">Sprache${tip("lang")}<span class="hint">Fest einstellen = am genauesten. Automatisch erkennt sie pro Satz – kurze Sätze bekommen die Hauptsprache der Aufnahme.</span></label>
         <select id="lang">${LANGS.map(([k, n]) => opt(k, s.language, n)).join("")}</select></div>
+      <div class="field"><label for="asrauto">Passend zu diesem Computer${tip("asrauto")}<span class="hint">${st.asr_recommended && st.asr_recommended.name ? `Erkannt: ${esc(st.asr_recommended.label)} → ${esc(st.asr_recommended.name)}` : "REKORD liest Arbeitsspeicher, Prozessor und Grafikchip aus."}</span></label>
+        <label class="row" style="margin-bottom:8px"><input type="checkbox" id="asrauto" ${s.asr_auto !== false ? "checked" : ""}> Modell automatisch wählen (empfohlen)</label></div>
       <div class="field"><label for="engine">Engine${tip("engine")}<span class="hint">Was Sprache in Text verwandelt.</span></label><select id="engine">${opt("sherpa", s.asr_engine, "Whisper ONNX (überall, CPU)")}${
         opt("faster-whisper", s.asr_engine, "faster-whisper (NVIDIA-GPU)" + (st.faster_whisper ? "" : " – nicht in dieser App enthalten"))}</select></div>
       <div class="field"><label for="asrm">Modell${tip("asrmodel")}<span class="hint">turbo = beste Qualität pro Sekunde. small = Laptop-Standard.</span></label><select id="asrm"></select></div>
@@ -2307,6 +2309,10 @@ async function viewSettings() {
     await saveNow({ asr_model: e.target.value });
     const m = st.models.find((x) => x.id === e.target.value);
     if (m && !m.installed) { await api(`/api/models/${m.id}/download`, { method: "POST" }); toast(`${m.name} wird geladen …`); renderModels(); }
+  };
+  $("#asrauto").onchange = async (e) => {
+    await saveNow({ asr_auto: e.target.checked });
+    if (e.target.checked) { toast("Passendes Modell gewählt"); viewSettings(); }
   };
   $("#thr").onchange = (e) => save({ threads: Number(e.target.value) });
   const renderVocab = () => {

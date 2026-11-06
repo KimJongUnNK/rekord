@@ -2,6 +2,10 @@
 
 Was sich in welcher Version geändert hat, neueste zuerst. Die Downloads stehen immer unter [Releases](https://github.com/KimJongUnNK/rekord/releases/latest).
 
+## 1.4.3 – Modell passend zum Rechner · leise Aufnahmen lauter
+- **Automatische Modellwahl:** Beim Start liest REKORD Arbeitsspeicher, Prozessorkerne, Apple-Chip und NVIDIA-Karte aus und wählt die Spracherkennung, die darauf am besten läuft – NVIDIA (mit faster-whisper) → faster-whisper turbo auf der Karte (unter 4 GB Grafikspeicher: small), ab 16 GB RAM und 8 Kernen → Whisper turbo, ab 8 GB und 4 Kernen → small, darunter → base. Das passende Modell wird gleich geladen. *Einstellungen → Transkription → Passend zu diesem Computer* zeigt, was erkannt wurde; ein selbst gewähltes Modell schaltet die Automatik ab, der Haken schaltet sie wieder an.
+- **Leise Aufnahmen lauter:** Vor der Auswertung misst REKORD, wie laut die Sprache ist (die lauten Stellen, Pausen zählen nicht), und hebt sie auf etwa -20 dBFS – höchstens +30 dB, Spitzen werden weich begrenzt statt abgeschnitten. Nur für die Auswertung; die gespeicherte Aufnahme bleibt unverändert. Laute Aufnahmen bleiben, wie sie sind.
+
 ## 1.4.2 – angehängte Audios anhören · unbekannte Stimmen jederzeit benennen
 - **Behoben: Nach *Audio anhängen* lief nur Teil 1.** Die Aufnahme bekommt beim Anhängen eine neue, längere Datei – der Player behielt die alte. Der Balken zeigte schon die ganze Länge, Spulen hinter Teil 1 sprang zum Anfang. Jetzt lädt der Player die neue Datei (die Stelle bleibt), auch im Browser.
 - **„Wer ist das?“ verschwindet nicht mehr.** *Später* klappt es auf eine Zeile zusammen („2 Stimmen nicht erkannt“), **Jetzt benennen** öffnet es wieder – bisher war es bis zum Neustart weg.

@@ -46,6 +46,7 @@ SETTINGS_PATH = HOME / "settings.json"
 
 DEFAULTS: dict = {
     "language": "",  # "" = auto detect per segment
+    "asr_auto": True,  # pick the speech model that fits this computer (off once the user picks one)
     "asr_engine": "sherpa",  # sherpa | faster-whisper
     "asr_model": "whisper-small",  # sherpa model id
     "faster_whisper_model": "large-v3-turbo",
