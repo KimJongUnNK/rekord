@@ -39,7 +39,7 @@ Item {
                         (err) => { v.busy = false; v.streamText = "**Fehler:** " + err })
     }
 
-    TextDialog { id: editDlg }
+    RichEditor { id: richDlg }
 
     ColumnLayout {
         anchors.fill: parent
@@ -128,8 +128,19 @@ Item {
                                 Eyebrow { text: sc.modelData.title }
                                 Muted { text: (sc.modelData.model ? sc.modelData.model + " · " : "") + new Date(sc.modelData.created_at * 1000).toLocaleString(Qt.locale("de_AT"), "dd.MM.yyyy HH:mm"); font.pixelSize: 12; color: Theme.fg3 }
                                 Item { Layout.fillWidth: true }
-                                Btn { kind: "ghost"; small: true; text: "Kopieren"; onClicked: { api.copyText(sc.modelData.content); v.page.app.toast("Kopiert (Markdown)") } }
-                                Btn { kind: "ghost"; small: true; text: "Bearbeiten"; onClicked: editDlg.edit(sc.modelData.title, sc.modelData.content, (t) => v.page.app.call("PATCH", "/api/summaries/" + sc.modelData.id, { content: t }, () => v.page.reload())) }
+                                Btn {
+                                    objectName: "summaryCopy"
+                                    kind: "ghost"; small: true; text: "Kopieren"
+                                    ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Mit Formatierung – in Word, Pages oder Google Docs einfügen, fett bleibt fett"
+                                    onClicked: { api.copyRich(sc.modelData.content, sc.modelData.rich || ""); v.page.app.toast("Kopiert – mit Formatierung") }
+                                }
+                                Btn {
+                                    objectName: "summaryEdit"
+                                    kind: "ghost"; small: true; text: "Bearbeiten"
+                                    onClicked: richDlg.edit(sc.modelData.title, sc.modelData.content, sc.modelData.rich || "",
+                                                            (md, html) => v.page.app.call("PATCH", "/api/summaries/" + sc.modelData.id, { content: md, rich: html },
+                                                                                          () => { v.page.app.toast("Gespeichert"); v.page.reload() }))
+                                }
                                 Btn {
                                     kind: "ghost"; small: true; iconName: "close"
                                     ToolTip.visible: hovered; ToolTip.text: "Löschen"
@@ -171,7 +182,24 @@ Item {
                                     onClicked: v.page.app.call("POST", "/api/summaries/" + sc.modelData.id + "/undo", null, () => { v.page.app.toast("Rückgängig"); v.page.reload() })
                                 }
                             }
+                            TextEdit {  // formatted in the editor: shown exactly like that
+                                visible: !!sc.modelData.rich
+                                Layout.fillWidth: true
+                                text: sc.modelData.rich ? rekord.richDisplay(sc.modelData.rich, String(Theme.accent)) : ""
+                                textFormat: TextEdit.RichText
+                                readOnly: true
+                                selectByMouse: true
+                                wrapMode: TextEdit.Wrap
+                                font.family: Theme.text
+                                font.pixelSize: 15
+                                color: Theme.fg
+                                selectionColor: Theme.accent
+                                selectedTextColor: Theme.onAccent
+                                onLinkActivated: (link) => { if (link.startsWith("seek:")) player.seekPlay(Number(link.slice(5))); else api.openUrl(link) }
+                                HoverHandler { cursorShape: parent.hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor }
+                            }
                             Markdown {
+                                visible: !sc.modelData.rich
                                 Layout.fillWidth: true
                                 source: sc.modelData.content
                                 onSeek: (s) => player.seekPlay(s)

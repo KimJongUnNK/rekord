@@ -1326,7 +1326,11 @@ async def summarize_rec(rid: str, request: Request):
 
 @app.patch("/api/summaries/{sid}")
 async def patch_summary(sid: int, request: Request):
-    db.update_summary(sid, (await request.json())["content"])
+    """content: Markdown (AI, search, Markdown export). rich: the editor's formatted version (HTML) – keeps bold,
+    colours, sizes for display, copying and Word. Without rich (e.g. a ticked to-do) the plain version counts."""
+    b = await request.json()
+    rich = b.get("rich")
+    db.update_summary(sid, b["content"], rich=rich if isinstance(rich, str) and rich.strip() else None)
     return {"ok": True}
 
 

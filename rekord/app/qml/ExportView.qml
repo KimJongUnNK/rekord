@@ -18,9 +18,11 @@ Item {
         { k: "vtt", n: "WebVTT", d: "Untertitel fürs Web", ext: "vtt" },
         { k: "json", n: "JSON", d: "Alle Daten, maschinenlesbar", ext: "json" },
         { k: "audio", n: "Audio", d: "Originalaufnahme", ext: "" },
-        { k: "clip", n: "In Zwischenablage", d: "Markdown kopieren", ext: "" }
+        { k: "rich", n: "Kopieren für Word", d: "Mit Formatierung – fett bleibt fett, Listen bleiben Listen", ext: "" },
+        { k: "clip", n: "Markdown kopieren", d: "Mit # und ** – für Notion, Obsidian", ext: "" }
     ]
     function exportAs(f) {
+        if (f.k === "rich") { api.copyRich(api.exportText(page.rid), ""); page.app.toast("Kopiert – mit Formatierung, in Word einfügen"); return }
         if (f.k === "clip") { api.copyText(api.exportText(page.rid)); page.app.toast("Kopiert"); return }
         const ext = f.k === "audio" ? (page.rec.audio_path || "").split(".").pop() : f.ext
         dlg.fmt = f.k

@@ -1437,6 +1437,12 @@ class AppState(QObject):
         from . import md
         return md.render(src, link_color=link_color)
 
+    @Slot(str, str, result=str)
+    def richDisplay(self, html: str, link_color: str) -> str:  # noqa: N802 - QML API
+        """A summary formatted in the editor: its HTML, timestamps as links."""
+        from . import richtext
+        return richtext.display_html(html, link_color)
+
     @Slot(str, int, result=str)
     def toggleTask(self, src: str, line: int) -> str:  # noqa: N802 - QML API
         from . import md
