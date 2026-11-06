@@ -60,3 +60,4 @@ TemplateDialog 1.0 TemplateDialog.qml
 TemplatesPage 1.0 TemplatesPage.qml
 MacFix 1.0 MacFix.qml
 DocsView 1.0 DocsView.qml
+RichEditor 1.0 RichEditor.qml

@@ -155,6 +155,183 @@ def _md_to_docx(d, md: str, level: int = 2) -> None:
         i += 1
 
 
+def _css(style: str) -> dict:
+    out = {}
+    for part in (style or "").split(";"):
+        if ":" in part:
+            k, v = part.split(":", 1)
+            out[k.strip().lower()] = v.strip().strip("'\"")
+    return out
+
+
+def _html_to_docx(d, html: str) -> None:
+    """A summary formatted in REKORD's editor (Qt rich text HTML) → Word, format by format: bold, italic, underline,
+    strikethrough, sub/superscript, font, size, colour, highlight, headings, bullet/numbered lists (nested), tables."""
+    from html.parser import HTMLParser
+
+    from docx.enum.text import WD_COLOR_INDEX
+    from docx.shared import Pt, RGBColor
+
+    def rgb(v: str):
+        m = re.fullmatch(r"#?([0-9a-fA-F]{6})", (v or "").strip())
+        return RGBColor.from_string(m[1].upper()) if m else None
+
+    def marker(v: str):
+        """Word highlights come in a fixed set of colours: the one of the same colour family (by hue)."""
+        import colorsys
+        m = re.fullmatch(r"#?([0-9a-fA-F]{6})", (v or "").strip())
+        if not m:
+            return None
+        h, light, sat = colorsys.rgb_to_hls(*(int(m[1][i:i + 2], 16) / 255 for i in (0, 2, 4)))
+        if sat < 0.25:
+            return WD_COLOR_INDEX.GRAY_25 if light > 0.5 else WD_COLOR_INDEX.GRAY_50
+        deg = h * 360
+        for top, col in ((15, WD_COLOR_INDEX.RED), (75, WD_COLOR_INDEX.YELLOW), (165, WD_COLOR_INDEX.BRIGHT_GREEN),
+                         (200, WD_COLOR_INDEX.TURQUOISE), (255, WD_COLOR_INDEX.BLUE), (290, WD_COLOR_INDEX.VIOLET),
+                         (345, WD_COLOR_INDEX.PINK), (361, WD_COLOR_INDEX.RED)):
+            if deg < top:
+                return col
+        return WD_COLOR_INDEX.YELLOW
+
+    class P(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.fmt = [{}]          # inherited run formats
+            self.lists = []          # "ul" / "ol" stack
+            self.para = None
+            self.table = None        # rows of cells (each a list of paragraphs' text runs)
+            self.cell = None
+            self.skip = 0            # inside <head>/<style>
+
+        def _push(self, extra):
+            self.fmt.append({**self.fmt[-1], **extra})
+
+        def _new_para(self, tag):
+            if self.cell is not None:
+                return
+            if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                self.para = d.add_heading("", min(int(tag[1]) + 1, 9))
+            elif tag == "li" and self.lists:
+                depth = len(self.lists)
+                style = ("List Number" if self.lists[-1] == "ol" else "List Bullet") + (f" {min(depth, 3)}" if depth > 1 else "")
+                try:
+                    self.para = d.add_paragraph(style=style)
+                except KeyError:
+                    self.para = d.add_paragraph(style="List Number" if self.lists[-1] == "ol" else "List Bullet")
+            else:
+                self.para = d.add_paragraph()
+
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            if tag in ("head", "style", "title"):
+                self.skip += 1
+                return
+            css = _css(a.get("style", "")) if tag != "body" else {}  # the editor's base font isn't a format: Word's own stays
+            f = {}
+            if tag in ("b", "strong") or css.get("font-weight", "") in ("600", "700", "800", "900", "bold"):
+                f["bold"] = True
+            if css.get("font-weight", "") in ("400", "normal"):
+                f["bold"] = False
+            if tag in ("i", "em") or css.get("font-style") == "italic":
+                f["italic"] = True
+            deco = css.get("text-decoration", "")
+            if tag == "u" or "underline" in deco:
+                f["underline"] = True
+            if tag in ("s", "strike", "del") or "line-through" in deco:
+                f["strike"] = True
+            va = css.get("vertical-align", "")
+            if tag == "sub" or va == "sub":
+                f["sub"] = True
+            if tag == "sup" or va == "super":
+                f["sup"] = True
+            if css.get("color"):
+                f["color"] = css["color"]
+            if css.get("background-color") and tag not in ("table", "td", "tr", "body"):
+                f["mark"] = css["background-color"]
+            size = re.fullmatch(r"([\d.]+)pt", css.get("font-size", ""))
+            if size:
+                f["size"] = float(size[1])
+            if css.get("font-family"):
+                f["font"] = css["font-family"].split(",")[0].strip("'\" ")
+            if tag in ("ul", "ol"):
+                self.lists.append(tag)
+            elif tag in ("p", "li", "h1", "h2", "h3", "h4", "h5", "h6"):
+                self._new_para(tag)
+            elif tag == "br" and self.para is not None:
+                self.para.add_run().add_break()
+            elif tag == "table":
+                self.table = []
+            elif tag == "tr" and self.table is not None:
+                self.table.append([])
+            elif tag in ("td", "th") and self.table is not None:
+                self.cell = []
+                self.table[-1].append(self.cell)
+            if tag not in ("br", "img", "meta", "hr"):
+                self._push(f)
+
+        def handle_endtag(self, tag):
+            if tag in ("head", "style", "title"):
+                self.skip = max(0, self.skip - 1)
+                return
+            if tag in ("ul", "ol") and self.lists:
+                self.lists.pop()
+            elif tag in ("td", "th"):
+                self.cell = None
+            elif tag == "table" and self.table:
+                rows = [r for r in self.table if r]
+                cols = max(len(r) for r in rows) if rows else 0
+                if cols:
+                    t = d.add_table(rows=len(rows), cols=cols)
+                    t.style = "Table Grid"
+                    for i, r in enumerate(rows):
+                        for j, runs in enumerate(r):
+                            cp = t.cell(i, j).paragraphs[0]
+                            for text, fm in runs:
+                                self._run(cp, text, fm)
+                self.table = None
+            if tag not in ("br", "img", "meta", "hr") and len(self.fmt) > 1:
+                self.fmt.pop()
+
+        def _run(self, para, text, fm):
+            r = para.add_run(text)
+            if fm.get("bold") is not None:
+                r.bold = fm["bold"]
+            r.italic = fm.get("italic") or None
+            r.underline = fm.get("underline") or None
+            if fm.get("strike"):
+                r.font.strike = True
+            if fm.get("sub"):
+                r.font.subscript = True
+            if fm.get("sup"):
+                r.font.superscript = True
+            if rgb(fm.get("color", "")):
+                r.font.color.rgb = rgb(fm["color"])
+            if fm.get("mark") and marker(fm["mark"]):
+                r.font.highlight_color = marker(fm["mark"])
+            if fm.get("size"):
+                r.font.size = Pt(fm["size"])
+            if fm.get("font"):
+                r.font.name = fm["font"]
+
+        def handle_data(self, data):
+            if self.skip or not data:
+                return
+            if self.cell is not None:
+                if data.strip():
+                    self.cell.append((data, dict(self.fmt[-1])))
+                return
+            if self.para is None:
+                if not data.strip():
+                    return
+                self.para = d.add_paragraph()
+            if not data.strip() and "\n" in data:  # line breaks between tags in the HTML, not text
+                return
+            text = data.replace("\n", " ")
+            self._run(self.para, text.rstrip() if data.endswith("\n") else text, self.fmt[-1])
+
+    P().feed(html or "")
+
+
 def docx(rid: str) -> bytes:
     from docx import Document  # optional dependency
     rec, sp, segs = _data(rid)
@@ -162,7 +339,10 @@ def docx(rid: str) -> bytes:
     d.add_heading(rec["title"], 0)
     for s in db.list_summaries(rid):
         d.add_heading(s["title"], 1)
-        _md_to_docx(d, s["content"])
+        if s.get("rich"):
+            _html_to_docx(d, s["rich"])  # formatted in the editor: every format as it is
+        else:
+            _md_to_docx(d, s["content"])
     d.add_heading("Transkript", 1)
     for s in segs:
         p = d.add_paragraph()

@@ -205,6 +205,12 @@ class Api(QObject):
         from PySide6.QtGui import QGuiApplication
         QGuiApplication.clipboard().setText(text)
 
+    @Slot(str, str)
+    def copyRich(self, markdown: str, html: str) -> None:  # noqa: N802 - QML API
+        """A summary for Word & co.: real formatting on the clipboard (bold stays bold), not "**"."""
+        from . import richtext
+        richtext.copy_rich(markdown, html)
+
     @Slot(str, result=str)
     def exportText(self, rid: str) -> str:  # noqa: N802 - QML API
         from .. import export

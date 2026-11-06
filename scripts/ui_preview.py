@@ -185,6 +185,27 @@ def main(out: Path) -> int:
     def call(obj, fn, *args):
         QMetaObject.invokeMethod(obj, fn, *[Q_ARG("QVariant", a) for a in args])
 
+    def find(root, name: str):
+        """findChild misses Repeater delegates and popups (only visual parents) – walk both trees."""
+        import shiboken6
+        from PySide6.QtQuick import QQuickItem
+        seen, todo = set(), [root]
+        while todo:
+            obj = todo.pop()
+            key = shiboken6.getCppPointer(obj)[0] if obj is not None else None
+            if obj is None or key in seen:
+                continue
+            seen.add(key)
+            if obj.objectName() == name:
+                return obj
+            todo.extend(obj.children())
+            if isinstance(obj, QQuickItem):
+                todo.extend(obj.childItems())
+            ci = obj.property("contentItem") if obj.metaObject().indexOfProperty("contentItem") >= 0 else None
+            if isinstance(ci, QObject):
+                todo.append(ci)
+        return None
+
     shot("library")
     # several at once: Auswählen → tick two → "2 löschen" → confirm – both gone, the rest stays
     junk = [db.create_recording(f"Falsche Datei {i}", "", source="import")["id"] for i in (1, 2)]
@@ -235,6 +256,39 @@ def main(out: Path) -> int:
     for i, name in enumerate(["detail", "detail-transcript", "detail-mindmap", "detail-ask", "detail-notes", "detail-docs", "detail-export"]):
         detail.setProperty("tab", i)
         shot(name)
+    # a summary edited like in Word: select a word, B, save → stored with its formats, Markdown gets "**"
+    detail.setProperty("tab", 0)
+    wait(0.4)
+    edit_btn = find(detail, "summaryEdit")
+    if edit_btn is None:
+        problems_extra.append("summary: no 'Bearbeiten' button")
+    else:
+        QMetaObject.invokeMethod(edit_btn, "clicked")
+        wait(0.6)
+        rich = find(detail, "richEditor")
+        area = find(rich, "richArea") if rich else None
+        if area is None or not rich.property("opened"):
+            problems_extra.append("summary: the editor with the toolbar didn't open")
+        else:
+            from PySide6.QtGui import QTextDocument
+            sid = next(x["id"] for x in db.list_summaries(ids["rid"]) if x["template_id"] != "mindmap")
+            probe = QTextDocument()
+            probe.setMarkdown(db.get_summary(sid)["content"])  # what the editor loaded
+            start = probe.toPlainText().find("Launch")
+            QMetaObject.invokeMethod(area, "select", Q_ARG(int, start), Q_ARG(int, start + 6))
+            wait(0.2)
+            QMetaObject.invokeMethod(find(rich, "richBold"), "clicked")
+            wait(0.3)
+            shot("summary-rich-editor")
+            QMetaObject.invokeMethod(find(rich, "richSave"), "clicked")
+            if not wait_for(lambda: (db.get_summary(sid) or {}).get("rich"), 4):
+                problems_extra.append("summary: the formatted version wasn't saved")
+            else:
+                sm = db.get_summary(sid)
+                if "**Launch**" not in sm["content"] or "Launch bleibt" in sm["content"]:
+                    problems_extra.append(f"summary: bold didn't stick (md {sm['content'][:80]!r})")
+            wait(0.5)
+            shot("summary-rich-saved")
     # "Wer ist das? → Später" must never lose the way back: one line stays, "Jetzt benennen" opens it again
     naming = detail.findChild(QObject, "namingCard")
     now = naming.findChild(QObject, "namingNow") if naming else None

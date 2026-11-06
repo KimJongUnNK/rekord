@@ -36,6 +36,12 @@ Kommt der Hinweis nicht: unten links auf **Nach Updates suchen** klicken.
 Beim ersten Start lädt REKORD einmalig die Sprachmodelle (~700 MB), danach läuft alles offline.
 Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**
 
+## Neu in 1.4.5
+
+- 🅱️ **Zusammenfassungen formatieren wie in Word.** *Bearbeiten* → Werkzeugleiste mit Schrift, Größe, **A⁺/A⁻**, **Fett**, *Kursiv*, Unterstrichen, Durchgestrichen, x₂/x², Schriftfarbe, Textmarker, Überschriften, Aufzählung und Nummerierung. Text markieren, klicken, fertig – auch mit **Strg/⌘ + B / I / U**. Keine Sternchen und Rauten mehr.
+- 📋 **Kopieren → in Word einfügen → sieht genau gleich aus.** Fett bleibt fett, Listen bleiben Listen, Farben und Größen bleiben. Klappt auch in Pages, Google Docs, Outlook und Mail.
+- 📄 **Word-Export mit jeder Formatierung** – Farben, Textmarker, Schriften und Größen inklusive. Unter *Export* gibt's dafür auch **Kopieren für Word** für die ganze Aufnahme.
+
 ## Neu in 1.4.4
 
 - 🗂️ **Mehrere Dateien → ein Transkript.** Teil 1 und Teil 2 der Vorlesung zusammen auswählen oder reinziehen → **Eine Aufnahme**: nach Namen sortiert hintereinander, einmal transkribiert, Sprecher über alle Teile.

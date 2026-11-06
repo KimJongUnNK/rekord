@@ -86,7 +86,7 @@ def build(port: int, keep_running: bool | None = None) -> Window | None:
     from PySide6.QtQuick import QQuickWindow  # noqa: F401 - the root object then is a QQuickWindow (grabWindow)
 
     from . import api as api_mod
-    from . import bridge
+    from . import bridge, richtext
 
     try:  # with widgets REKORD also gets its icon in the menu bar / notification area (app.tray)
         from PySide6.QtWidgets import QApplication as AppClass
@@ -108,7 +108,7 @@ def build(port: int, keep_running: bool | None = None) -> Window | None:
     state = bridge.AppState(port, keep_running=_keep_running() if keep_running is None else keep_running)
     objects = {"rekord": state, "library": bridge.Library(), "people": bridge.People(), "live": bridge.Live(),
                "api": api_mod.Api(port), "player": api_mod.Player(), "samplePlayer": api_mod.Player(),
-               "voice": bridge.VoiceRecorder()}
+               "voice": bridge.VoiceRecorder(), "richFmt": richtext.Formatter()}
     for o in objects.values():
         o.setParent(app)
     for name, obj in objects.items():

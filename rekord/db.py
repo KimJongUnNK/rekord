@@ -116,7 +116,9 @@ MIGRATIONS = {"recordings": {"title_locked": "INTEGER DEFAULT 0", "participants"
                              "context_fixes": "TEXT DEFAULT '[]'",  # corrections from the Unterlagen
                              "transcript_undo": "TEXT DEFAULT '{}'"},  # the lines before the last AI change  # corrections from the Unterlagen: [{from,to,count,by,off}]
               "speakers": {"voices": "INTEGER DEFAULT 1"},
-              "summaries": {"prev": "TEXT"},  # the version before the last "Sag der KI, was sie ändern soll" (Rückgängig)
+              "summaries": {"prev": "TEXT",  # the version before the last "Sag der KI, was sie ändern soll" (Rückgängig)
+                            "rich": "TEXT",  # formatted in the editor (HTML: bold, colours, sizes …) – for display, copy, Word
+                            "prev_rich": "TEXT"},
               "segments": {"voice": "INTEGER",
                            "orig": "TEXT"}}  # what the recognizer wrote, while Unterlagen-corrections changed the line  # which unknown voice (cluster) a line in the bucket belongs to  # >1: the "Nicht erkannte Stimme" bucket holds several people
 
@@ -459,22 +461,29 @@ def list_summaries(rid: str) -> list[dict]:
         "SELECT * FROM summaries WHERE recording_id=? ORDER BY created_at DESC", (rid,)).fetchall()]
 
 
-def update_summary(sid: int, content: str, keep_prev: bool = False) -> None:
-    """keep_prev: the current text is kept as the version to go back to (Rückgängig)."""
+_KEEP = object()
+
+
+def update_summary(sid: int, content: str, keep_prev: bool = False, rich=_KEEP) -> None:
+    """keep_prev: the current version is kept to go back to (Rückgängig). rich: the formatted version from the editor
+    (HTML) – None drops it (the text changed without the editor, e.g. by the AI); left out, a changed text drops it too."""
     with tx() as c:
+        if rich is _KEEP:
+            rich = None
         if keep_prev:
-            c.execute("UPDATE summaries SET prev=content, content=? WHERE id=?", (content, sid))
+            c.execute("UPDATE summaries SET prev=content, prev_rich=rich, content=?, rich=? WHERE id=?", (content, rich, sid))
         else:
-            c.execute("UPDATE summaries SET content=? WHERE id=?", (content, sid))
+            c.execute("UPDATE summaries SET content=?, rich=? WHERE id=?", (content, rich, sid))
 
 
 def undo_summary(sid: int) -> bool:
-    """Back to the version before the last AI change – and that change becomes the one to redo (swap)."""
+    """Back to the version before the last change by the AI – and that change becomes the one to redo (swap)."""
     with tx() as c:
-        r = c.execute("SELECT content, prev FROM summaries WHERE id=?", (sid,)).fetchone()
+        r = c.execute("SELECT content, prev, rich, prev_rich FROM summaries WHERE id=?", (sid,)).fetchone()
         if not r or r["prev"] is None:
             return False
-        c.execute("UPDATE summaries SET content=?, prev=? WHERE id=?", (r["prev"], r["content"], sid))
+        c.execute("UPDATE summaries SET content=?, prev=?, rich=?, prev_rich=? WHERE id=?",
+                  (r["prev"], r["content"], r["prev_rich"], r["rich"], sid))
     return True
 
 
