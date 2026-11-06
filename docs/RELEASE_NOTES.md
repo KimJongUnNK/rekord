@@ -36,6 +36,11 @@ Kommt der Hinweis nicht: unten links auf **Nach Updates suchen** klicken.
 Beim ersten Start lädt REKORD einmalig die Sprachmodelle (~700 MB), danach läuft alles offline.
 Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**
 
+## Neu in 1.4.2
+
+- 🎧 **Angehängte Audios lassen sich anhören.** Nach *Audio anhängen* (z. B. Teil 2 der Vorlesung) spielte der Player noch die alte Datei – Spulen ging nur bis zum Ende von Teil 1 und sprang dann zum Anfang. Jetzt lädt er die ganze Aufnahme, die Stelle bleibt.
+- 🗣️ **Unbekannte Stimmen jederzeit benennen.** *Später* bei „Wer ist das?“ blendete die Stimmen bis zum Neustart aus. Jetzt bleibt eine Zeile stehen: **Jetzt benennen** holt sie zurück.
+
 ## Neu in 1.4.1
 
 - 🎯 **Schlanker: keine iPhone-App mehr.** REKORD ist ein Programm für deinen Computer – Mac, Windows, Linux. Kein Koppeln, kein QR-Code, kein iPhone-Schritt in der Einführung.

@@ -222,7 +222,7 @@ Der **rote Knopf** unten rechts (in Aufnahmen, Fragen, Personen und Vorlagen) sp
   - **Titel** antippen zum Umbenennen.
   - **Player:** Wellenform und farbige Sprecher-Leiste anklicken zum Springen, **±15 s**, Tempo **1×–2×**. ★ markiert deine Highlights.
   - **Sprecher-Karten:** antippen → Namen ändern, **Stimme merken** (wird künftig erkannt) oder mit einem doppelt erkannten Sprecher **zusammenführen**.
-  - **Wer ist das?** erscheint, solange es eine **Nicht erkannte Stimme** gibt: pro unbekannter Stimme ▶ anhören, Namen eingeben, **Merken**. *Später* blendet es aus.
+  - **Wer ist das?** erscheint, solange es eine **Nicht erkannte Stimme** gibt: pro unbekannter Stimme ▶ anhören, Namen eingeben, **Merken**. *Später* klappt es auf eine Zeile zusammen – **Jetzt benennen** holt es jederzeit zurück. Oder auf den Sprecher oben (z. B. *Nicht erkannte Stimme*) klicken und umbenennen.
   - Darunter die Reiter:
 
 | Reiter | Was du dort machst |

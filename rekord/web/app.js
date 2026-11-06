@@ -867,7 +867,7 @@ async function viewDetail(id) {
         <span class="ptime" id="ptime">00:00 / ${fmtTime(rec.duration)}</span><span class="spacer"></span>
         <button class="btn sm" id="rate" title="Wiedergabe-Tempo">${prefs.rate}×</button>
       </div>
-      <audio id="audio" preload="metadata" src="/api/recordings/${id}/audio"></audio>
+      <audio id="audio" preload="metadata" src="/api/recordings/${id}/audio?v=${encodeURIComponent((rec.audio_path || "").split(/[\\/]/).pop())}"></audio>
     </div>
     <div class="spk-bar" id="spk"></div>
     <div id="naming"></div>
@@ -962,7 +962,7 @@ async function viewDetail(id) {
     const box = $("#naming"); if (!box) return;
     const unknown = rec.status === "done" ? rec.speakers.filter((x) => !x.profile_id && unnamed(x.name)) : [];
     let later = false; try { later = sessionStorage.getItem("rekord.namelater." + id) === "1"; } catch (e) {}
-    if (!unknown.length || later) { box.innerHTML = ""; return; }
+    if (!unknown.length) { box.innerHTML = ""; return; }
     if (!knownNames.length) { try { knownNames = (await api("/api/profiles")).items.map((x) => x.name); } catch (e) {} }
     // one row per unknown voice: a bucket with several people is listed voice by voice (by when they first spoke)
     const rows = [];
@@ -973,6 +973,13 @@ async function viewDetail(id) {
       const groups = Object.values(byVoice).sort((a, b) => a[0].start - b[0].start);
       groups.forEach((g) => rows.push({ sid: x.id, lines: g, single: groups.length === 1 }));
     }
+    if (later) {  // "Später" folds it into one line that stays – it never disappears for good
+      const n = rows.length;
+      box.innerHTML = `<div class="card naming"><div class="row"><b>${n > 1 ? `${n} Stimmen nicht erkannt` : "1 Stimme nicht erkannt"}</b>${tip("naming")}<span class="spacer"></span>
+        <button class="btn primary sm" id="nm-now">Jetzt benennen</button></div></div>`;
+      $("#nm-now").onclick = () => { try { sessionStorage.removeItem("rekord.namelater." + id); } catch (e) {} renderNaming(); };
+      return;
+    }
     box.innerHTML = `<div class="card naming"><div class="row"><b>Wer ist das?</b>${tip("naming")}<span class="spacer"></span><button class="btn ghost sm" id="nm-later">Später</button></div>
       <p class="muted" style="margin:4px 0 10px">${rows.length > 1 ? `${rows.length} Stimmen hat REKORD nicht erkannt.` : "Eine Stimme hat REKORD nicht erkannt."} Anhören, Namen eingeben, <b>Merken</b> – ab der nächsten Aufnahme wird sie automatisch erkannt.</p>
       ${rows.map((r, k) => `<div class="nm-row" style="--c:${UNKNOWN_COLOR_JS}"><span class="avatar">?</span>
@@ -981,7 +988,7 @@ async function viewDetail(id) {
           <input type="text" data-name="${k}" placeholder="Name" value="${esc(suggestName(r.lines))}" list="nm-list" autocomplete="off">
           <button type="button" class="btn primary sm" data-save="${k}">Merken</button></div>`).join("")}
       <datalist id="nm-list">${knownNames.map((n) => `<option value="${esc(n)}">`).join("")}</datalist></div>`;
-    $("#nm-later").onclick = () => { try { sessionStorage.setItem("rekord.namelater." + id, "1"); } catch (e) {} box.innerHTML = ""; };
+    $("#nm-later").onclick = () => { try { sessionStorage.setItem("rekord.namelater." + id, "1"); } catch (e) {} renderNaming(); };
     $$("#naming [data-play]").forEach((b) => b.onclick = () => playSample(rows[Number(b.dataset.play)].lines));
     $$("#naming [data-save]").forEach((b) => b.onclick = async () => {
       const r = rows[Number(b.dataset.save)], name = $(`#naming [data-name="${b.dataset.save}"]`).value.trim();

@@ -2,6 +2,10 @@
 
 Was sich in welcher Version geändert hat, neueste zuerst. Die Downloads stehen immer unter [Releases](https://github.com/KimJongUnNK/rekord/releases/latest).
 
+## 1.4.2 – angehängte Audios anhören · unbekannte Stimmen jederzeit benennen
+- **Behoben: Nach *Audio anhängen* lief nur Teil 1.** Die Aufnahme bekommt beim Anhängen eine neue, längere Datei – der Player behielt die alte. Der Balken zeigte schon die ganze Länge, Spulen hinter Teil 1 sprang zum Anfang. Jetzt lädt der Player die neue Datei (die Stelle bleibt), auch im Browser.
+- **„Wer ist das?“ verschwindet nicht mehr.** *Später* klappt es auf eine Zeile zusammen („2 Stimmen nicht erkannt“), **Jetzt benennen** öffnet es wieder – bisher war es bis zum Neustart weg.
+
 ## 1.4.1 – nur noch für den Computer: iPhone-App entfernt
 - **Die iPhone-App gibt es nicht mehr.** REKORD ist ein Programm für Mac, Windows und Linux. Weg sind: der iPhone-Schritt in der Einführung, *Einstellungen → iPhone & Geräte* (QR-Code, Kopplungs-Code, Firewall-Knopf), die IPA auf der Release-Seite und der iOS-Build.
 - **Nur noch auf diesem Computer erreichbar (127.0.0.1).** Die App öffnet sich nicht mehr fürs WLAN – Windows fragt nicht mehr nach der Firewall, macOS nicht mehr nach dem lokalen Netzwerk. Die Linux-Pakete öffnen keine Ports mehr und schließen beim Update den Port 8765, den ältere Versionen geöffnet haben. Wer trotzdem ein eigenes Gerät koppeln will: `--lan` bzw. `REKORD_LAN=1` (Koppeln über die Schnittstelle `/api/pair`).

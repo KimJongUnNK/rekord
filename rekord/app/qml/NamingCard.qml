@@ -4,15 +4,18 @@ import QtQuick.Layouts
 import "."
 
 // "Wer ist das?" right after a recording: one row per voice REKORD didn't know – listen, name it, Merken.
+// "Später" folds it into one line that stays – "Jetzt benennen" opens it again, any time.
 Card {
     id: card
     required property var page
     property var names: []  // people REKORD knows (suggestions)
     readonly property var rows: build()
-    visible: rows.length > 0 && !page.app.namingLater[page.rid]
+    objectName: "namingCard"
+    readonly property bool later: !!page.app.namingLater[page.rid]
+    visible: rows.length > 0
     implicitHeight: col.implicitHeight + 32
     border.color: Theme.accentLine
-    color: Theme.accentSoft
+    color: later ? Theme.card : Theme.accentSoft
 
     readonly property var introRe: /(?:^|[\s,.;:!?])(?:[Hh]ier (?:ist|spricht)|[Mm]ein Name ist|[Ii]ch heiße|[Tt]his is|[Mm]y name is|[Ii]ch bin(?: der| die)?)\s+([A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?)/g
     readonly property var notNames: ["Ich", "Heute", "Hier", "Jetzt", "Gerade", "Auch", "Noch", "Mal", "Eigentlich", "Okay", "Der", "Die", "Das", "Ein", "Eine", "Team"]
@@ -43,6 +46,12 @@ Card {
         }
         return ""
     }
+    function setLater(on) {
+        const m = Object.assign({}, page.app.namingLater)
+        if (on) m[page.rid] = true
+        else delete m[page.rid]
+        page.app.namingLater = m
+    }
     function save(r, name) {
         name = name.trim()
         if (!name) { page.app.toast("Namen eingeben"); return }
@@ -58,18 +67,23 @@ Card {
         spacing: 10
         RowLayout {
             Layout.fillWidth: true
-            Text { text: "Wer ist das?"; font.family: Theme.display; font.pixelSize: 20; font.weight: Font.Black; color: Theme.fg }
+            Text {
+                text: card.later ? (card.rows.length > 1 ? card.rows.length + " Stimmen nicht erkannt" : "1 Stimme nicht erkannt") : "Wer ist das?"
+                font.family: card.later ? Theme.text : Theme.display; font.pixelSize: card.later ? 15 : 20; font.weight: Font.Black; color: Theme.fg
+            }
             Tip { key: "naming" }
             Item { Layout.fillWidth: true }
-            Btn { kind: "ghost"; small: true; text: "Später"; onClicked: { const m = card.page.app.namingLater; m[card.page.rid] = true; card.page.app.namingLater = Object.assign({}, m) } }
+            Btn { visible: !card.later; kind: "ghost"; small: true; text: "Später"; onClicked: card.setLater(true) }
+            Btn { objectName: "namingNow"; visible: card.later; kind: "primary"; small: true; text: "Jetzt benennen"; onClicked: card.setLater(false) }
         }
         Muted {
+            visible: !card.later
             Layout.fillWidth: true
             text: (card.rows.length > 1 ? card.rows.length + " Stimmen hat REKORD nicht erkannt." : "Eine Stimme hat REKORD nicht erkannt.")
                 + " Anhören, Namen eingeben, Merken – ab der nächsten Aufnahme wird sie automatisch erkannt."
         }
         Repeater {
-            model: card.rows
+            model: card.later ? [] : card.rows
             delegate: RowLayout {
                 id: row
                 required property var modelData

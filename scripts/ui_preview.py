@@ -169,6 +169,15 @@ def main(out: Path) -> int:
             QCoreApplication.processEvents()
             time.sleep(0.01)
 
+    def wait_for(cond, sec: float) -> bool:
+        end = time.time() + sec
+        while time.time() < end:
+            QCoreApplication.processEvents()
+            if cond():
+                return True
+            time.sleep(0.02)
+        return cond()
+
     def shot(name: str) -> None:
         wait(0.9)
         win.grabWindow().save(str(out / f"{name}.png"))
@@ -206,6 +215,43 @@ def main(out: Path) -> int:
     for i, name in enumerate(["detail", "detail-transcript", "detail-mindmap", "detail-ask", "detail-notes", "detail-docs", "detail-export"]):
         detail.setProperty("tab", i)
         shot(name)
+    # "Wer ist das? → Später" must never lose the way back: one line stays, "Jetzt benennen" opens it again
+    naming = detail.findChild(QObject, "namingCard")
+    now = naming.findChild(QObject, "namingNow") if naming else None
+    if naming is None or not naming.property("visible") or naming.property("later"):
+        problems_extra.append("naming: 'Wer ist das?' not shown for the unknown voice")
+    else:
+        call(naming, "setLater", True)
+        wait(0.3)
+        shot("detail-naming-later")
+        if not naming.property("visible") or now is None or not now.property("visible"):
+            problems_extra.append("naming: after 'Später' there is no way back to name the voice")
+        call(naming, "setLater", False)
+        wait(0.3)
+        if naming.property("later"):
+            problems_extra.append("naming: 'Jetzt benennen' didn't open the card again")
+    # "Audio anhängen" (part 2 of a lecture) gives the recording a new, longer file: the player must take it –
+    # it kept the first file, so it stopped at part 1's end and jumped back to the start
+    old_audio = db.get_recording(ids["rid"])["audio_path"]
+    longer = config.AUDIO_DIR / f"{ids['rid']}-appended.wav"
+    import wave
+    with wave.open(str(longer), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(8000)
+        wf.writeframes((np.sin(np.arange(8000 * 100) / 8000 * 2 * np.pi * 220) * 800).astype("<i2").tobytes())
+    db.update_recording(ids["rid"], audio_path=str(longer), duration=100)
+    call(detail, "reload")
+    if not wait_for(lambda: detail.property("loadedAudio") == str(longer) and o["player"].duration > 90, 4):
+        problems_extra.append(f"player: still on the old file after appending ({detail.property('loadedAudio')!r}, "
+                              f"{o['player'].duration:.0f} s)")
+    o["player"].seek(95)
+    wait(0.3)
+    if o["player"].available and o["player"].position < 90:
+        problems_extra.append(f"player: seeking into the appended part jumps back ({o['player'].position:.0f} s)")
+    db.update_recording(ids["rid"], audio_path=old_audio, duration=70)
+    call(detail, "reload")
+    wait(0.5)
     fixes = db.get_recording(ids["rid"]).get("context_fixes") or []
     if not any(f["to"] == "Webflow" for f in fixes) or not any(f["to"] == "Brugger" or f["to"].endswith("Brugger") for f in fixes):
         problems_extra.append(f"Unterlagen: expected Webflow/Brugger corrections, got {fixes}")

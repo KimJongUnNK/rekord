@@ -33,6 +33,7 @@ Page {
                     () => app.call("DELETE", "/api/recordings/" + rid, null, () => { player.stop(); app.toast("Gelöscht"); app.go("library"); library.refresh() }), true)
     }
 
+    property string loadedAudio: ""   // the file the player has – a new one after "Audio anhängen"
     function open(id, t) {
         if (id !== rid) { rec = null; tab = 0 }
         rid = id
@@ -49,8 +50,14 @@ Page {
             page.rec = r
             page.jobStage = r.stage || ""
             page.jobProgress = r.progress || 0
+            if (first || (r.audio_path || "") !== page.loadedAudio) {
+                // the file changes when audio is appended (part 2 of a lecture): load the new one, keep the place
+                const at = first ? 0 : player.position
+                page.loadedAudio = r.audio_path || ""
+                player.load(page.loadedAudio)
+                if (at > 0) player.seek(at)
+            }
             if (first) {
-                player.load(r.audio_path || "")
                 if (page.startAt > 0) { player.seek(page.startAt); page.tab = 1; page.startAt = 0 }
                 else if (!r.summaries.some(s => s.template_id !== "mindmap") && r.segments.length) page.tab = 1
                 notes.fill()
