@@ -118,6 +118,7 @@ Page {
         nameFilters: [library.mediaFilter, "Alle Dateien (*)"]  // every audio/video format – others work too, if there's sound
         onAccepted: library.appendFiles(page.rid, selectedFiles)
     }
+    RecordingPicker { id: recPicker; page: page }
     SpeakerDialog { id: speakerDlg; objectName: "speakerDlg"; page: page }
     AssignDialog { id: assignDlg; objectName: "assignDlg"; page: page }
 
@@ -150,12 +151,17 @@ Page {
                 objectName: "appendButton"
                 small: true
                 iconName: "import"
-                text: "Audio anhängen"
+                text: "Anhängen"
                 enabled: !!page.rec && page.rec.status === "done"
-                onClicked: page.appendFiles()
+                onClicked: appendMenu.popup(0, height + 4)
+                Menu {
+                    id: appendMenu
+                    MenuItem { text: "Aufnahmen aus REKORD …"; onTriggered: recPicker.show() }
+                    MenuItem { text: "Dateien vom Computer …"; onTriggered: page.appendFiles() }
+                }
                 ToolTip.visible: hovered
                 ToolTip.delay: 400
-                ToolTip.text: enabled ? "Weitere Datei hinten an diese Aufnahme (z. B. Teil 2) – danach wird alles zusammen transkribiert. Oder Datei einfach auf die Aufnahme ziehen."
+                ToolTip.text: enabled ? "Weitere Aufnahmen oder Dateien hinten an diese Aufnahme (z. B. Teil 2 und 3) – mehrere auf einmal, danach wird alles zusammen transkribiert. Oder Dateien einfach auf die Aufnahme ziehen."
                                       : "Geht, sobald die Aufnahme fertig ausgewertet ist."
             }
             Btn {  // agenda, slides, documents: names and terms from them are written right in the transcript
@@ -178,6 +184,11 @@ Page {
                 Menu {
                     id: more
                     MenuItem { text: "Neu verarbeiten (andere Einstellungen/Modell)"; onTriggered: page.app.call("POST", "/api/recordings/" + page.rid + "/reprocess", null, () => { page.app.toast("Wird neu verarbeitet …"); page.reload() }) }
+                    MenuItem {
+                        text: "Aufnahmen anhängen …"
+                        enabled: !!page.rec && page.rec.status === "done"
+                        onTriggered: recPicker.show()
+                    }
                     MenuItem {
                         text: "Dateien anhängen …"
                         enabled: !!page.rec && page.rec.status === "done"

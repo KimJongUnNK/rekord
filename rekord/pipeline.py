@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import time
+import uuid
 from pathlib import Path
 
 import numpy as np
@@ -196,7 +197,7 @@ MERGE_THRESHOLD = 0.65
 APPEND_GAP = 1.0  # seconds of silence between the parts: a clear boundary for the speech detection
 
 
-def append_files(rid: str, paths: list[str]) -> float:
+def append_files(rid: str, paths: list[str], starts: list | None = None) -> float:
     """More audio for an existing recording – e.g. the second half of a meeting recorded separately, or voice memos
     that belong to it. The files are put behind the recording (with a short pause in between), stored as one file,
     and the recording is analysed again as a whole. Returns the seconds added. Highlights keep their times."""
@@ -218,6 +219,8 @@ def append_files(rid: str, paths: list[str]) -> float:
         if parts:
             parts.append(np.zeros(int(audio.SR * APPEND_GAP), dtype=np.float32))
         at = sum(len(q) for q in parts) / audio.SR
+        if starts is not None:
+            starts.append(at)  # where this part begins in the whole recording (stars of merged recordings move there)
         if audio.probe(p)["video"]:
             frames.extract(p, rid, offset=at)  # its stills at their place in the whole recording
         parts.append(x)
@@ -233,6 +236,95 @@ def append_files(rid: str, paths: list[str]) -> float:
         old.unlink(missing_ok=True)  # REKORD's own copy – an imported original elsewhere stays untouched
     log.info("appended %d file(s), %.0f s, to %s", len(paths), added, rid)
     return added
+
+
+BUSY = ("recording", "queued", "processing")
+
+
+def merged_title(titles: list[str]) -> str:
+    """"VO Statistik Teil 1", "VO Statistik Teil 2" → "VO Statistik"; different titles → "Erste + 2 weitere"."""
+    bare = [re.sub(r"[\s_-]*(teil|part)?[\s_-]*\d+\s*$", "", t, flags=re.I).strip() or t for t in titles]
+    if len(set(bare)) == 1:
+        return bare[0]
+    return f"{titles[0]} + {len(titles) - 1} weitere"
+
+
+def _ready(ids: list[str], minimum: int) -> list[dict]:
+    recs = [r for r in (db.get_recording(i) for i in dict.fromkeys(ids)) if r]
+    if len(recs) < minimum:
+        raise ValueError("Mindestens zwei Aufnahmen auswählen." if minimum > 1 else "Keine Aufnahme ausgewählt.")
+    busy = [r["title"] for r in recs if r.get("status") in BUSY]
+    if busy:
+        raise ValueError(f"Läuft noch: {', '.join(busy[:3])} – das geht, sobald sie fertig ausgewertet sind.")
+    missing = [r["title"] for r in recs if not (r.get("audio_path") and Path(r["audio_path"]).is_file())]
+    if missing:
+        raise ValueError(f"Audiodatei fehlt: {', '.join(missing[:3])}")
+    return sorted(recs, key=lambda r: r.get("created_at") or 0)
+
+
+def _take_along(rid: str, recs: list[dict], starts: list[float]) -> None:
+    """Stars at their new place, notes (a heading per part), participants and Unterlagen of the parts → rid."""
+    target = db.get_recording(rid) or {}
+    highlights = list(target.get("highlights") or [])
+    notes = [target["notes"].strip()] if (target.get("notes") or "").strip() else []
+    people = list(target.get("participants") or [])
+    for r, at in zip(recs, starts):
+        for h in r.get("highlights") or []:
+            try:
+                highlights.append(round(float(h) + at, 2))
+            except (TypeError, ValueError):
+                continue
+        if (r.get("notes") or "").strip():
+            notes.append(f"## {r['title']}\n{r['notes'].strip()}")
+        for name in r.get("participants") or []:
+            if name not in people:
+                people.append(name)
+    fields = {"highlights": highlights, "notes": "\n\n".join(notes)}
+    if people:
+        fields["participants"] = people
+    db.update_recording(rid, **fields)
+    for r in recs:  # their Unterlagen: names and terms from them help the new transcript too
+        for item in context.items(r["id"]):
+            try:
+                context.add(rid, item["path"], name=item["name"])
+            except Exception as e:  # noqa: BLE001 - an unreadable document never stops it
+                log.warning("Unterlage %s → %s: %s", item["name"], rid, e)
+
+
+def append_recordings(rid: str, ids: list[str]) -> float:
+    """Other recordings behind this one (like Unterlagen: pick them from the list) – oldest first, then this one is
+    transcribed again as a whole. The picked recordings stay. Returns the seconds added."""
+    target = db.get_recording(rid)
+    if target is None:
+        raise KeyError(rid)
+    if target.get("status") in BUSY:
+        raise ValueError("Anhängen geht, sobald die Aufnahme fertig ausgewertet ist.")
+    recs = _ready([i for i in ids if i != rid], 1)
+    starts: list[float] = []
+    added = append_files(rid, [r["audio_path"] for r in recs], starts=starts)
+    _take_along(rid, recs, starts)
+    return added
+
+
+def merge_recordings(ids: list[str], title: str = "") -> dict:
+    """Several finished recordings → ONE new recording for the bigger picture: their audio one after another (oldest
+    first, a short pause between), stars at their place, notes and Unterlagen taken along, then transcribed again as a
+    whole – speakers recognised across all parts. The originals stay as they are. Returns the new recording."""
+    recs = _ready(ids, 2)
+    rid = uuid.uuid4().hex[:12]
+    rec = db.create_recording((title or "").strip() or merged_title([r["title"] for r in recs]), "",
+                              source="import", rec_id=rid)
+    try:
+        starts: list[float] = []
+        append_files(rid, [r["audio_path"] for r in recs], starts=starts)
+    except Exception:
+        db.delete_recording(rid)
+        raise
+    if recs[0].get("folder"):
+        db.update_recording(rid, folder=recs[0]["folder"])
+    _take_along(rid, recs, starts)
+    log.info("merged %d recordings into %s", len(recs), rid)
+    return db.get_recording(rid) or rec
 
 
 def _voiceprints(samples, turns, emb):

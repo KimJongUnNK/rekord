@@ -219,6 +219,10 @@ def main(out: Path) -> int:
         call(libp, "togglePick", j)
     wait(0.3)
     shot("library-select")
+    merge_btn = find(libp, "mergePicked")
+    if merge_btn is None or not merge_btn.property("visible") or not merge_btn.property("enabled") \
+            or merge_btn.property("text") != "2 zusammenführen":
+        problems_extra.append("library: no usable '2 zusammenführen' with two recordings ticked")
     before = len(db.list_recordings())
     call(libp, "deletePicked")
     wait(0.3)
@@ -249,7 +253,7 @@ def main(out: Path) -> int:
     detail = win.findChild(QObject, "detailPage")
     append_btn = detail.findChild(QObject, "appendButton")
     if append_btn is None or not append_btn.property("visible") or not append_btn.property("enabled"):
-        problems_extra.append("detail: no usable 'Audio anhängen' button on a finished recording")
+        problems_extra.append("detail: no usable 'Anhängen' button on a finished recording")
     docs_btn = detail.findChild(QObject, "docsButton")
     if docs_btn is None or not docs_btn.property("visible") or not docs_btn.property("enabled"):
         problems_extra.append("detail: no usable 'Unterlagen' button")
@@ -326,6 +330,28 @@ def main(out: Path) -> int:
     db.update_recording(ids["rid"], audio_path=old_audio, duration=70)
     call(detail, "reload")
     wait(0.5)
+    # "Anhängen → Aufnahmen aus REKORD": several recordings picked from a list, like Unterlagen
+    other = db.create_recording("VO Teil 2", str(longer), source="import", duration=100, status="done")
+    picker = find(detail, "recordingPicker")
+    if picker is None:
+        problems_extra.append("append: no list to pick recordings from")
+    else:
+        call(picker, "show")
+        def listed():
+            v = picker.property("items")
+            v = v.toVariant() if hasattr(v, "toVariant") else v
+            return any(x.get("id") == other["id"] for x in (v or []))
+        if not wait_for(listed, 4):
+            problems_extra.append("append: the picker doesn't list the other finished recordings")
+        call(picker, "pick", [other["id"]])
+        wait(0.3)
+        ok = find(picker, "pickerOk")
+        if ok is None or not ok.property("enabled") or ok.property("text") != "Anhängen":
+            problems_extra.append("append: picking a recording doesn't enable 'Anhängen'")
+        shot("detail-append-recordings")
+        picker.close()
+        wait(0.3)
+    db.delete_recording(other["id"])
     fixes = db.get_recording(ids["rid"]).get("context_fixes") or []
     if not any(f["to"] == "Webflow" for f in fixes) or not any(f["to"] == "Brugger" or f["to"].endswith("Brugger") for f in fixes):
         problems_extra.append(f"Unterlagen: expected Webflow/Brugger corrections, got {fixes}")

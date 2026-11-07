@@ -125,3 +125,74 @@ def test_mind_map_svg_for_the_browser(client):
     r = client.get(f"/api/summaries/{sid}/mindmap.svg?fg=%23111&fg2=%23555&bg=javascript:alert(1)")
     assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg+xml")
     assert "<path" in r.text and "Punkt" in r.text and "javascript" not in r.text  # lines there, colours checked
+
+
+# ------------------------------------------------------------------ several finished recordings → one
+
+def _rec_with_audio(title: str, seconds: float, created: float, **fields):
+    from rekord import config
+    rec = db.create_recording(title, "", source="import")
+    config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    p = config.AUDIO_DIR / f"{rec['id']}.wav"
+    p.write_bytes(_wav(seconds))
+    db.update_recording(rec["id"], audio_path=str(p), status="done", duration=seconds, **fields)
+    with db.tx() as c:
+        c.execute("UPDATE recordings SET created_at=? WHERE id=?", (created, rec["id"]))
+    return db.get_recording(rec["id"])
+
+
+def test_three_recordings_become_one_bigger_picture(client, monkeypatch, tmp_path):
+    from rekord import context
+    queued = []
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append(rid))
+    c = _rec_with_audio("GuV Teil 3", 1.0, 3000, notes="Klausurrelevant")
+    a = _rec_with_audio("GuV Teil 1", 2.0, 1000, highlights=[0.5], participants=["Dozentin"])
+    b = _rec_with_audio("GuV Teil 2", 1.5, 2000, highlights=[1.0], participants=["Dozentin", "Emil"])
+    doc = tmp_path / "Folien.txt"
+    doc.write_text("Gewinn- und Verlustrechnung, Abschreibung", encoding="utf-8")
+    context.add(b["id"], doc, name="Folien.txt")
+    r = client.post("/api/recordings/merge", json={"ids": [c["id"], a["id"], b["id"]]})
+    assert r.status_code == 200, r.text
+    m = db.get_recording(r.json()["id"])
+    assert m["title"] == "GuV" and queued == [m["id"]]  # transcribed once, as a whole
+    assert 6.3 < m["duration"] < 6.7  # 2 + 1 + 1.5 + 1 + 1 – oldest first, pauses between
+    assert m["highlights"] == [0.5, 4.0]  # Teil 2's star moved behind Teil 1 (2 s) + pause (1 s)
+    assert m["participants"] == ["Dozentin", "Emil"] and "## GuV Teil 3\nKlausurrelevant" in m["notes"]
+    assert [d["name"] for d in context.items(m["id"])] == ["Folien.txt"]
+    assert all(db.get_recording(x["id"]) for x in (a, b, c))  # the originals stay
+
+
+def test_merging_needs_two_finished_recordings(client, monkeypatch):
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": None)
+    a = _rec_with_audio("Eins", 1.0, 1)
+    assert client.post("/api/recordings/merge", json={"ids": [a["id"]]}).status_code == 400
+    b = _rec_with_audio("Zwei", 1.0, 2)
+    db.update_recording(b["id"], status="processing")
+    r = client.post("/api/recordings/merge", json={"ids": [a["id"], b["id"]]})
+    assert r.status_code == 400 and "Läuft noch" in r.json()["detail"]
+    db.update_recording(b["id"], status="done")
+    r = client.post("/api/recordings/merge", json={"ids": [a["id"], b["id"]], "title": "Woche 3"})
+    assert r.status_code == 200 and r.json()["title"] == "Woche 3"
+
+
+def test_merged_title():
+    from rekord import pipeline
+    assert pipeline.merged_title(["VO Statistik Teil 1", "VO Statistik Teil 2"]) == "VO Statistik"
+    assert pipeline.merged_title(["Montag", "Dienstag", "Mittwoch"]) == "Montag + 2 weitere"
+
+
+def test_recordings_picked_from_the_list_are_appended(client, monkeypatch):
+    queued = []
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": queued.append(rid))
+    main = _rec_with_audio("VO Teil 1", 2.0, 10, highlights=[1.0])
+    p3 = _rec_with_audio("VO Teil 3", 1.0, 30, highlights=[0.5])
+    p2 = _rec_with_audio("VO Teil 2", 1.0, 20, notes="Formel S. 12")
+    r = client.post(f"/api/recordings/{main['id']}/append-recordings", json={"ids": [p3["id"], p2["id"], main["id"]]})
+    assert r.status_code == 200, r.text
+    m = db.get_recording(main["id"])
+    assert 5.8 < m["duration"] < 6.2 and queued == [main["id"]]  # 2 + 1 + 1 + 1 + 1, itself skipped
+    assert m["highlights"] == [1.0, 5.5]  # Teil 3 starts at 2 + 1 + 1 + 1 = 5 s
+    assert "## VO Teil 2\nFormel S. 12" in m["notes"]
+    assert db.get_recording(p2["id"]) and db.get_recording(p3["id"])  # they stay
+    assert client.post("/api/recordings/nope/append-recordings", json={"ids": [p2["id"]]}).status_code == 404
+    assert client.post(f"/api/recordings/{main['id']}/append-recordings", json={"ids": []}).status_code == 400
