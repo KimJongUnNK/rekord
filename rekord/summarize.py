@@ -46,6 +46,41 @@ def speaker_stats(rid: str) -> str:
     return ", ".join(f"{n}: {v / total:.0%}" for n, v in sorted(talk.items(), key=lambda x: -x[1]))
 
 
+SOURCE = {"import": "importierte Datei", "inbox": "aus dem Eingangsordner", "live": "live aufgenommen",
+          "mic": "live aufgenommen", "call": "Call/Meeting mitgeschnitten"}
+
+
+def recording_facts(rec: dict, settings: dict | None = None) -> str:
+    """What the app shows about a recording – so the AI can answer "wie heißt die Datei?", "welche Unterlagen?"."""
+    import datetime as dt
+    from . import context
+    lines = [f"- Titel: {rec['title']}", f"- ID: {rec['id']}"]
+    if rec.get("created_at"):
+        lines.append(f"- Datum: {dt.datetime.fromtimestamp(rec['created_at']):%d.%m.%Y %H:%M}")
+    lines.append(f"- Dauer: {fmt_time(rec.get('duration') or 0)}")
+    lines.append(f"- Herkunft: {SOURCE.get(rec.get('source') or '', rec.get('source') or '?')}")
+    files = rec.get("files") or []
+    if files:
+        lines.append(("- Audio-/Videodatei: " if len(files) == 1 else f"- Audio-/Videodateien ({len(files)}, in dieser Reihenfolge): ")
+                     + ", ".join(files))
+    if rec.get("folder"):
+        lines.append(f"- Ordner: {rec['folder']}")
+    people = rec.get("participants") or []
+    if isinstance(people, list) and people:
+        lines.append("- Teilnehmer: " + ", ".join(str(x) for x in people))
+    docs = context.items(rec["id"]) if context.ai_allowed(settings or config.load())[0] else []  # cloud: only if allowed
+    if docs:
+        lines.append("- Unterlagen: " + ", ".join(
+            d["name"] + (f" ({d['pages']} S.)" if d.get("pages") else "") for d in docs))
+    return "\n".join(lines)
+
+
+def user_rules(settings: dict) -> str:
+    """Einstellungen → KI → Anweisungen an die KI: the user's own rules for tone and form, in every answer."""
+    t = (settings.get("ai_instructions") or "").strip()
+    return f"\n\nAnweisungen des Nutzers – halte dich in jeder Antwort daran (Aufbau einer Vorlage geht vor):\n{t[:4000]}" if t else ""
+
+
 def system_prompt(settings: dict, rec: dict) -> str:
     lang = LANG.get(settings.get("summary_language", "de"), settings.get("summary_language", "Deutsch"))
     return f"""Du bist REKORD, ein präziser Assistent für Gesprächsnotizen. Du bekommst das Transkript einer Aufnahme
@@ -58,7 +93,9 @@ Regeln:
 - Belege wichtige Aussagen mit Zeitstempeln im Format [mm:ss] (klickbar in der App).
 - Erfinde nichts. Wenn etwas unklar ist oder fehlt, sag das. Transkriptionsfehler stillschweigend korrigieren, wenn eindeutig.
 
-Aufnahme: "{rec['title']}" · Dauer {fmt_time(rec.get('duration') or 0)} · Redeanteile: {speaker_stats(rec['id'])}"""
+Was die App über diese Aufnahme weiß (Fragen nach Dateiname, Datum, Dauer usw. damit direkt beantworten):
+{recording_facts(rec, settings)}
+- Redeanteile: {speaker_stats(rec['id'])}""" + user_rules(settings)
 
 
 def _chunks(text: str, size: int) -> list[str]:
@@ -161,7 +198,7 @@ def edit_summary(sid: int, instruction: str, settings: dict | None = None) -> st
     transcript = prepared_transcript(settings, sm["recording_id"], reserve=len(sm["content"]) + 2000)
     user = (f"<transkript>\n{transcript}\n</transkript>\n\n<zusammenfassung>\n{sm['content']}\n</zusammenfassung>\n\n"
             f"<anweisung>\n{instruction}\n</anweisung>")
-    out = providers.complete(settings, EDIT_SYSTEM, [{"role": "user", "content": user}], 8000)
+    out = providers.complete(settings, EDIT_SYSTEM + user_rules(settings), [{"role": "user", "content": user}], 8000)
     out = re.sub(r"<think>.*?</think>", "", out or "", flags=re.S).strip()
     out = re.sub(r"^```(?:markdown|md)?\s*\n(.*?)\n```\s*$", r"\1", out, flags=re.S).strip()
     if not out:
@@ -288,7 +325,16 @@ def ask_all_stream(question: str) -> Iterator[str]:
     recent = db.list_recordings()[:30]
     lines = [f"[[{s['recording_id']}@{fmt_time(s['start'])}]] ({s['recording_title']}, "
              f"{dt.datetime.fromtimestamp(s['recording_date']):%d.%m.%Y}) {s['speaker']}: {s['text']}" for s in ctx]
-    rec_list = "\n".join(f"- {r['title']} ({dt.datetime.fromtimestamp(r['created_at']):%d.%m.%Y}, {', '.join(x['name'] for x in r['speakers'])})"
+    from . import context as _ctx
+    docs_ok = _ctx.ai_allowed(settings)[0]  # names of Unterlagen go to a cloud AI only if allowed, like their content
+
+    def files_of(r):
+        from . import context
+        f = r.get("files") or []
+        d = [x["name"] for x in context.items(r["id"])] if docs_ok else []
+        return (f"; Datei: {', '.join(f)}" if f else "") + (f"; Unterlagen: {', '.join(d)}" if d else "")
+    rec_list = "\n".join(f"- {r['title']} [[{r['id']}@00:00]] ({dt.datetime.fromtimestamp(r['created_at']):%d.%m.%Y}, "
+                         f"{fmt_time(r.get('duration') or 0)}, {', '.join(x['name'] for x in r['speakers'])}{files_of(r)})"
                          for r in recent)
     summaries = []
     for r in recent[:8]:
@@ -299,6 +345,7 @@ def ask_all_stream(question: str) -> Iterator[str]:
     system = f"""Du bist REKORD und kennst alle Aufnahmen des Nutzers. Beantworte die Frage auf {lang}, knapp und konkret.
 Belege jede Aussage mit der Quelle im Format [[aufnahme_id@mm:ss]] genau wie in den Auszügen angegeben (wird in der App klickbar).
 Wenn die Auszüge die Antwort nicht enthalten, sag das ehrlich und schlage vor, wonach gesucht werden könnte.
+Fragen nach Dateinamen, Datum oder Dauer beantwortest du direkt aus <letzte_aufnahmen>.
 
 <letzte_aufnahmen>
 {rec_list}
@@ -308,7 +355,7 @@ Wenn die Auszüge die Antwort nicht enthalten, sag das ehrlich und schlage vor, 
 </zusammenfassungen>
 <relevante_auszuege>
 {chr(10).join(lines) or '(keine Treffer in der Volltextsuche)'}
-</relevante_auszuege>"""
+</relevante_auszuege>""" + user_rules(settings)
     history = [{"role": c["role"], "content": c["content"]} for c in db.list_chat("global")][-10:]
     out = []
     for d in providers.stream(settings, system, history + [{"role": "user", "content": question}], 16000):

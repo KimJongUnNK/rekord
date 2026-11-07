@@ -197,7 +197,7 @@ MERGE_THRESHOLD = 0.65
 APPEND_GAP = 1.0  # seconds of silence between the parts: a clear boundary for the speech detection
 
 
-def append_files(rid: str, paths: list[str], starts: list | None = None) -> float:
+def append_files(rid: str, paths: list[str], starts: list | None = None, names: list[str] | None = None) -> float:
     """More audio for an existing recording – e.g. the second half of a meeting recorded separately, or voice memos
     that belong to it. The files are put behind the recording (with a short pause in between), stored as one file,
     and the recording is analysed again as a whole. Returns the seconds added. Highlights keep their times."""
@@ -232,6 +232,7 @@ def append_files(rid: str, paths: list[str], starts: list | None = None) -> floa
     new = config.AUDIO_DIR / f"{rid}-{int(time.time() * 1000)}.m4a"
     audio.encode_m4a(samples, new)
     db.update_recording(rid, audio_path=str(new), duration=len(samples) / audio.SR, peaks=audio.peaks(samples))
+    db.add_files(rid, names if names is not None else [Path(p).name for p in paths])
     if old and old.is_file() and old.parent == config.AUDIO_DIR and old != new:
         old.unlink(missing_ok=True)  # REKORD's own copy – an imported original elsewhere stays untouched
     log.info("appended %d file(s), %.0f s, to %s", len(paths), added, rid)
@@ -291,6 +292,11 @@ def _take_along(rid: str, recs: list[dict], starts: list[float]) -> None:
                 log.warning("Unterlage %s → %s: %s", item["name"], rid, e)
 
 
+def _names(recs: list[dict]) -> list[str]:
+    """The original file names behind recordings (a live recording has none: its title stands for it)."""
+    return [n for r in recs for n in (r.get("files") or [r["title"]])]
+
+
 def append_recordings(rid: str, ids: list[str]) -> float:
     """Other recordings behind this one (like Unterlagen: pick them from the list) – oldest first, then this one is
     transcribed again as a whole. The picked recordings stay. Returns the seconds added."""
@@ -301,7 +307,7 @@ def append_recordings(rid: str, ids: list[str]) -> float:
         raise ValueError("Anhängen geht, sobald die Aufnahme fertig ausgewertet ist.")
     recs = _ready([i for i in ids if i != rid], 1)
     starts: list[float] = []
-    added = append_files(rid, [r["audio_path"] for r in recs], starts=starts)
+    added = append_files(rid, [r["audio_path"] for r in recs], starts=starts, names=_names(recs))
     _take_along(rid, recs, starts)
     return added
 
@@ -316,7 +322,7 @@ def merge_recordings(ids: list[str], title: str = "") -> dict:
                               source="import", rec_id=rid)
     try:
         starts: list[float] = []
-        append_files(rid, [r["audio_path"] for r in recs], starts=starts)
+        append_files(rid, [r["audio_path"] for r in recs], starts=starts, names=_names(recs))
     except Exception:
         db.delete_recording(rid)
         raise

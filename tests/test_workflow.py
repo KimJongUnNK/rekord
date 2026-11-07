@@ -196,3 +196,47 @@ def test_recordings_picked_from_the_list_are_appended(client, monkeypatch):
     assert db.get_recording(p2["id"]) and db.get_recording(p3["id"])  # they stay
     assert client.post("/api/recordings/nope/append-recordings", json={"ids": [p2["id"]]}).status_code == 404
     assert client.post(f"/api/recordings/{main['id']}/append-recordings", json={"ids": []}).status_code == 400
+
+
+# ------------------------------------------------------------------ the AI knows file names, Unterlagen – and the user's rules
+
+def test_the_ai_knows_file_names_and_unterlagen_and_follows_the_users_rules(client, monkeypatch, tmp_path):
+    from rekord import config, context
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": None)
+    r = client.post("/api/recordings", files=[("files", ("VO GuV 03.11.wav", _wav(1.0), "audio/wav"))])
+    rid = r.json()["items"][0]["id"]
+    assert db.get_recording(rid)["files"] == ["VO GuV 03.11.wav"]
+    doc = tmp_path / "Skript Kapitel 4.txt"
+    doc.write_text("Abschreibung, Umsatzerlöse", encoding="utf-8")
+    context.add(rid, doc, name="Skript Kapitel 4.txt")
+    before = config.load()["llm"]
+    config.save({"ai_instructions": "Antworte ohne Emojis, maximal drei Sätze.",  # a local AI: may see the Unterlagen
+                 "llm": {"provider": "ollama", "ollama": {"base_url": "http://localhost:11434", "model": "qwen3:8b"}}})
+    seen = []
+
+    def stream(settings, system, messages, max_tokens=0):
+        seen.append(system)
+        yield "ok"
+    monkeypatch.setattr(providers, "stream", stream)
+    try:
+        assert "".join(summarize.ask_recording_stream(rid, "Wie heißt die Datei?")) == "ok"
+        assert "VO GuV 03.11.wav" in seen[0] and "Skript Kapitel 4.txt" in seen[0] and rid in seen[0]
+        assert "ohne Emojis, maximal drei Sätze" in seen[0]
+        assert "".join(summarize.ask_all_stream("Welche Datei war die GuV-Vorlesung?")) == "ok"
+        assert "VO GuV 03.11.wav" in seen[1] and "Skript Kapitel 4.txt" in seen[1] and "ohne Emojis" in seen[1]
+    finally:
+        config.save({"ai_instructions": "", "llm": before})
+    assert "ohne Emojis" not in summarize.system_prompt(config.load(), db.get_recording(rid))
+
+
+def test_appended_and_merged_recordings_keep_their_file_names(client, monkeypatch):
+    monkeypatch.setattr(jobs, "enqueue", lambda rid, kind="process": None)
+    a = _rec_with_audio("Teil 1", 1.0, 1)
+    b = _rec_with_audio("Teil 2", 1.0, 2)
+    db.add_files(a["id"], ["Teil 1.m4a"])
+    db.add_files(b["id"], ["Teil 2.m4a"])
+    m = client.post("/api/recordings/merge", json={"ids": [a["id"], b["id"]]}).json()
+    assert db.get_recording(m["id"])["files"] == ["Teil 1.m4a", "Teil 2.m4a"]
+    live = _rec_with_audio("Live Montag", 1.0, 3)  # no file behind it: its title stands for it
+    client.post(f"/api/recordings/{a['id']}/append-recordings", json={"ids": [live["id"]]})
+    assert db.get_recording(a["id"])["files"] == ["Teil 1.m4a", "Live Montag"]

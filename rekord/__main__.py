@@ -96,6 +96,7 @@ def main(argv: list[str] | None = None) -> None:
         from . import db, export, pipeline, summarize
         for f in a.files:
             rec = db.create_recording(Path(f).stem, str(Path(f).resolve()))
+            db.add_files(rec["id"], [Path(f).name])
             pipeline.process(rec["id"], on_event=lambda e: print(f"  {e.get('stage', '')} {e.get('progress', 0):.0%}",
                                                                   end="\r", file=sys.stderr))
             if a.summary:
