@@ -22,6 +22,7 @@
  "context": "Wie viel Text die KI auf einmal lesen kann. Mehr = längere Meetings in einem Stück, braucht aber mehr Arbeitsspeicher. 32.768 Tokens reichen für etwa 1,5 Stunden Gespräch; längere werden automatisch in Teilen verarbeitet.",
  "serverurl": "Adresse eines Servers, der wie die OpenAI-Schnittstelle funktioniert – z. B. LM Studio (http://localhost:1234/v1), llama.cpp, Jan, vLLM oder OpenRouter.",
  "connection": "Schickt eine Mini-Anfrage an die gewählte KI und zeigt, ob sie antwortet und wie schnell.",
+ "timestamps": "<b>Nur wenn ich danach frage</b>: Antworten und Zusammenfassungen kommen ohne [mm:ss] – fragst du z. B. „an welcher Stelle?“, „mit Zeitstempel“ oder „welche Minute?“, stehen sie drin (zum Anklicken, springt ins Audio). <b>Immer</b>: jede wichtige Aussage mit Zeitstempel.",
  "aiinstructions": "Deine eigenen Regeln für die KI – Ton, Länge, Form. Sie gelten für Fragen, Zusammenfassungen und „Sag der KI, was sie ändern soll“, bei lokaler KI genauso wie bei Claude oder ChatGPT. Den Aufbau einer Vorlage ändern sie nicht. <b>Vorschlag einsetzen</b> füllt kurze, direkte Regeln ein, die du anpassen kannst.",
  "sumlang": "In welcher Sprache Protokolle und Zusammenfassungen geschrieben werden. <b>Wie im Gespräch</b>: die Sprache, die im Meeting überwiegend gesprochen wurde.",
  "autosum": "Nach jeder Aufnahme schreibt REKORD automatisch ein Protokoll mit der gewählten Vorlage. Andere Vorlagen kannst du in jeder Aufnahme zusätzlich erzeugen.",

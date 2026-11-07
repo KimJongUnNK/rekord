@@ -537,6 +537,9 @@ def main(out: Path) -> int:
         call(settings, "jump", "ai")
         shot("settings-ai-instructions")
         config.save({"ai_instructions": ""})
+    ts = find(settings, "timestampsSelect")
+    if ts is None or ts.property("value") != "ask":
+        problems_extra.append(f"settings: 'Zeitstempel' should default to 'Nur wenn ich danach frage' ({ts and ts.property('value')!r})")
     for key in ("ai", "asr", "models", "int", "data"):
         call(settings, "jump", key)
         shot(f"settings-{key}")

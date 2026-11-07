@@ -36,6 +36,10 @@ Kommt der Hinweis nicht: unten links auf **Nach Updates suchen** klicken.
 Beim ersten Start lädt REKORD einmalig die Sprachmodelle (~700 MB), danach läuft alles offline.
 Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**
 
+## Neu in 1.4.8
+
+- ⏱️ **Keine Zeitstempel mehr, außer du fragst danach.** Antworten und Zusammenfassungen sind jetzt sauberer Text. „An welcher Stelle?“ oder „mit Zeitstempel“ – dann sind sie da, zum Anklicken. Umstellen: *Einstellungen → KI → Zeitstempel*.
+
 ## Neu in 1.4.7
 
 - 🗂️ **Die KI kennt deine Dateien.** Dateiname, Unterlagen, Datum, Dauer – frag einfach „Wie heißt die Datei?“ oder „Welche Unterlagen hängen dran?“.

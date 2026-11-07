@@ -332,6 +332,16 @@ Page {
                         }
                     }
                     Field {
+                        label: "Zeitstempel"; tip: "timestamps"; hint: "In Antworten und Zusammenfassungen."
+                        Select {
+                            objectName: "timestampsSelect"
+                            Layout.maximumWidth: 300
+                            options: page.opts([["ask", "Nur wenn ich danach frage"], ["always", "Immer (zum Anklicken)"]])
+                            value: page.s ? (page.s.timestamps || "ask") : "ask"
+                            onPicked: (v) => page.save({ timestamps: v })
+                        }
+                    }
+                    Field {
                         label: "Anweisungen an die KI"; tip: "aiinstructions"; hint: "Gilt für jede Antwort, jede Zusammenfassung und jede Änderung."
                         ColumnLayout {
                             Layout.fillWidth: true
