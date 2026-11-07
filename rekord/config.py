@@ -68,6 +68,7 @@ DEFAULTS: dict = {
     "default_template": "auto",
     "template_order": [],  # Vorlagen in the user's order of importance (ids); empty = built-in order
     "summary_language": "de",
+    "ai_instructions": "",  # filled in by the user; AI_INSTRUCTIONS_SUGGESTION is offered in the settings  # Einstellungen → KI → Anweisungen an die KI: how the AI talks, in every answer and summary
     "llm": {
         "provider": "anthropic",  # anthropic | openai | ollama | compatible | none
         "anthropic": {"api_key": "", "model": "claude-opus-5-5", "effort": "medium", "fallbacks": True},
@@ -188,3 +189,7 @@ def reset_cache() -> None:
     global _cache
     with _lock:
         _cache = None
+
+
+# "Vorschlag einsetzen" in Einstellungen → KI → Anweisungen an die KI
+AI_INSTRUCTIONS_SUGGESTION = "Du bist mein Assistent für Aufnahmen, Vorlesungen und Meetings.\n- Antworte direkt. Erst die Antwort, dann – nur wenn nötig – ein kurzer Beleg mit Zeitstempel.\n- Keine Einleitung, keine Floskeln, keine Emojis, keine Rückfragen, wenn die Frage klar ist.\n- Kurze Sätze. Stichpunkte statt Fließtext, wenn es mehr als zwei Punkte sind.\n- Dateinamen, Unterlagen, Datum und Dauer stehen in den Infos zur Aufnahme – nenn sie genau so.\n- Weißt du etwas nicht oder steht es nicht im Transkript: sag das in einem Satz. Nichts erfinden.\n- Fachbegriffe korrekt, Namen exakt wie im Transkript.\n- Sprache: Deutsch, auch wenn die Frage gemischt ist."

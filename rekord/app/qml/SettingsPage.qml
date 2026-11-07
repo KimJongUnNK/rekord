@@ -332,6 +332,34 @@ Page {
                         }
                     }
                     Field {
+                        label: "Anweisungen an die KI"; tip: "aiinstructions"; hint: "Gilt für jede Antwort, jede Zusammenfassung und jede Änderung."
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Area {
+                                id: aiRules
+                                objectName: "aiInstructions"
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 150
+                                placeholderText: "z. B. „Antworte kurz und direkt, ohne Einleitung und ohne Emojis. Stichpunkte statt Fließtext.“"
+                                text: page.s ? (page.s.ai_instructions || "") : ""
+                                area.onActiveFocusChanged: if (!area.activeFocus && page.s && text !== (page.s.ai_instructions || "")) page.save({ ai_instructions: text })
+                            }
+                            RowLayout {
+                                Btn {
+                                    objectName: "aiInstructionsSuggest"
+                                    small: true; kind: "ghost"; iconName: "spark"; text: "Vorschlag einsetzen"
+                                    onClicked: { aiRules.text = rekord.aiInstructionsSuggestion(); page.save({ ai_instructions: aiRules.text }); page.app.toast("Gespeichert – gilt ab der nächsten Antwort") }
+                                }
+                                Btn {
+                                    small: true; kind: "ghost"; text: "Speichern"
+                                    enabled: page.s && aiRules.text !== (page.s.ai_instructions || "")
+                                    onClicked: { page.save({ ai_instructions: aiRules.text }); page.app.toast("Gespeichert – gilt ab der nächsten Antwort") }
+                                }
+                            }
+                        }
+                    }
+                    Field {
                         label: "Automatisch zusammenfassen"; tip: "autosum"; hint: "Nach jeder Aufnahme, mit dieser Vorlage."
                         Check { text: "Aktiv"; checked: page.s ? page.s.auto_summary : false; onToggled: page.save({ auto_summary: checked }) }
                         Select {

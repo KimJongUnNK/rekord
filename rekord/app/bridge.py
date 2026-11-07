@@ -246,6 +246,7 @@ class Library(QObject):
                 unreadable.append((p.name, isinstance(e, PermissionError)))
                 continue
             db.create_recording(p.stem, str(dest), source="import", rec_id=rid)
+            db.add_files(rid, [p.name])
             if not docs:
                 jobs.enqueue(rid)
             self._last_ids.append(rid)
@@ -306,6 +307,7 @@ class Library(QObject):
             return 0
         title = _re.sub(r"[\s_-]*(teil|part|tl\.?)?[\s_-]*\d+\s*$", "", first.stem, flags=_re.I).strip() or first.stem
         db.create_recording(title, str(dest), source="import", rec_id=rid)
+        db.add_files(rid, [first.name])
         db.update_recording(rid, status="queued", stage=f"Fügt {len(media)} Dateien zusammen")
         self._last_ids = [rid]
 
@@ -1482,6 +1484,11 @@ class AppState(QObject):
     @Slot(str, result=str)
     def fileUrl(self, path: str) -> str:  # noqa: N802 - QML API
         return QUrl.fromLocalFile(path).toString() if path else ""
+
+    @Slot(result=str)
+    def aiInstructionsSuggestion(self) -> str:  # noqa: N802 - QML API
+        """Kurze, direkte Regeln für die KI – Einstellungen → KI → Vorschlag einsetzen."""
+        return config.AI_INSTRUCTIONS_SUGGESTION
 
     @Slot(str, result=str)
     def safeName(self, title: str) -> str:  # noqa: N802 - QML API

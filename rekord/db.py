@@ -114,7 +114,8 @@ def connect() -> sqlite3.Connection:
 
 MIGRATIONS = {"recordings": {"title_locked": "INTEGER DEFAULT 0", "participants": "TEXT DEFAULT '{}'",
                              "context_fixes": "TEXT DEFAULT '[]'",  # corrections from the Unterlagen
-                             "transcript_undo": "TEXT DEFAULT '{}'"},  # the lines before the last AI change  # corrections from the Unterlagen: [{from,to,count,by,off}]
+                             "transcript_undo": "TEXT DEFAULT '{}'",
+                             "files": "TEXT DEFAULT '[]'"},  # the original file names (what the user picked/dropped)  # the lines before the last AI change  # corrections from the Unterlagen: [{from,to,count,by,off}]
               "speakers": {"voices": "INTEGER DEFAULT 1"},
               "summaries": {"prev": "TEXT",  # the version before the last "Sag der KI, was sie ändern soll" (Rückgängig)
                             "rich": "TEXT",  # formatted in the editor (HTML: bold, colours, sizes …) – for display, copy, Word
@@ -163,7 +164,7 @@ def _row(r: sqlite3.Row | None) -> dict | None:
     if r is None:
         return None
     d = dict(r)
-    for k in ("tags", "highlights", "peaks", "context_fixes"):
+    for k in ("tags", "highlights", "peaks", "context_fixes", "files"):
         if k in d and isinstance(d[k], str):
             d[k] = json.loads(d[k] or "[]")
     if isinstance(d.get("transcript_undo"), str):  # the edit history: {"undo": [...], "redo": [...]}
@@ -214,8 +215,17 @@ def list_recordings(q: str = "", folder: str | None = None, limit: int = 500) ->
 
 
 ALLOWED_REC_FIELDS = {"title", "title_locked", "participants", "duration", "audio_path", "status", "stage", "progress", "error", "language",
-                      "folder", "tags", "highlights", "notes", "peaks", "context_fixes", "transcript_undo"}
-_JSON_FIELDS = ("tags", "highlights", "peaks", "participants", "context_fixes", "transcript_undo")
+                      "folder", "tags", "highlights", "notes", "peaks", "context_fixes", "transcript_undo", "files"}
+_JSON_FIELDS = ("tags", "highlights", "peaks", "participants", "context_fixes", "transcript_undo", "files")
+
+
+def add_files(rid: str, names: list[str]) -> None:
+    """Remember the original file names of a recording (imported, appended, merged) – the AI and the user see them."""
+    rec = get_recording(rid)
+    if rec is None:
+        return
+    have = list(rec.get("files") or [])
+    update_recording(rid, files=have + [n for n in names if n])
 
 
 def update_recording(rid: str, **fields) -> dict | None:

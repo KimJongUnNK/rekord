@@ -36,6 +36,11 @@ Kommt der Hinweis nicht: unten links auf **Nach Updates suchen** klicken.
 Beim ersten Start lädt REKORD einmalig die Sprachmodelle (~700 MB), danach läuft alles offline.
 Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**
 
+## Neu in 1.4.7
+
+- 🗂️ **Die KI kennt deine Dateien.** Dateiname, Unterlagen, Datum, Dauer – frag einfach „Wie heißt die Datei?“ oder „Welche Unterlagen hängen dran?“.
+- 🎯 **Sag der KI, wie sie antworten soll.** *Einstellungen → KI → Anweisungen an die KI*: kurz, direkt, ohne Emojis – oder was immer du willst. **Vorschlag einsetzen** füllt das mit einem Klick. Gilt für jede Antwort und Zusammenfassung.
+
 ## Neu in 1.4.6
 
 - 📎 **Aufnahmen anhängen wie Unterlagen.** In der Aufnahme oben rechts **Anhängen → Aufnahmen aus REKORD**: Teil 2 und Teil 3 antippen → **2 anhängen**. Ein Transkript, Sprecher über alle Teile.

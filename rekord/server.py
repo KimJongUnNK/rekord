@@ -76,6 +76,7 @@ def _inbox_loop(stop: threading.Event) -> None:
                 dest = config.AUDIO_DIR / f"{rid}{p.suffix.lower()}"
                 shutil.move(str(p), dest)
                 db.create_recording(p.stem, str(dest), source="inbox", rec_id=rid)
+                db.add_files(rid, [p.name])
                 jobs.enqueue(rid)
                 log.info("inbox: %s -> %s", p.name, rid)
         except Exception as e:  # noqa: BLE001
@@ -841,13 +842,15 @@ async def upload(files: list[UploadFile] = File(...), title: str = Form(""), hig
             db.update_recording(rid, folder=folder)
         if participants:
             db.update_recording(rid, participants=json.loads(participants))
+        db.add_files(rid, [Path(f.filename or "").name])
         out.append(rec)
         names[rid] = f.filename or ""
     if combine and len(out) > 1:
         out.sort(key=lambda r: [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", names[r["id"]])])
         first, rest = out[0], out[1:]
         try:
-            await asyncio.to_thread(pipeline.append_files, first["id"], [r["audio_path"] for r in rest])
+            await asyncio.to_thread(pipeline.append_files, first["id"], [r["audio_path"] for r in rest], None,
+                                    [Path(names[r["id"]]).name for r in rest])
         except ValueError as e:
             raise HTTPException(400, str(e))
         for r in rest:  # their sound is in the first one now

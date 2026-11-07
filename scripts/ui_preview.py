@@ -526,6 +526,17 @@ def main(out: Path) -> int:
     win.setProperty("page", "settings")
     settings = win.findChild(QObject, "settingsPage")
     shot("settings")
+    # "Anweisungen an die KI": the field is there, "Vorschlag einsetzen" fills and saves it
+    sug = find(settings, "aiInstructionsSuggest")
+    if sug is None or find(settings, "aiInstructions") is None:
+        problems_extra.append("settings: no 'Anweisungen an die KI'")
+    else:
+        QMetaObject.invokeMethod(sug, "clicked")
+        if not wait_for(lambda: "Antworte direkt" in (config.load().get("ai_instructions") or ""), 4):
+            problems_extra.append("settings: 'Vorschlag einsetzen' didn't save the instructions")
+        call(settings, "jump", "ai")
+        shot("settings-ai-instructions")
+        config.save({"ai_instructions": ""})
     for key in ("ai", "asr", "models", "int", "data"):
         call(settings, "jump", key)
         shot(f"settings-{key}")
