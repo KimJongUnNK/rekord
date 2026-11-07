@@ -36,6 +36,20 @@ Page {
                         library.refresh()
                     }), true)
     }
+    // the bigger picture: lecture parts, a meeting on two devices → one recording, one transcript
+    function mergePicked() {
+        const ids = Object.keys(picked)
+        if (ids.length < 2) return
+        app.confirm(ids.length + " Aufnahmen zu einer zusammenführen?",
+                    "Hintereinander, die älteste zuerst – dann wird alles zusammen transkribiert, Sprecher über alle Teile. "
+                    + "Sterne, Notizen und Unterlagen kommen mit. Die einzelnen Aufnahmen bleiben erhalten.",
+                    "Zusammenführen", () => app.call("POST", "/api/recordings/merge", { ids: ids }, (r) => {
+                        app.toast("Zusammengeführt – „" + r.title + "“ wird jetzt transkribiert.")
+                        page.stopSelecting()
+                        library.refresh()
+                        app.openRecording(r.id, 0)
+                    }, (err) => app.toast(err)))
+    }
     Shortcut { sequence: "Esc"; enabled: page.selecting && page.shown; onActivated: page.stopSelecting() }
 
     // a small window: the page scrolls, the list keeps a usable height
@@ -244,6 +258,15 @@ Page {
                     small: true; kind: "ghost"
                     text: page.pickedCount === library.model.count && page.pickedCount > 0 ? "Keine" : "Alle"
                     onClicked: page.pickAll()
+                }
+                Btn {
+                    objectName: "mergePicked"
+                    small: true; kind: "ghost"; iconName: "import"
+                    enabled: page.pickedCount > 1
+                    text: page.pickedCount > 1 ? page.pickedCount + " zusammenführen" : "Zusammenführen"
+                    ToolTip.visible: hovered; ToolTip.delay: 400
+                    ToolTip.text: "Mehrere Aufnahmen → eine: hintereinander, ein Transkript, Sprecher über alle Teile. Die einzelnen bleiben."
+                    onClicked: page.mergePicked()
                 }
                 Btn {
                     objectName: "deletePicked"

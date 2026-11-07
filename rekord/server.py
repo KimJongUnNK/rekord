@@ -914,6 +914,34 @@ async def delete_recordings(request: Request):
     return {"ok": True, "deleted": done}
 
 
+@app.post("/api/recordings/merge")
+async def merge_recordings(request: Request):
+    """Aufnahmen → Auswählen → Zusammenführen: several recordings → one new one (oldest first), transcribed as a whole.
+    The originals stay."""
+    body = await request.json()
+    ids = [str(i) for i in (body.get("ids") or [])]
+    try:
+        rec = await asyncio.to_thread(pipeline.merge_recordings, ids, str(body.get("title") or ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    jobs.enqueue(rec["id"])
+    return rec
+
+
+@app.post("/api/recordings/{rid}/append-recordings")
+async def append_recordings(rid: str, request: Request):
+    """Aufnahme → Anhängen → Aufnahmen aus REKORD: other recordings behind this one, transcribed again as a whole."""
+    ids = [str(i) for i in ((await request.json()).get("ids") or [])]
+    try:
+        added = await asyncio.to_thread(pipeline.append_recordings, rid, ids)
+    except KeyError:
+        raise HTTPException(404)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    jobs.enqueue(rid)
+    return {"ok": True, "added": added}
+
+
 # ------------------------------------------------------------------ Unterlagen (documents for context)
 
 @app.get("/api/recordings/{rid}/documents")

@@ -37,7 +37,7 @@ groups["KI-Anbieter"] = set(re.findall(r'\["(?:anthropic|openai|ollama|compatibl
 groups["Live"] = {"Wer ist dabei?", "Vorstellungsrunde", "Im Raum", "Mitschrift", "Pause"}
 groups["Export"] = set(re.findall(r'k: "\w+", n: "([^"]+)"', qml("ExportView.qml"))) - {"In Zwischenablage"} | {"Zwischenablage"}
 groups["Knöpfe"] = {"Datei transkribieren", "Suchen & Ersetzen", "Stimme merken", "zusammenführen", "Mind Map erstellen", "Laden",
-                    "Testen", "Auswählen", "Audio anhängen", "Unterlagen", "Transkription stoppen", "Jetzt benennen"}
+                    "Testen", "Auswählen", "Anhängen", "Unterlagen", "Transkription stoppen", "Jetzt benennen"}
 groups["Wer ist dabei? / Wer ist das?"] = {"Wie viele sprechen?", "Wer davon ist bekannt?", "Aufnahme starten", "Wer ist das?", "Merken",
                                           "Wer sagt das?", "Zuordnen", "Nicht erkannte Stimme", "Anderer Text", "Stimme speichern",
                                           "Wo findet das Meeting statt?", "Geräusch"}

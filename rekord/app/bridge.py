@@ -356,6 +356,8 @@ class Library(QObject):
         for u in urls:
             p = _to_path(u)
             (paths if audio.accepted(p) else skipped).append(p)
+        import re as _re  # several at once: Teil 1 before Teil 2 before Teil 10, whatever order the dialog gives
+        paths.sort(key=lambda p: [int(t) if t.isdigit() else t.lower() for t in _re.split(r"(\d+)", p.name)])
         if skipped:
             self.toast.emit("Kein Ton gefunden: " + ", ".join(p.name for p in skipped[:3]) + " – jede Audio- oder Videodatei geht, solange Ton drin ist.")
         if not paths:

@@ -36,6 +36,12 @@ Kommt der Hinweis nicht: unten links auf **Nach Updates suchen** klicken.
 Beim ersten Start lädt REKORD einmalig die Sprachmodelle (~700 MB), danach läuft alles offline.
 Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**
 
+## Neu in 1.4.6
+
+- 📎 **Aufnahmen anhängen wie Unterlagen.** In der Aufnahme oben rechts **Anhängen → Aufnahmen aus REKORD**: Teil 2 und Teil 3 antippen → **2 anhängen**. Ein Transkript, Sprecher über alle Teile.
+- 🧩 **Mehrere Aufnahmen zu einer zusammenführen.** *Aufnahmen → Auswählen* → drei Vorlesungen antippen → **3 zusammenführen**. Ein Transkript, Sprecher über alle Teile, Sterne, Notizen und Unterlagen kommen mit – die einzelnen Aufnahmen bleiben.
+- 📎 **Audio anhängen mit mehreren Dateien** sortiert jetzt nach Namen: Teil 1, 2, 3 – egal wie du sie markierst.
+
 ## Neu in 1.4.5
 
 - 🅱️ **Zusammenfassungen formatieren wie in Word.** *Bearbeiten* → Werkzeugleiste mit Schrift, Größe, **A⁺/A⁻**, **Fett**, *Kursiv*, Unterstrichen, Durchgestrichen, x₂/x², Schriftfarbe, Textmarker, Überschriften, Aufzählung und Nummerierung. Text markieren, klicken, fertig – auch mit **Strg/⌘ + B / I / U**. Keine Sternchen und Rauten mehr.
