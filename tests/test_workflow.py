@@ -240,3 +240,40 @@ def test_appended_and_merged_recordings_keep_their_file_names(client, monkeypatc
     live = _rec_with_audio("Live Montag", 1.0, 3)  # no file behind it: its title stands for it
     client.post(f"/api/recordings/{a['id']}/append-recordings", json={"ids": [live["id"]]})
     assert db.get_recording(a["id"])["files"] == ["Teil 1.m4a", "Live Montag"]
+
+
+# ------------------------------------------------------------------ timestamps only when asked
+
+def test_timestamps_only_when_asked():
+    s = {"timestamps": "ask"}
+    assert not summarize.wants_times(s, "Was ist eine Abschreibung?")
+    assert summarize.wants_times(s, "An welcher Stelle erklärt sie das?") and summarize.wants_times(s, "mit Zeitstempel bitte")
+    assert summarize.wants_times({"timestamps": "always"}, "Was ist eine Abschreibung?")
+    text = "Umsatz steigt [01:58]. Gewinn sinkt (1:02:03), siehe [[ab12cd34ef56@03:11]] und [Folie 3]."
+    assert summarize.strip_times(text) == "Umsatz steigt. Gewinn sinkt, siehe und [Folie 3]."
+    # streamed in tiny pieces: a timestamp torn apart is still caught, other brackets stay
+    pieces = [text[i:i + 3] for i in range(0, len(text), 3)]
+    assert "".join(summarize.strip_times_stream(iter(pieces))) == summarize.strip_times(text)
+
+
+def test_answers_and_summaries_come_without_timestamps_unless_asked(client, monkeypatch):
+    from rekord import config
+    rec = db.create_recording("GuV", "", source="import")
+    seg_rec = rec["id"]
+    seen = []
+
+    def stream(settings, system, messages, max_tokens=0):
+        seen.append(system)
+        yield from ["Umsatz ist die Leistungs", "größe [01", ":58]."]
+    monkeypatch.setattr(providers, "stream", stream)
+    config.save({"timestamps": "ask"})
+    assert "".join(summarize.ask_recording_stream(seg_rec, "Was ist Umsatz?")) == "Umsatz ist die Leistungsgröße."
+    assert "KEINE Zeitstempel" in seen[-1]
+    assert "".join(summarize.ask_recording_stream(seg_rec, "An welcher Stelle sagt sie das?")).endswith("[01:58].")
+    assert "Belege wichtige Aussagen mit Zeitstempeln" in seen[-1]
+    assert "".join(summarize.ask_all_stream("Was ist Umsatz?")) == "Umsatz ist die Leistungsgröße."
+    try:
+        config.save({"timestamps": "always"})
+        assert "".join(summarize.ask_all_stream("Was ist Umsatz?")).endswith("[01:58].")
+    finally:
+        config.save({"timestamps": "ask"})

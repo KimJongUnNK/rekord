@@ -75,13 +75,57 @@ def recording_facts(rec: dict, settings: dict | None = None) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------- timestamps only when asked
+# Einstellungen → KI → Zeitstempel: "ask" (default) = none in answers and summaries unless the question asks for them.
+# Small local models ignore "leave them out", so besides the rule a filter takes them out of what is shown and saved.
+TS_ANY = re.compile(r"[ \t]?\[\[[0-9a-f]+@(?:\d+:)?\d{1,2}:\d{2}\]\]|[ \t]?[\[(](?:\d+:)?\d{1,2}:\d{2}[\])]")
+_ASKS_TIME = re.compile(r"zeitstempel|timestamp|time ?code|zeitpunkt|minute|sekunde|uhrzeit|an welcher stelle|welche stelle|"
+                        r"wo genau|wo im|stelle im|mit zeit|mit \[|wann genau|ab wann|bei welcher zeit", re.I)
+
+
+def wants_times(settings: dict, asked: str = "") -> bool:
+    return settings.get("timestamps", "ask") == "always" or bool(_ASKS_TIME.search(asked or ""))
+
+
+def strip_times(text: str) -> str:
+    out = TS_ANY.sub("", text or "")
+    return re.sub(r"[ \t]+([.,;:!?)])", r"\1", out)
+
+
+def strip_times_stream(deltas: Iterator[str]) -> Iterator[str]:
+    """The same while streaming: holds back an opened "[" or "(" until it's clear whether a timestamp follows."""
+    buf = ""
+    for d in deltas:
+        buf += d
+        cut = len(buf)
+        for opener in ("[", "("):
+            i = buf.rfind(opener)
+            if i >= 0 and i > len(buf) - 40 and not re.search(r"[\])]", buf[i:]):
+                j = i - 1 if opener == "[" and i > 0 and buf[i - 1] == "[" else i
+                cut = min(cut, j)
+        while cut > 0 and buf[cut - 1] in " \t":  # a space may belong to a timestamp that follows
+            cut -= 1
+        ready, buf = buf[:cut], buf[cut:]
+        if ready:
+            yield strip_times(ready)
+    if buf:
+        yield strip_times(buf)
+
+
+def _time_rule(settings: dict, asked: str = "") -> str:
+    if wants_times(settings, asked):
+        return "- Belege wichtige Aussagen mit Zeitstempeln im Format [mm:ss] (klickbar in der App)."
+    return ("- KEINE Zeitstempel ([mm:ss], Minuten, Zeitangaben aus dem Transkript) – auch wenn die Vorlage welche verlangt. "
+            "Nur wenn der Nutzer ausdrücklich danach fragt.")
+
+
 def user_rules(settings: dict) -> str:
     """Einstellungen → KI → Anweisungen an die KI: the user's own rules for tone and form, in every answer."""
     t = (settings.get("ai_instructions") or "").strip()
     return f"\n\nAnweisungen des Nutzers – halte dich in jeder Antwort daran (Aufbau einer Vorlage geht vor):\n{t[:4000]}" if t else ""
 
 
-def system_prompt(settings: dict, rec: dict) -> str:
+def system_prompt(settings: dict, rec: dict, asked: str = "") -> str:
     lang = LANG.get(settings.get("summary_language", "de"), settings.get("summary_language", "Deutsch"))
     return f"""Du bist REKORD, ein präziser Assistent für Gesprächsnotizen. Du bekommst das Transkript einer Aufnahme
 mit Zeitstempeln [mm:ss] und Sprechernamen. Zeilen mit ★ wurden vom Nutzer während der Aufnahme als wichtig markiert –
@@ -90,7 +134,7 @@ gewichte sie stärker.
 Regeln:
 - Schreibe auf {lang}, als sauberes Markdown. Kurze, klare Sätze. Kein Gelaber, keine Einleitung wie "Hier ist".
 - Nutze die echten Namen der Sprecher. „Nicht erkannte Stimme“ (oder ältere „Sprecher 1“ etc.) sind eine oder mehrere Personen, die REKORD nicht kennt – lass die Bezeichnung so und erfinde keine Namen.
-- Belege wichtige Aussagen mit Zeitstempeln im Format [mm:ss] (klickbar in der App).
+{_time_rule(settings, asked)}
 - Erfinde nichts. Wenn etwas unklar ist oder fehlt, sag das. Transkriptionsfehler stillschweigend korrigieren, wenn eindeutig.
 
 Was die App über diese Aufnahme weiß (Fragen nach Dateiname, Datum, Dauer usw. damit direkt beantworten):
@@ -201,6 +245,8 @@ def edit_summary(sid: int, instruction: str, settings: dict | None = None) -> st
     out = providers.complete(settings, EDIT_SYSTEM + user_rules(settings), [{"role": "user", "content": user}], 8000)
     out = re.sub(r"<think>.*?</think>", "", out or "", flags=re.S).strip()
     out = re.sub(r"^```(?:markdown|md)?\s*\n(.*?)\n```\s*$", r"\1", out, flags=re.S).strip()
+    if not wants_times(settings, instruction):
+        out = strip_times(out)
     if not out:
         raise providers.LLMError("Die KI hat nichts zurückgegeben – Anweisung etwas genauer formulieren.")
     if sm["template_id"] == "mindmap":
@@ -224,7 +270,8 @@ def generate_stream(rid: str, template_id: str) -> Iterator[str]:
     if docs:
         user = docs + "\n\n" + user
     system = system_prompt(settings, rec) + (DOCS_NOTE if docs else "")
-    yield from providers.stream(settings, system, [{"role": "user", "content": user}])
+    src = providers.stream(settings, system, [{"role": "user", "content": user}])
+    yield from (src if wants_times(settings) else strip_times_stream(src))
 
 
 def generate(rid: str, template_id: str, on_delta: Callable[[str], None] | None = None) -> dict:
@@ -272,9 +319,9 @@ def ask_recording_stream(rid: str, question: str) -> Iterator[str]:
     summaries = "\n\n".join(f"## {x['title']}\n{x['content']}" for x in db.list_summaries(rid)[:2])
     docs_rule = ("\nStammt eine Antwort aus den Unterlagen statt aus dem Gespräch, sag das und nenne das Dokument "
                  "(z. B. „laut Agenda.pdf“)." if docs else "")
-    system = system_prompt(settings, rec) + f"""
+    system = system_prompt(settings, rec, question) + f"""
 
-Beantworte Fragen zu dieser Aufnahme. Antworte knapp und konkret und belege mit [mm:ss].
+Beantworte Fragen zu dieser Aufnahme. Antworte knapp und konkret.{" Belege mit [mm:ss]." if wants_times(settings, question) else ""}
 Wenn die Antwort nicht im Transkript steht, sag das klar.{docs_rule}
 
 <transkript>
@@ -285,7 +332,8 @@ Wenn die Antwort nicht im Transkript steht, sag das klar.{docs_rule}
 </bisherige_zusammenfassungen>""" + ("\n" + docs if docs else "")
     msgs = history + [{"role": "user", "content": question}]
     out = []
-    for d in providers.stream(settings, system, msgs, 16000):
+    src = providers.stream(settings, system, msgs, 16000)
+    for d in (src if wants_times(settings, question) else strip_times_stream(src)):
         out.append(d)
         yield d
     db.add_chat(rid, "user", question)
@@ -342,8 +390,9 @@ def ask_all_stream(question: str) -> Iterator[str]:
         if sm:
             summaries.append(f"### {r['title']} [[{r['id']}@00:00]]\n{sm[0]['content'][:1500]}")
     lang = LANG.get(settings.get("summary_language", "de"), "Deutsch")
+    times = wants_times(settings, question)
     system = f"""Du bist REKORD und kennst alle Aufnahmen des Nutzers. Beantworte die Frage auf {lang}, knapp und konkret.
-Belege jede Aussage mit der Quelle im Format [[aufnahme_id@mm:ss]] genau wie in den Auszügen angegeben (wird in der App klickbar).
+{"Belege jede Aussage mit der Quelle im Format [[aufnahme_id@mm:ss]] genau wie in den Auszügen angegeben (wird in der App klickbar)." if times else "Nenne die Quelle mit dem Titel der Aufnahme. KEINE Zeitstempel, keine [[…]]-Links – nur wenn der Nutzer ausdrücklich danach fragt."}
 Wenn die Auszüge die Antwort nicht enthalten, sag das ehrlich und schlage vor, wonach gesucht werden könnte.
 Fragen nach Dateinamen, Datum oder Dauer beantwortest du direkt aus <letzte_aufnahmen>.
 
@@ -358,7 +407,8 @@ Fragen nach Dateinamen, Datum oder Dauer beantwortest du direkt aus <letzte_aufn
 </relevante_auszuege>""" + user_rules(settings)
     history = [{"role": c["role"], "content": c["content"]} for c in db.list_chat("global")][-10:]
     out = []
-    for d in providers.stream(settings, system, history + [{"role": "user", "content": question}], 16000):
+    src = providers.stream(settings, system, history + [{"role": "user", "content": question}], 16000)
+    for d in (src if times else strip_times_stream(src)):
         out.append(d)
         yield d
     db.add_chat("global", "user", question)

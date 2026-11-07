@@ -2,6 +2,9 @@
 
 Was sich in welcher Version geändert hat, neueste zuerst. Die Downloads stehen immer unter [Releases](https://github.com/KimJongUnNK/rekord/releases/latest).
 
+## 1.4.8 – Zeitstempel nur, wenn du danach fragst
+- **Zeitstempel** (*Einstellungen → KI*, Standard: **Nur wenn ich danach frage**): Antworten (eine Aufnahme und *Fragen* über alle), neue Zusammenfassungen und KI-Änderungen kommen ohne [mm:ss] und ohne Aufnahme-Links – auch wenn eine Vorlage welche verlangt. Fragst du „an welcher Stelle?“, „welche Minute?“, „mit Zeitstempel“ o. Ä., stehen sie drin. Weil kleine lokale Modelle Anweisungen gern überlesen, nimmt REKORD Zeitstempel zusätzlich selbst heraus, auch beim Live-Mitschreiben. *Immer* stellt das alte Verhalten her. Bestehende Zusammenfassungen bleiben, wie sie sind.
+
 ## 1.4.7 – Die KI kennt Dateinamen und Unterlagen · eigene Anweisungen an die KI
 - **Dateinamen:** REKORD merkt sich die Original-Dateinamen jeder Aufnahme (Import, Reinziehen, Eingangsordner, Kommandozeile, Anhängen, Zusammenführen – live Aufgenommenes heißt wie die Aufnahme). Die KI bekommt bei jeder Frage und Zusammenfassung: Titel, ID, Datum, Dauer, Herkunft, Datei(en) in Reihenfolge, Ordner, Teilnehmer, Unterlagen mit Seitenzahl. „Wie heißt die Datei?“ beantwortet sie jetzt direkt – auch unter *Fragen* über alle Aufnahmen. Aufnahmen von vor 1.4.7 haben keinen gespeicherten Dateinamen.
 - **Anweisungen an die KI** (*Einstellungen → KI*): eigene Regeln für Ton, Länge und Form – gelten für Fragen (eine Aufnahme und alle), Zusammenfassungen und „Sag der KI, was sie ändern soll“, mit lokaler KI genauso wie mit Claude oder ChatGPT. **Vorschlag einsetzen** füllt kurze, direkte Regeln ein (keine Einleitung, keine Emojis, Stichpunkte, nichts erfinden).
