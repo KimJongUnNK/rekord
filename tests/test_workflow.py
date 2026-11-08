@@ -103,10 +103,10 @@ def test_summary_changed_by_the_ai_and_back(client, monkeypatch):
     sid = db.add_summary(rec["id"], "auto", "Auto", "# GuV\n- **Umsatz** steigt\n- **Gewinn** sinkt")
     seen = []
 
-    def complete(settings, system, messages, max_tokens=0):
+    def stream(settings, system, messages, max_tokens=0):
         seen.append((system, messages[0]["content"]))
-        return "```markdown\n# GuV\n– Umsatz steigt\n– Gewinn sinkt\n```"
-    monkeypatch.setattr(providers, "complete", complete)
+        yield from ["```markdown\n# GuV\n", "– Umsatz steigt\n– Gewinn sinkt\n```"]
+    monkeypatch.setattr(providers, "stream", stream)
     r = client.post(f"/api/summaries/{sid}/ai", json={"instruction": "keine Sternchen, Gedankenstriche statt Punkte"})
     assert r.status_code == 200, r.text
     assert r.json()["content"] == "# GuV\n– Umsatz steigt\n– Gewinn sinkt"  # code fence gone
@@ -117,6 +117,52 @@ def test_summary_changed_by_the_ai_and_back(client, monkeypatch):
     assert client.post(f"/api/summaries/{sid}/undo").json()["content"].startswith("# GuV\n– Umsatz")  # and forth again
     assert client.post(f"/api/summaries/{sid}/ai", json={"instruction": " "}).status_code == 400
     assert client.post("/api/summaries/999999/ai", json={"instruction": "x"}).status_code == 404
+
+
+def test_ai_change_on_a_long_lecture_streams_progress_and_never_times_out(client, monkeypatch):
+    """Emil: 2 h 43 min lecture, qwen3:8b, "Ändern" did nothing – the plain request gave up after 120 s while the
+    transcript was still being condensed. Now it's a stream: progress first, then the new text, then saved."""
+    rid = _long_lecture(1800)
+    sid = db.add_summary(rid, "lecture", "Lernzettel", "# GuV\n## Prüfungsrelevant\n- **Abschreibung**, z. B.,.")
+    settings = {"llm": {"provider": "ollama", "ollama": {"model": "qwen3:8b", "num_ctx": 32768}},
+                "summary_language": "de", "timestamps": "ask"}
+    monkeypatch.setattr(summarize.config, "load", lambda: settings)
+    calls = []
+
+    def stream(s, system, messages, max_tokens=0):  # like qwen3 through Ollama: thinks first, writes in small pieces
+        calls.append(max_tokens)
+        if max_tokens == summarize.MAP_TOKENS:
+            yield "- Abschreibung verteilt Kosten über die Nutzungsdauer [01:00]"
+            return
+        yield from ["# GuV\n## Prüfungs", "relevant\n- **Abschreibung**, z. B. lineare ", "Abschreibung über 5 Jahre"]
+    monkeypatch.setattr(providers, "stream", stream)
+    monkeypatch.setattr(providers, "complete", lambda s, sy, m, mt=0: "".join(stream(s, sy, m, mt)))
+    summarize._MAP_CACHE.clear()
+    db.connect().execute("DELETE FROM condensed"); db.connect().commit()
+    r = client.post(f"/api/summaries/{sid}/ai/stream", json={"instruction": "Bei Prüfungsrelevant Beispiele einfügen"})
+    assert r.status_code == 200
+    body = r.text
+    assert summarize.STATUS in body and "Teil 1 von" in body and "Die KI ändert" in body  # the bar has something to show
+    assert body.index("Die KI ändert") < body.index("# GuV")  # progress first, then the new version as it's written
+    sm = db.get_summary(sid)
+    assert "lineare Abschreibung über 5 Jahre" in sm["content"] and "z. B.,." in sm["prev"]  # saved, Rückgängig works
+    # the condensed pieces survive a restart: the next change only makes the final call
+    summarize._MAP_CACHE.clear()
+    calls.clear()
+    client.post(f"/api/summaries/{sid}/ai/stream", json={"instruction": "noch kürzer bitte"})
+    assert calls and all(c != summarize.MAP_TOKENS for c in calls)
+
+
+def test_ai_change_that_changes_nothing_or_returns_nothing_says_so(client, monkeypatch):
+    rec = db.create_recording("Kurz", "", source="import")
+    sid = db.add_summary(rec["id"], "auto", "Auto", "# Kurz\n- eins")
+    answers = iter(["# Kurz\n- eins", "<think>hm</think>"])
+    monkeypatch.setattr(providers, "stream", lambda s, sy, m, mt=0: iter([next(answers)]))
+    body = client.post(f"/api/summaries/{sid}/ai/stream", json={"instruction": "kürzer"}).text
+    assert "nichts geändert" in body  # an error the window shows – never silence
+    body = client.post(f"/api/summaries/{sid}/ai/stream", json={"instruction": "kürzer"}).text
+    assert "nichts zurückgegeben" in body
+    assert db.get_summary(sid)["content"] == "# Kurz\n- eins"
 
 
 def test_mind_map_svg_for_the_browser(client):
@@ -306,6 +352,7 @@ def test_a_long_lecture_is_condensed_in_small_pieces_with_progress_and_remembere
         yield "- Abschreibung verteilt Kosten [01:00]" if max_tokens == summarize.MAP_TOKENS else "# GuV\nFertig."
     monkeypatch.setattr(providers, "stream", stream)
     summarize._MAP_CACHE.clear()
+    db.connect().execute("DELETE FROM condensed"); db.connect().commit()  # as if never condensed before (they're kept across restarts)
     out = list(summarize.generate_stream(rid, "lecture"))
     states = [o for o in out if summarize.is_status(o)]
     pieces = [c for c in calls if c[1] == summarize.MAP_TOKENS]
@@ -398,3 +445,56 @@ def test_formulas_are_readable_in_the_window_in_word_and_in_saved_summaries(clie
     res = summarize.generate(_long_lecture(3), "lecture")
     assert db.get_summary(res["id"])["content"] == "Gewinn: G = U − K"
     assert "KEIN LaTeX" in seen[-1]
+
+
+# ------------------------------------------------------------------ Einstellungen → KI-Verhalten: one block, every AI call
+
+def test_ai_preferences_reach_every_ai_call_exactly_once(client, monkeypatch):
+    rec = db.create_recording("Pref", "", status="done")
+    spk = db.add_speaker(rec["id"], "Dozentin", "#FF5A1F")
+    conn = db.connect()
+    conn.execute("INSERT INTO segments (recording_id, speaker_id, start, end, text) VALUES (?,?,?,?,?)",
+                 (rec["id"], spk, 0, 4, "Die Abschreibung verteilt Kosten über die Nutzungsdauer."))
+    conn.commit()
+    sid = db.add_summary(rec["id"], "auto", "Auto", "# Pref\n- Abschreibung")
+    settings = {"llm": {"provider": "ollama", "ollama": {"model": "qwen3:8b"}}, "summary_language": "de",
+                "timestamps": "ask", "ai_instructions": "Sag immer Servus am Ende.",
+                "ai_prefs": {"length": "short", "tone": "friendly", "examples": True, "emojis": False}}
+    monkeypatch.setattr(summarize.config, "load", lambda: settings)
+    systems = []
+
+    def stream(s, system, messages, max_tokens=0):
+        systems.append(system)
+        yield "# Pref 🚀\n- Abschreibung, z. B. [00:01].\n- Kurz ✅ und gut"
+    monkeypatch.setattr(providers, "stream", stream)
+    list(summarize.generate_stream(rec["id"], "auto"))
+    list(summarize.edit_summary_stream(sid, "noch kürzer"))
+    list(summarize.ask_recording_stream(rec["id"], "Was ist wichtig?"))
+    list(summarize.ask_all_stream("Was ist wichtig?"))
+    assert len(systems) == 4
+    for system in systems:  # summary, AI change, question, question across all recordings
+        assert system.count("Verhaltensregeln des Nutzers – immer einhalten") == 1, system[-800:]
+        assert summarize.PREFS_LENGTH["short"] in system and summarize.PREFS_TONE["friendly"] in system
+        assert "Keine Emojis" in system and "Sag immer Servus am Ende." in system and "z. B." in system
+        assert system.count("KEINE Zeitstempel") <= 1 and system.count("Formelschrift") == 1  # said once, not three times
+    # and what can be checked afterwards is checked: no emojis, no empty "z. B." left by the removed timestamp
+    saved = db.get_summary(sid)["content"]
+    assert "🚀" not in saved and "✅" not in saved and "z. B." not in saved and "Abschreibung." in saved
+    answer = db.list_chat(rec["id"])[-1]["content"]
+    assert "🚀" not in answer and "z. B.," not in answer
+    settings["ai_prefs"]["emojis"] = True
+    assert "🚀" in summarize.finish("Los 🚀", settings)
+
+
+def test_empty_example_words_are_cleaned_and_real_examples_stay():
+    f = summarize.fix_dangling
+    assert f("- **SI-Basisgrößen** wurden mehrfach betont, z. B.,.") == "- **SI-Basisgrößen** wurden mehrfach betont."
+    assert f("- **Rekuperation** ist ein Prüfungsgegenstand, z. B..") == "- **Rekuperation** ist ein Prüfungsgegenstand."
+    assert f("- Wichtig (z. B. ).") == "- Wichtig."
+    assert f("- Kosten, e.g.,") == "- Kosten."
+    keep = "- Abschreibung, z. B. lineare Abschreibung über 5 Jahre."
+    assert f(keep) == keep and f("Ende...") == "Ende..."
+    assert summarize.strip_times("- **Ladung** ist zentral, z. B. [12:34].") == "- **Ladung** ist zentral."
+    from rekord.llm import templates
+    lecture = templates.get("lecture")["prompt"]
+    assert "konkrete Beispiel" in lecture  # the template asks for the example, it doesn't leave a "z. B." to copy

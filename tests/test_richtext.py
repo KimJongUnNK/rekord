@@ -256,7 +256,7 @@ def _tag(i: int) -> str:  # Satzbc, Satzbd … – letters, the same in every fo
     return "".join("abcdefghij"[int(d)] for d in f"{i:03d}")
 
 
-def test_pdf_export_keeps_every_line_inside_the_page(qt, tmp_path):
+def test_pdf_export_keeps_every_line_inside_the_page(qt, tmp_path, monkeypatch):
     pytest.importorskip("PySide6.QtPdf", exc_type=ImportError)
     from PySide6.QtCore import QSize
     from rekord.app import api as app_api
@@ -286,6 +286,9 @@ def test_pdf_export_keeps_every_line_inside_the_page(qt, tmp_path):
     for role in (QPalette.Text, QPalette.WindowText, QPalette.ButtonText, QPalette.BrightText):
         dark.setColor(role, QColor("white"))
     QGuiApplication.setPalette(dark)
+    from rekord import config
+    real_load = config.load
+    monkeypatch.setattr(config, "load", lambda: real_load() | {"pdf_transcript": True})  # Export → "Transkript anhängen"
     try:
         app_api.Api._write_pdf(a, rec["id"], str(out))
     finally:
@@ -313,3 +316,53 @@ def test_pdf_export_keeps_every_line_inside_the_page(qt, tmp_path):
         body = [1 for x in range(60, 300) for y in range(100, 700, 4)
                 if img.pixelColor(x, y).alpha() > 40 and img.pixelColor(x, y).lightness() < 200]
         assert body, "the check sees no text at all"
+
+
+def test_pdf_export_by_default_only_what_was_written_up(qt, tmp_path, monkeypatch):
+    """Emil: the PDF of a 2 h 43 min lecture had 45 pages – the whole transcript was in it. By default now only the
+    summaries, the mind map and the notes; the transcript comes when "Transkript anhängen" is on."""
+    pytest.importorskip("PySide6.QtPdf", exc_type=ImportError)
+    from PySide6.QtPdf import QPdfDocument
+    from rekord import config, export
+    from rekord.app import api as app_api
+    rec = db.create_recording("VO Elektrotechnik", "", status="done", duration=9780)
+    sid = db.add_speaker(rec["id"], "Dozentin", "#FF5A1F")
+    conn = db.connect()
+    for i in range(400):
+        conn.execute("INSERT INTO segments (recording_id, speaker_id, start, end, text) VALUES (?,?,?,?,?)",
+                     (rec["id"], sid, i * 20.0, i * 20 + 18, f"Transkriptzeile{_tag(i)} über Stromdichte und Spannung."))
+    conn.commit()
+    db.add_summary(rec["id"], "lecture", "Lernzettel", "## Prüfungsrelevant\n- **Stromdichte** J = I / A")
+    db.add_summary(rec["id"], "mindmap", "Mind Map", "- Elektrotechnik\n  - Stromdichte\n  - Spannung")
+    db.update_recording(rec["id"], notes="Meine Notiz: Folie 12 nachlesen")
+    saved = []
+
+    class Api(app_api.Api):
+        def __init__(self):
+            pass
+    a = Api.__new__(Api)
+    a.saved = type("S", (), {"emit": lambda self, ok, msg: saved.append((ok, msg))})()
+    real_load = config.load
+
+    def pages_and_text(full: bool):
+        monkeypatch.setattr(config, "load", lambda: real_load() | {"pdf_transcript": full})
+        out = tmp_path / f"vo-{full}.pdf"
+        app_api.Api._write_pdf(a, rec["id"], str(out))
+        assert saved[-1][0], saved
+        pdf = QPdfDocument()
+        pdf.load(str(out))
+        return pdf.pageCount(), "".join(" ".join(pdf.getAllText(n).text() for n in range(pdf.pageCount())).split())
+
+    short, text = pages_and_text(False)
+    assert "Transkriptzeile" not in text and "Prüfungsrelevant" in text and "Stromdichte" in text
+    assert "Folie12nachlesen" in text and "MindMap" in text and short == 1
+    long, text = pages_and_text(True)
+    assert "Transkriptzeileaaa" in text and long > short + 3
+    # nothing written up yet: the transcript comes anyway – never an empty PDF
+    bare = db.create_recording("Nur Transkript", "", status="done")
+    sp2 = db.add_speaker(bare["id"], "A", "#FF5A1F")
+    conn.execute("INSERT INTO segments (recording_id, speaker_id, start, end, text) VALUES (?,?,?,?,?)",
+                 (bare["id"], sp2, 0, 2, "Einzige Zeile"))
+    conn.commit()
+    assert "Einzige Zeile" in export.markdown(bare["id"], with_transcript=False)
+

@@ -15,7 +15,9 @@ Page {
     property var integ: null
     property var storage: null
     property bool micTest: false
-    readonly property var sections: [["look", "Darstellung"], ["audio", "Audio & Mikrofon"], ["ai", "KI"], ["asr", "Transkription"],
+    property string rules: ""     // Einstellungen → KI-Verhalten as the AI reads it (/api/ai/rules)
+    function loadRules() { app.call("GET", "/api/ai/rules", null, (r) => page.rules = r.rules, () => {}) }
+    readonly property var sections: [["look", "Darstellung"], ["audio", "Audio & Mikrofon"], ["ai", "KI"], ["behave", "KI-Verhalten"], ["asr", "Transkription"],
                                      ["spk", "Sprecher-Erkennung"], ["models", "Modelle"],
                                      ["int", "Claude Desktop (MCP)"], ["data", "Speicher & Datenschutz"]]
     readonly property var langs: [["", "Automatisch"], ["de", "Deutsch"], ["en", "Englisch"], ["fr", "Französisch"], ["it", "Italienisch"],
@@ -51,17 +53,17 @@ Page {
     }
     function loadStorage() { app.call("GET", "/api/storage", null, (r) => page.storage = r, () => {}) }
     function save(patch, quiet) {
-        app.call("PUT", "/api/settings", patch, (r) => { page.s = r; rekord.refresh(); if (!quiet) page.app.toast("Gespeichert") })
+        app.call("PUT", "/api/settings", patch, (r) => { page.s = r; rekord.refresh(); page.loadRules(); if (!quiet) page.app.toast("Gespeichert") })
     }
     function provPatch(obj) { const p = {}; p[prov] = obj; save({ llm: p }) }
     function opts(list) { return list.map(x => ({ value: x[0], label: x[1] })) }
     function gb(n) { return (n || 0).toLocaleString(Qt.locale("de_AT"), "f", 1) + " GB" }
     function jump(key) {
-        const item = { look: secLook, audio: secAudio, ai: secAi, asr: secAsr, spk: secSpk, models: secModels, int: secInt, data: secData }[key]
+        const item = { look: secLook, audio: secAudio, ai: secAi, behave: secBehave, asr: secAsr, spk: secSpk, models: secModels, int: secInt, data: secData }[key]
         if (item) flick.contentY = Math.max(0, Math.min(item.y - 8, flick.contentHeight - flick.height))
     }
     onShownChanged: {
-        if (shown) { load(); if (app.settingsSection) Qt.callLater(() => jump(app.settingsSection)) }
+        if (shown) { load(); loadRules(); if (app.settingsSection) Qt.callLater(() => jump(app.settingsSection)) }
         else if (micTest) { voice.discard(); micTest = false }
     }
     Timer { running: page.shown && page.models.some(m => m.progress && ["downloading", "extracting"].indexOf(m.progress.state) >= 0); interval: 1500; repeat: true; onTriggered: page.loadModels() }
@@ -323,6 +325,60 @@ Page {
                         }
                     }
                     Field {
+                        label: "Automatisch zusammenfassen"; tip: "autosum"; hint: "Nach jeder Aufnahme, mit dieser Vorlage."
+                        Check { text: "Aktiv"; checked: page.s ? page.s.auto_summary : false; onToggled: page.save({ auto_summary: checked }) }
+                        Select {
+                            Layout.maximumWidth: 360
+                            Layout.fillWidth: true
+                            options: page.templates.filter(t => t.id !== "mindmap").map(t => ({ value: t.id, label: t.name }))
+                            value: page.s ? page.s.default_template : "auto"
+                            onPicked: (v) => page.save({ default_template: v })
+                        }
+                    }
+                }
+
+                // ================================================================ KI-Verhalten
+                Section {
+                    id: secBehave
+                    objectName: "aiBehaviour"
+                    title: "KI-Verhalten"
+                    tip: "aibehaviour"
+                    readonly property var p: page.s && page.s.ai_prefs ? page.s.ai_prefs : ({})
+                    function setPref(key, value) { const x = {}; x[key] = value; page.save({ ai_prefs: x }) }
+                    Muted {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: "Einmal einstellen – gilt für jede Zusammenfassung, jede Änderung und jede Antwort, mit Claude, ChatGPT und lokaler KI."
+                    }
+                    Field {
+                        label: "Länge"; tip: "ailength"
+                        Segmented {
+                            objectName: "aiLength"
+                            Layout.maximumWidth: 420; Layout.fillWidth: true
+                            model: [{ value: "short", label: "Kurz" }, { value: "normal", label: "Normal" }, { value: "detailed", label: "Ausführlich" }]
+                            value: secBehave.p.length || "normal"
+                            onPicked: (v) => secBehave.setPref("length", v)
+                        }
+                    }
+                    Field {
+                        label: "Ton"; tip: "aitone"
+                        Segmented {
+                            objectName: "aiTone"
+                            Layout.maximumWidth: 420; Layout.fillWidth: true
+                            model: [{ value: "direct", label: "Direkt" }, { value: "neutral", label: "Sachlich" }, { value: "friendly", label: "Locker" }]
+                            value: secBehave.p.tone || "direct"
+                            onPicked: (v) => secBehave.setPref("tone", v)
+                        }
+                    }
+                    Field {
+                        label: "Beispiele"; tip: "aiexamples"
+                        Check { objectName: "aiExamples"; text: "Zu jedem wichtigen Punkt ein Beispiel aus der Aufnahme"; checked: secBehave.p.examples !== false; onToggled: secBehave.setPref("examples", checked) }
+                    }
+                    Field {
+                        label: "Emojis"
+                        Check { objectName: "aiEmojis"; text: "Emojis erlauben"; checked: !!secBehave.p.emojis; onToggled: secBehave.setPref("emojis", checked) }
+                    }
+                    Field {
                         label: "Sprache der Zusammenfassungen"; tip: "sumlang"
                         Select {
                             Layout.maximumWidth: 260
@@ -370,14 +426,14 @@ Page {
                         }
                     }
                     Field {
-                        label: "Automatisch zusammenfassen"; tip: "autosum"; hint: "Nach jeder Aufnahme, mit dieser Vorlage."
-                        Check { text: "Aktiv"; checked: page.s ? page.s.auto_summary : false; onToggled: page.save({ auto_summary: checked }) }
-                        Select {
-                            Layout.maximumWidth: 360
+                        label: "So liest es die KI"; hint: "Genau dieser Text steht bei jeder Anfrage ganz oben in den Regeln – einmal, nicht verteilt."
+                        Text {
+                            objectName: "aiRulesPreview"
                             Layout.fillWidth: true
-                            options: page.templates.filter(t => t.id !== "mindmap").map(t => ({ value: t.id, label: t.name }))
-                            value: page.s ? page.s.default_template : "auto"
-                            onPicked: (v) => page.save({ default_template: v })
+                            text: page.rules
+                            wrapMode: Text.WordWrap
+                            font.family: Theme.text; font.pixelSize: 12
+                            color: Theme.fg2
                         }
                     }
                 }
@@ -389,6 +445,10 @@ Page {
                     Field {
                         label: "Sprache"; tip: "lang"; hint: "Fest einstellen = am genauesten. Automatisch erkennt sie pro Satz – kurze Sätze bekommen die Hauptsprache der Aufnahme."
                         Select { objectName: "langSelect"; Layout.maximumWidth: 300; options: page.opts(page.langs); value: page.s ? page.s.language : ""; onPicked: (v) => page.save({ language: v }) }
+                    }
+                    Field {
+                        label: "Leise Aufnahmen"; tip: "boost"; hint: "Vor dem Transkribieren auf Sprachlautstärke angehoben (bis +30 dB) – auch live. Deine Datei bleibt, wie sie ist."
+                        Check { objectName: "boostQuiet"; text: "Vor dem Transkribieren lauter machen"; checked: page.s ? page.s.boost_quiet !== false : true; onToggled: page.save({ boost_quiet: checked }) }
                     }
                     Field {
                         label: "Passend zu diesem Computer"; tip: "asrauto"

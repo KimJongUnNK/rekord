@@ -89,7 +89,31 @@ def wants_times(settings: dict, asked: str = "") -> bool:
 
 def strip_times(text: str) -> str:
     out = TS_ANY.sub("", text or "")
-    return re.sub(r"[ \t]+([.,;:!?)])", r"\1", out)
+    return fix_dangling(re.sub(r"[ \t]+([.,;:!?)])", r"\1", out))
+
+
+# "wurden betont, z. B. [12:34]." minus the timestamp = "z. B.,." – or a small model copied a placeholder.
+_EXAMPLE_WORD = r"(?:z\.\s?B\.|zum Beispiel|bspw\.|beispielsweise|etwa|vgl\.|siehe|e\.\s?g\.|for example|such as|see)"
+_DANGLING = re.compile(r"[ \t]*,?[ \t]*\(?" + _EXAMPLE_WORD + r"[ \t]*\)?[ \t]*[,.;:]*[ \t]*$", re.I | re.M)
+_EMPTY_PARENS = re.compile(r"[ \t]*\([ \t,.;:]*\)")
+
+
+def fix_dangling(text: str) -> str:
+    """Removes an example word with nothing after it at the end of a line ("…, z. B.,." → "….") and empty brackets;
+    a real example ("z. B. lineare Abschreibung") stays."""
+    out = _EMPTY_PARENS.sub("", text or "")
+    lines = []
+    for line in out.split("\n"):
+        fixed = _DANGLING.sub("", line)
+        if fixed != line and fixed.strip() and not fixed.rstrip().endswith((".", "!", "?", ":", "*", ")")):
+            fixed = fixed.rstrip() + "."
+        lines.append(fixed)
+    out = "\n".join(lines)
+    return re.sub(r"(?<![.,])[ \t]*,[ \t]*\.(?!\.)|(?<!\.)\.\.(?!\.)", ".", out)
+
+
+NO_PLACEHOLDER_RULE = ("- Nie Platzhalter oder angefangene Aufzählungen stehen lassen: kein „z. B.“, „etwa“, „…“ oder "
+                       "„<…>“ ohne konkreten Inhalt aus dem Transkript. Gibt es kein Beispiel, lass „z. B.“ weg.")
 
 
 def strip_times_stream(deltas: Iterator[str]) -> Iterator[str]:
@@ -125,28 +149,69 @@ FORMULA_RULE = ("- Formeln als lesbare Formelschrift, eine pro Zeile, z. B. `Gew
                 "in diese Schreibweise bringen, Variablen erklären, wenn sie genannt wurden.")
 
 
-def user_rules(settings: dict) -> str:
-    """Einstellungen → KI → Anweisungen an die KI: the user's own rules for tone and form, in every answer."""
-    t = (settings.get("ai_instructions") or "").strip()
-    return f"\n\nAnweisungen des Nutzers – halte dich in jeder Antwort daran (Aufbau einer Vorlage geht vor):\n{t[:4000]}" if t else ""
+PREFS_LENGTH = {"short": "Kurz: nur das Wichtigste, knappe Stichpunkte, etwa halb so lang wie üblich.",
+                "normal": "Normale Länge: vollständig, aber ohne Wiederholungen.",
+                "detailed": "Ausführlich: alle Details, Zusammenhänge und Begründungen aus dem Transkript."}
+PREFS_TONE = {"direct": "Direkt und sachlich: erst die Sache, keine Einleitung, keine Floskeln, keine Rückfragen.",
+              "neutral": "Neutral und sachlich, in ganzen Sätzen.",
+              "friendly": "Freundlich und locker, aber auf den Punkt."}
+
+
+def prefs(settings: dict) -> dict:
+    p = dict(config.DEFAULTS.get("ai_prefs", {}))
+    p.update(settings.get("ai_prefs") or {})
+    return p
+
+
+def prefs_block(settings: dict, asked: str = "") -> str:
+    """Einstellungen → KI-Verhalten as ONE block of rules, the same in every AI call (summary, change, question,
+    questions across all recordings). Small models follow a single clear list best – so nothing is repeated
+    elsewhere, and what can be checked afterwards is checked as well (timestamps, emojis, empty "z. B.")."""
+    p = prefs(settings)
+    lang = LANG.get(settings.get("summary_language", "de"), settings.get("summary_language", "Deutsch"))
+    rules = [f"- Sprache: {lang}.",
+             "- Länge: " + PREFS_LENGTH.get(p.get("length"), PREFS_LENGTH["normal"]),
+             "- Ton: " + PREFS_TONE.get(p.get("tone"), PREFS_TONE["direct"]),
+             ("- Beispiele: zu jedem wichtigen Punkt ein konkretes Beispiel aus dem Transkript (Zahl, Fall, Zitat)."
+              if p.get("examples", True) else "- Beispiele nur, wenn sie ausdrücklich im Transkript stehen."),
+             "- Emojis: erlaubt, sparsam." if p.get("emojis") else "- Keine Emojis.",
+             _time_rule(settings, asked), FORMULA_RULE, NO_PLACEHOLDER_RULE]
+    own = (settings.get("ai_instructions") or "").strip()
+    if own:
+        rules.append("- Eigene Regeln des Nutzers (gehen bei Widerspruch vor):\n" + own[:4000])
+    return ("\n\n## Verhaltensregeln des Nutzers – immer einhalten\n"
+            "Lies sie einmal und halte dich in der ganzen Antwort daran. Die Überschriften einer Vorlage gehen vor, "
+            "alles andere regeln diese Punkte:\n" + "\n".join(rules))
+
+
+def user_rules(settings: dict) -> str:  # older name
+    return prefs_block(settings)
+
+
+_EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2B50\u2B06\u2934\u2935\u2705\u274C\u274E\u2753-\u2755\u2757\uFE0F\u200D]")
+
+
+def finish(text: str, settings: dict) -> str:
+    """What every saved AI text goes through: formulas readable, no empty "z. B.", no emojis unless allowed."""
+    out = fix_dangling(formulas.to_text(text or ""))
+    if not prefs(settings).get("emojis"):
+        out = re.sub(r"[ \t]{2,}", " ", _EMOJI.sub("", out))
+    return out
 
 
 def system_prompt(settings: dict, rec: dict, asked: str = "") -> str:
-    lang = LANG.get(settings.get("summary_language", "de"), settings.get("summary_language", "Deutsch"))
     return f"""Du bist REKORD, ein präziser Assistent für Gesprächsnotizen. Du bekommst das Transkript einer Aufnahme
 mit Zeitstempeln [mm:ss] und Sprechernamen. Zeilen mit ★ wurden vom Nutzer während der Aufnahme als wichtig markiert –
 gewichte sie stärker.
 
 Regeln:
-- Schreibe auf {lang}, als sauberes Markdown. Kurze, klare Sätze. Kein Gelaber, keine Einleitung wie "Hier ist".
+- Schreibe sauberes Markdown, ohne Einleitung wie "Hier ist".
 - Nutze die echten Namen der Sprecher. „Nicht erkannte Stimme“ (oder ältere „Sprecher 1“ etc.) sind eine oder mehrere Personen, die REKORD nicht kennt – lass die Bezeichnung so und erfinde keine Namen.
-{_time_rule(settings, asked)}
-{FORMULA_RULE}
 - Erfinde nichts. Wenn etwas unklar ist oder fehlt, sag das. Transkriptionsfehler stillschweigend korrigieren, wenn eindeutig.
 
 Was die App über diese Aufnahme weiß (Fragen nach Dateiname, Datum, Dauer usw. damit direkt beantworten):
 {recording_facts(rec, settings)}
-- Redeanteile: {speaker_stats(rec['id'])}""" + user_rules(settings)
+- Redeanteile: {speaker_stats(rec['id'])}""" + prefs_block(settings, asked)
 
 
 def _chunks(text: str, size: int) -> list[str]:
@@ -199,12 +264,19 @@ def prepared_transcript_iter(settings: dict, rid: str, reserve: int = 0) -> Iter
     for i, part in enumerate(parts):
         key = (hashlib.sha1(part.encode()).hexdigest(), model, settings.get("llm", {}).get("provider"))
         if key not in _MAP_CACHE:
+            stored = db.get_condensed("|".join(str(k) for k in key))  # condensed before, also before a restart
+            if stored:
+                _MAP_CACHE[key] = stored
+        if key not in _MAP_CACHE:
             yield status(f"Lange Aufnahme – Teil {i + 1} von {len(parts)} wird verdichtet …", 0.05 + 0.65 * i / len(parts))
             _MAP_CACHE[key] = providers.complete(
                 settings, "Verdichte diesen Transkript-Abschnitt zu dichten Stichpunkten: Inhalte, Begriffe, Namen, Zahlen, "
                           "Zusagen, Entscheidungen, Beispiele. Ein Stichpunkt pro Gedanke, keine Einleitung. "
                           "Behalte die [mm:ss] Zeitstempel am Ende der Stichpunkte.",
                 [{"role": "user", "content": part}], MAP_TOKENS)
+            _MAP_CACHE[key] = re.sub(r"<think>.*?</think>", "", _MAP_CACHE[key] or "", flags=re.S).strip()
+            if _MAP_CACHE[key]:
+                db.set_condensed("|".join(str(k) for k in key), _MAP_CACHE[key])
             if len(_MAP_CACHE) > 400:
                 _MAP_CACHE.pop(next(iter(_MAP_CACHE)))
         notes.append(f"### Teil {i + 1}/{len(parts)}\n{_MAP_CACHE[key].strip()}")
@@ -278,11 +350,13 @@ Regeln:
 - Alles, was die Anweisung nicht betrifft, bleibt wie es ist – auch Zeitstempel [mm:ss] und Namen.
 - Neue Inhalte nur aus dem Transkript (falls mitgegeben) – nichts erfinden.
 - Antworte NUR mit der vollständigen überarbeiteten Zusammenfassung, ohne Vorrede, ohne Codeblock.
-""" + FORMULA_RULE
+"""
 
 
-def edit_summary(sid: int, instruction: str, settings: dict | None = None) -> str:
-    """"Sag der KI, was sie ändern soll" for a summary – the old version stays for Rückgängig."""
+def edit_summary_stream(sid: int, instruction: str, settings: dict | None = None) -> Iterator[str]:
+    """"Sag der KI, was sie ändern soll" for a summary, as a stream: status lines while the transcript is prepared
+    (a 3-hour lecture on a local model takes minutes – no timeout, the bar shows it), then the new version as it's
+    written. At the end it's saved; the old version stays for Rückgängig. Raises LLMError with a clear reason."""
     instruction = (instruction or "").strip()
     sm = db.get_summary(sid)
     if sm is None:
@@ -290,22 +364,47 @@ def edit_summary(sid: int, instruction: str, settings: dict | None = None) -> st
     if not instruction:
         raise providers.LLMError("Schreib, was die KI ändern soll.")
     settings = settings or config.load()
-    transcript = prepared_transcript(settings, sm["recording_id"], reserve=len(sm["content"]) + 2000)
+    yield status("Transkript wird vorbereitet …", 0.02)
+    transcript = ""
+    for item in prepared_transcript_iter(settings, sm["recording_id"], reserve=len(sm["content"]) + 2000):
+        if is_status(item):
+            yield item
+        else:
+            transcript = item
     user = (f"<transkript>\n{transcript}\n</transkript>\n\n<zusammenfassung>\n{sm['content']}\n</zusammenfassung>\n\n"
             f"<anweisung>\n{instruction}\n</anweisung>")
-    out = providers.complete(settings, EDIT_SYSTEM + user_rules(settings), [{"role": "user", "content": user}], 8000)
-    out = re.sub(r"<think>.*?</think>", "", out or "", flags=re.S).strip()
+    yield status("Die KI ändert die Zusammenfassung …", 0.74 if transcript.startswith("(Langes Gespräch") else 0.1)
+    out = []
+    for d in providers.stream(settings, EDIT_SYSTEM + prefs_block(settings, instruction), [{"role": "user", "content": user}], 8000):
+        out.append(d)
+        yield d
+    text = clean_answer("".join(out), settings, instruction)
+    if not text:
+        raise providers.LLMError("Die KI hat nichts zurückgegeben – Anweisung etwas genauer formulieren.")
+    if text.strip() == sm["content"].strip():
+        raise providers.LLMError("Die KI hat nichts geändert – Anweisung genauer formulieren, z. B. „kürzer, "
+                                 "höchstens 10 Stichpunkte“.")
+    if sm["template_id"] == "mindmap":
+        text = finish_mindmap(settings, text)
+    db.update_summary(sid, text, keep_prev=True)
+    log.info("summary %s changed by the AI: %s", sid, instruction[:80])
+
+
+def clean_answer(text: str, settings: dict, asked: str = "") -> str:
+    """What a model wraps around its answer – <think>, ``` fences, LaTeX, unwanted timestamps, empty "z. B." – out."""
+    out = re.sub(r"<think>.*?</think>", "", text or "", flags=re.S).strip()
     out = re.sub(r"^```(?:markdown|md)?\s*\n(.*?)\n```\s*$", r"\1", out, flags=re.S).strip()
     out = formulas.to_text(out)
-    if not wants_times(settings, instruction):
+    if not wants_times(settings, asked):
         out = strip_times(out)
-    if not out:
-        raise providers.LLMError("Die KI hat nichts zurückgegeben – Anweisung etwas genauer formulieren.")
-    if sm["template_id"] == "mindmap":
-        out = finish_mindmap(settings, out)
-    db.update_summary(sid, out, keep_prev=True)
-    log.info("summary %s changed by the AI: %s", sid, instruction[:80])
-    return out
+    return finish(out, settings).strip()
+
+
+def edit_summary(sid: int, instruction: str, settings: dict | None = None) -> str:
+    """The same without the stream (MCP, scripts): returns the new version."""
+    for _ in edit_summary_stream(sid, instruction, settings):
+        pass
+    return db.get_summary(sid)["content"]
 
 
 def generate_stream(rid: str, template_id: str) -> Iterator[str]:
@@ -343,7 +442,7 @@ def generate(rid: str, template_id: str, on_delta: Callable[[str], None] | None 
         out.append(d)
         if on_delta:
             on_delta(d)
-    content = formulas.to_text("".join(out).strip())
+    content = finish("".join(out).strip(), settings)
     if template_id == "mindmap":
         content = finish_mindmap(settings, content)
     sid = db.add_summary(rid, template_id, tpl["name"], content, settings["llm"]["provider"], providers.model_name(settings))
@@ -387,7 +486,7 @@ def ask_recording_stream(rid: str, question: str) -> Iterator[str]:
                  "(z. B. „laut Agenda.pdf“)." if docs else "")
     system = system_prompt(settings, rec, question) + f"""
 
-Beantworte Fragen zu dieser Aufnahme. Antworte knapp und konkret.{" Belege mit [mm:ss]." if wants_times(settings, question) else ""}
+Beantworte Fragen zu dieser Aufnahme, konkret und auf den Punkt.{" Belege mit [mm:ss]." if wants_times(settings, question) else ""}
 Wenn die Antwort nicht im Transkript steht, sag das klar.{docs_rule}
 
 <transkript>
@@ -403,7 +502,7 @@ Wenn die Antwort nicht im Transkript steht, sag das klar.{docs_rule}
         out.append(d)
         yield d
     db.add_chat(rid, "user", question)
-    db.add_chat(rid, "assistant", formulas.to_text("".join(out)))
+    db.add_chat(rid, "assistant", finish("".join(out), settings))
 
 
 def keywords(q: str) -> str:
@@ -455,10 +554,9 @@ def ask_all_stream(question: str) -> Iterator[str]:
         sm = db.list_summaries(r["id"])
         if sm:
             summaries.append(f"### {r['title']} [[{r['id']}@00:00]]\n{sm[0]['content'][:1500]}")
-    lang = LANG.get(settings.get("summary_language", "de"), "Deutsch")
     times = wants_times(settings, question)
-    system = f"""Du bist REKORD und kennst alle Aufnahmen des Nutzers. Beantworte die Frage auf {lang}, knapp und konkret.
-{"Belege jede Aussage mit der Quelle im Format [[aufnahme_id@mm:ss]] genau wie in den Auszügen angegeben (wird in der App klickbar)." if times else "Nenne die Quelle mit dem Titel der Aufnahme. KEINE Zeitstempel, keine [[…]]-Links – nur wenn der Nutzer ausdrücklich danach fragt."}
+    system = f"""Du bist REKORD und kennst alle Aufnahmen des Nutzers. Beantworte die Frage konkret und auf den Punkt.
+{"Belege jede Aussage mit der Quelle im Format [[aufnahme_id@mm:ss]] genau wie in den Auszügen angegeben (wird in der App klickbar)." if times else "Nenne die Quelle mit dem Titel der Aufnahme, ohne [[…]]-Links."}
 Wenn die Auszüge die Antwort nicht enthalten, sag das ehrlich und schlage vor, wonach gesucht werden könnte.
 Fragen nach Dateinamen, Datum oder Dauer beantwortest du direkt aus <letzte_aufnahmen>.
 
@@ -470,7 +568,7 @@ Fragen nach Dateinamen, Datum oder Dauer beantwortest du direkt aus <letzte_aufn
 </zusammenfassungen>
 <relevante_auszuege>
 {chr(10).join(lines) or '(keine Treffer in der Volltextsuche)'}
-</relevante_auszuege>""" + user_rules(settings)
+</relevante_auszuege>""" + prefs_block(settings, question)
     history = [{"role": c["role"], "content": c["content"]} for c in db.list_chat("global")][-10:]
     out = []
     src = providers.stream(settings, system, history + [{"role": "user", "content": question}], 16000)
@@ -478,4 +576,4 @@ Fragen nach Dateinamen, Datum oder Dauer beantwortest du direkt aus <letzte_aufn
         out.append(d)
         yield d
     db.add_chat("global", "user", question)
-    db.add_chat("global", "assistant", formulas.to_text("".join(out)))
+    db.add_chat("global", "assistant", finish("".join(out), settings))

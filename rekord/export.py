@@ -22,18 +22,25 @@ def _data(rid: str):
     return rec, sp, segs
 
 
-def markdown(rid: str, with_summary: bool = True) -> str:
+def markdown(rid: str, with_summary: bool = True, with_transcript: bool = True) -> str:
+    """The recording as Markdown. with_transcript=False: only what was written up (summaries, mind map, notes) –
+    the PDF of a 3-hour lecture is then a few pages instead of 45. Nothing written up yet: the transcript comes
+    anyway, an empty document helps nobody."""
     rec, sp, segs = _data(rid)
     date = dt.datetime.fromtimestamp(rec["created_at"]).strftime("%d.%m.%Y %H:%M")
     out = [f"# {rec['title']}", "", f"*{date} · {fmt_time(rec['duration'] or 0)} · {', '.join(dict.fromkeys(sp.values()))}*", ""]
+    written = False
     if with_summary:
         for s in db.list_summaries(rid):
             out += [f"## {s['title']}", "", formulas.to_text(s["content"]), ""]
+            written = True
     if rec.get("notes"):
         out += ["## Notizen", "", formulas.to_text(rec["notes"]), ""]
-    out += ["## Transkript", ""]
-    for s in segs:
-        out.append(f"**{sp.get(s['speaker_id'], '?')}** [{fmt_time(s['start'])}]: {s['text']}  ")
+        written = True
+    if with_transcript or not written:
+        out += ["## Transkript", ""]
+        for s in segs:
+            out.append(f"**{sp.get(s['speaker_id'], '?')}** [{fmt_time(s['start'])}]: {s['text']}  ")
     return "\n".join(out) + "\n"
 
 

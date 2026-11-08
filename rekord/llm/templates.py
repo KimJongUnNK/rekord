@@ -90,7 +90,7 @@ Kurzbeschreibung (2 Sätze, spannend). ## Kapitel (mm:ss — Titel) ## Key Takea
 ## Überblick (3-5 Sätze: worum ging es, wie hängt es mit dem Fach zusammen)
 ## Kernaussagen (je: Erklärung in einfachen Worten + ein Beispiel [mm:ss])
 ## Definitionen & Formeln (exakt so, wie sie genannt wurden; jede Formel in eigener Zeile als Formelschrift, z. B. `AfA = (Anschaffungskosten − Restwert) / Nutzungsdauer`, darunter kurz, wofür jede Variable steht)
-## Prüfungsrelevant (alles, was die vortragende Person betont, wiederholt oder als „wichtig“ / „kommt dran“ markiert hat [mm:ss])
+## Prüfungsrelevant (alles, was die vortragende Person betont, wiederholt oder als „wichtig“ / „kommt dran“ markiert hat – je Punkt: was genau und das konkrete Beispiel oder die Begründung aus der Vorlesung [mm:ss])
 ## Fragen aus dem Hörsaal (Frage → Antwort der vortragenden Person)
 ## 10 Prüfungsfragen mit Musterantwort
 ## Offene Fragen & zum Nachlesen (Literatur, Folien, Aufgaben bis zum nächsten Mal als - [ ] Checkliste)"""),

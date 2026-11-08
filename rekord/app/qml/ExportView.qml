@@ -12,7 +12,7 @@ Item {
     readonly property var formats: [
         { k: "md", n: "Markdown", d: "Zusammenfassungen + Transkript – für Notion, Obsidian", ext: "md" },
         { k: "docx", n: "Word", d: "Zum Weiterschicken", ext: "docx" },
-        { k: "pdf", n: "PDF", d: "Zum Drucken oder Archivieren", ext: "pdf" },
+        { k: "pdf", n: "PDF", d: "Zusammenfassungen, Mind Map, Notizen – zum Drucken", ext: "pdf" },
         { k: "txt", n: "Text", d: "Transkript pur", ext: "txt" },
         { k: "srt", n: "SRT", d: "Untertitel mit Sprechern", ext: "srt" },
         { k: "vtt", n: "WebVTT", d: "Untertitel fürs Web", ext: "vtt" },
@@ -38,8 +38,22 @@ Item {
         currentFolder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
         onAccepted: api.saveExport(v.page.rid, fmt, selectedFile.toString())
     }
-    Flow {
+    property bool pdfTranscript: false   // Export → PDF: the whole transcript too (Einstellungen: pdf_transcript)
+    Component.onCompleted: page.app.call("GET", "/api/settings", null, (r) => v.pdfTranscript = !!r.pdf_transcript, () => {})
+    ColumnLayout {
         anchors.fill: parent
+        spacing: 14
+        Check {
+            objectName: "pdfTranscript"
+            text: "PDF: ganzes Transkript anhängen"
+            checked: v.pdfTranscript
+            onToggled: { v.pdfTranscript = checked; v.page.app.call("PUT", "/api/settings", { pdf_transcript: checked }, () => {}) }
+            ToolTip.visible: hovered; ToolTip.delay: 400
+            ToolTip.text: "Aus: nur was zusammengefasst wurde – eine lange Vorlesung wird ein paar Seiten statt 45"
+        }
+    Flow {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
         spacing: 12
         Repeater {
             model: v.formats
@@ -66,5 +80,6 @@ Item {
                 HoverHandler { cursorShape: Qt.PointingHandCursor }
             }
         }
+    }
     }
 }
