@@ -344,15 +344,15 @@ def main(out: Path) -> int:
         else:
             shot("summary-sticky")
             QMetaObject.invokeMethod(find(sticky, "summaryStickyEdit"), "clicked")
-            wait(0.5)
             rich = find(detail, "richEditor")
-            if rich is None or not rich.property("opened"):
+            # "opened" turns true when the sheet's slide-in transition ends – slow CI machines take longer than 0.5 s
+            if rich is None or not wait_for(lambda: rich.property("opened"), 4):
                 problems_extra.append("summary: 'Bearbeiten' in the sticky bar doesn't open the editor")
             else:
                 if rich.property("heading") != "Lernzettel lang":
                     problems_extra.append(f"summary: sticky 'Bearbeiten' opened the wrong summary ({rich.property('heading')!r})")
                 QMetaObject.invokeMethod(rich, "close")
-                wait(0.3)
+                wait_for(lambda: not rich.property("visible"), 4)
         flick.setProperty("contentY", 0)
         if not wait_for(lambda: not sticky.property("visible"), 3):
             problems_extra.append("summary: the sticky bar stays after scrolling back up")
