@@ -10,8 +10,8 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QMarginsF, QRectF, QSizeF, Qt
-from PySide6.QtGui import (QColor, QFont, QFontDatabase, QPageLayout, QPageSize, QPainter, QPdfWriter, QTextDocument,
-                           QTextOption)
+from PySide6.QtGui import (QAbstractTextDocumentLayout, QColor, QFont, QFontDatabase, QPageLayout, QPageSize, QPainter,
+                           QPalette, QPdfWriter, QTextDocument, QTextOption)
 
 DPI = 300
 MARGINS_MM = QMarginsF(18, 16, 18, 14)
@@ -81,6 +81,11 @@ def write(dest: str, title: str, body_html: str) -> int:
     doc.setPageSize(QSizeF(page.width(), body_h))  # the layout paginates: no line is split between two pages
     pages = doc.pageCount()
 
+    paper = QPalette()  # black ink on white paper, whatever the screen's theme is
+    for role in (QPalette.Text, QPalette.WindowText, QPalette.ButtonText):
+        paper.setColor(role, QColor("#1A1A1A"))
+    paper.setColor(QPalette.Base, QColor("white"))
+    paper.setColor(QPalette.Link, QColor("#1A1A1A"))
     p = QPainter(w)
     try:
         foot = QFont(font)
@@ -91,7 +96,11 @@ def write(dest: str, title: str, body_html: str) -> int:
             p.save()
             p.setClipRect(QRectF(0, 0, page.width(), body_h))
             p.translate(0, -n * body_h)
-            doc.drawContents(p, QRectF(0, n * body_h, page.width(), body_h))
+            # not doc.drawContents: that takes the app's text colour – white in dark mode, invisible on paper
+            ctx = QAbstractTextDocumentLayout.PaintContext()
+            ctx.clip = QRectF(0, n * body_h, page.width(), body_h)
+            ctx.palette = paper
+            doc.documentLayout().draw(p, ctx)
             p.restore()
             p.setFont(foot)
             p.setPen(QColor("#777777"))
