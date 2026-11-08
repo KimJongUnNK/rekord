@@ -39,6 +39,7 @@ Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und
 ## Neu in 1.4.11
 
 - 📌 **Kopieren und Bearbeiten wandern mit.** Bei langen Zusammenfassungen bleiben die Knöpfe oben stehen, während du scrollst.
+- 🔢 **Listen richtig nummeriert.** Lernfragen heißen 1, 2, 3 statt 1, 1, 1 – und alle Antworten stehen gleich weit eingerückt.
 
 ## Neu in 1.4.10
 

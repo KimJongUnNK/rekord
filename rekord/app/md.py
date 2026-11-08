@@ -42,11 +42,18 @@ def render(src: str, links: bool = True, link_color: str = "") -> str:
     lines = formulas.to_text(str(src or "")).replace("\r", "").split("\n")  # old summaries with LaTeX, too
     out: list[str] = []
     stack: list[str] = []
+    indents: list[int] = []  # the indentation each open list level started at
     i = 0
 
     def close(depth: int = 0) -> None:
         while len(stack) > depth:
             out.append(f"</{stack.pop()}>")
+            indents.pop()
+
+    def next_text(j: int) -> str:
+        while j < len(lines) and not lines[j].strip():
+            j += 1
+        return lines[j] if j < len(lines) else ""
 
     while i < len(lines):
         line = lines[i].rstrip()
@@ -90,14 +97,20 @@ def render(src: str, links: bool = True, link_color: str = "") -> str:
             continue
         m = re.match(r"^(\s*)([-*+]|\d+[.)])\s+(.*)$", line)
         if m:
-            depth = len(m[1].replace("\t", "  ")) // 2 + 1
+            # levels by indentation relative to the open lists – 2, 3 or 4 spaces all mean "one deeper"
+            ind = len(m[1].replace("\t", "    "))
             tag = "ol" if m[2][0].isdigit() else "ul"
-            close(depth)
-            if len(stack) == depth and stack[-1] != tag:  # "1." after "-" on the same level: a new list
-                close(depth - 1)
-            while len(stack) < depth:
+            while indents and indents[-1] > ind:
+                close(len(stack) - 1)
+            if indents and indents[-1] == ind and stack[-1] != tag:  # "1." after "-" on the same level: a new list
+                close(len(stack) - 1)
+            if not indents or indents[-1] < ind or stack[-1] != tag:
+                start = int(re.match(r"\d+", m[2])[0]) if tag == "ol" else 1
                 stack.append(tag)
-                out.append(f"<{tag}>")
+                indents.append(ind)
+                task_list = tag == "ul" and re.match(r"^\[( |x|X)\]\s", m[3])  # to-dos: the box is the marker, no dot as well
+                out.append(f'<{tag} start="{start}">' if start > 1 else
+                           '<ul style="list-style-type:none">' if task_list else f"<{tag}>")
             t = re.match(r"^\[( |x|X)\]\s+(.*)$", m[3])
             if t:
                 done = t[1] != " "
@@ -111,7 +124,14 @@ def render(src: str, links: bool = True, link_color: str = "") -> str:
             i += 1
             continue
         if not line.strip():
-            close()
+            nxt = next_text(i + 1)
+            # a blank line between "1." and "2." (or before an indented answer) doesn't end the list – else every item says "1."
+            if not (stack and (re.match(r"^\s*([-*+]|\d+[.)])\s", nxt) or (nxt[:1].isspace() and nxt.strip()))):
+                close()
+            i += 1
+            continue
+        if stack and line[:1].isspace() and out and out[-1].endswith("</li>"):  # an indented line under an item: part of it
+            out[-1] = out[-1][:-5] + "<br>" + _inline(line.strip(), links, link_color) + "</li>"
             i += 1
             continue
         close()
