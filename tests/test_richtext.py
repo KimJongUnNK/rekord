@@ -252,8 +252,12 @@ def test_ai_or_typed_change_drops_the_stale_formatting_and_undo_brings_it_back(c
 
 # ------------------------------------------------------------------ PDF export: nothing cut off
 
+def _tag(i: int) -> str:  # Satzbc, Satzbd … – letters, the same in every font
+    return "".join("abcdefghij"[int(d)] for d in f"{i:03d}")
+
+
 def test_pdf_export_keeps_every_line_inside_the_page(qt, tmp_path):
-    pypdf = pytest.importorskip("pypdf")
+    pytest.importorskip("PySide6.QtPdf", exc_type=ImportError)
     from PySide6.QtCore import QSize
     from rekord.app import api as app_api
     rec = db.create_recording("VO Gewinn- und Verlustrechnung im Betrieb – Teil 1 und 2", "", status="done", duration=9000)
@@ -264,7 +268,7 @@ def test_pdf_export_keeps_every_line_inside_the_page(qt, tmp_path):
         if i % 7 == 0:
             text += "https://www.example.com/ein/sehr/langer/link/ohne/ein/einziges/leerzeichen/der/nicht/passt/" * 2
         conn.execute("INSERT INTO segments (recording_id, speaker_id, start, end, text) VALUES (?,?,?,?,?)",
-                     (rec["id"], sid, i * 30.0, i * 30 + 25, f"Satz{i:03d} {text}"))
+                     (rec["id"], sid, i * 30.0, i * 30 + 25, f"Satz{_tag(i)} {text}"))
     conn.commit()
     db.add_summary(rec["id"], "lecture", "Lernzettel", "## Formeln\n- Rentabilität: $R = \\frac{G}{K} \\cdot 100$")
     out = tmp_path / "vo.pdf"
@@ -277,15 +281,15 @@ def test_pdf_export_keeps_every_line_inside_the_page(qt, tmp_path):
     a.saved = type("S", (), {"emit": lambda self, ok, msg: saved.append((ok, msg))})()
     app_api.Api._write_pdf(a, rec["id"], str(out))
     assert saved and saved[0][0], saved
-    reader = pypdf.PdfReader(str(out))
-    text = "".join(p.extract_text() for p in reader.pages).replace("\n", "").replace("\t", " ")
-    assert all(f"Satz{i:03d}" in text for i in range(80))  # every line of the transcript is in the PDF
-    assert "G / K · 100" in text and "frac" not in text  # formulas readable (some symbols extract as glyph ids)
-    assert f"Seite 1 von {len(reader.pages)}" in text
-    # nothing runs over the right margin: the outer strip of every page is blank
-    from PySide6.QtPdf import QPdfDocument
+    from PySide6.QtPdf import QPdfDocument  # the text as a PDF viewer reads it (pdfium) – fonts differ per system
     pdf = QPdfDocument()
     pdf.load(str(out))
+    text = " ".join(pdf.getAllText(n).text() for n in range(pdf.pageCount()))
+    text = " ".join(text.split())
+    assert all(f"Satz{_tag(i)}" in text for i in range(80))  # every line of the transcript is in the PDF
+    assert "G / K" in text and "frac" not in text  # formulas readable
+    assert f"von {pdf.pageCount()}" in text and pdf.pageCount() >= 3  # footer with page numbers
+    # nothing runs over the right margin: the outer strip of every page is blank
     for n in range(pdf.pageCount()):
         img = pdf.render(n, QSize(595, 842))
         ink = [(x, y) for x in range(565, 595) for y in range(0, 842, 2)
