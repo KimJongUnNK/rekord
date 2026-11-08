@@ -316,6 +316,49 @@ def main(out: Path) -> int:
                     problems_extra.append(f"summary: bold didn't stick (md {sm['content'][:80]!r})")
             wait(0.5)
             shot("summary-rich-saved")
+    # long summary: scrolled past its header, "Kopieren"/"Bearbeiten" stay on top (sticky bar) – and work there
+    long_sid = db.add_summary(ids["rid"], "lecture", "Lernzettel lang",
+                              "\n\n".join(f"## Abschnitt {i}\n" + "Ein langer Absatz über Rentabilität und Kosten. " * 12
+                                            for i in range(30)))
+    call(detail, "reload")
+    detail.setProperty("tab", 0)
+    sticky = None
+    if wait_for(lambda: find(detail, "summarySticky") is not None, 4):
+        sticky = find(detail, "summarySticky")
+    flick = None
+    if sticky is not None:
+        for sib in sticky.parentItem().childItems():
+            ci = sib.property("contentItem") if sib.metaObject().indexOfProperty("contentItem") >= 0 else None
+            if ci is not None and ci.metaObject().indexOfProperty("contentY") >= 0:
+                flick = ci
+    if sticky is None or flick is None:
+        problems_extra.append("summary: no sticky bar for long summaries")
+    else:
+        wait(0.6)
+        if sticky.property("visible"):
+            problems_extra.append("summary: the sticky bar shows before scrolling")
+        wait_for(lambda: flick.property("contentHeight") > 3000, 4)
+        flick.setProperty("contentY", flick.property("contentHeight") - flick.property("height") - 400)
+        if not wait_for(lambda: sticky.property("visible"), 3):
+            problems_extra.append("summary: scrolled into a long summary, Kopieren/Bearbeiten not on top")
+        else:
+            shot("summary-sticky")
+            QMetaObject.invokeMethod(find(sticky, "summaryStickyEdit"), "clicked")
+            rich = find(detail, "richEditor")
+            # "opened" turns true when the sheet's slide-in transition ends – slow CI machines take longer than 0.5 s
+            if rich is None or not wait_for(lambda: rich.property("opened"), 4):
+                problems_extra.append("summary: 'Bearbeiten' in the sticky bar doesn't open the editor")
+            else:
+                if rich.property("heading") != "Lernzettel lang":
+                    problems_extra.append(f"summary: sticky 'Bearbeiten' opened the wrong summary ({rich.property('heading')!r})")
+                QMetaObject.invokeMethod(rich, "close")
+                wait_for(lambda: not rich.property("visible"), 4)
+        flick.setProperty("contentY", 0)
+        if not wait_for(lambda: not sticky.property("visible"), 3):
+            problems_extra.append("summary: the sticky bar stays after scrolling back up")
+    db.delete_summary(long_sid)
+    call(detail, "reload")
+    wait(0.4)
     # "Wer ist das? → Später" must never lose the way back: one line stays, "Jetzt benennen" opens it again
     naming = detail.findChild(QObject, "namingCard")
     now = naming.findChild(QObject, "namingNow") if naming else None

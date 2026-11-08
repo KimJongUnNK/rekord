@@ -36,6 +36,11 @@ Kommt der Hinweis nicht: unten links auf **Nach Updates suchen** klicken.
 Beim ersten Start lädt REKORD einmalig die Sprachmodelle (~700 MB), danach läuft alles offline.
 Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**
 
+## Neu in 1.4.11
+
+- 📌 **Kopieren und Bearbeiten wandern mit.** Bei langen Zusammenfassungen bleiben die Knöpfe oben stehen, während du scrollst.
+- 🔢 **Listen richtig nummeriert.** Lernfragen heißen 1, 2, 3 statt 1, 1, 1 – und alle Antworten stehen gleich weit eingerückt.
+
 ## Neu in 1.4.10
 
 - 🧮 **Formeln richtig.** Statt `$\frac{G}{K} \cdot 100$` steht da `G / K · 100` – automatisch, in Zusammenfassung, Antworten, Kopie, Word und PDF. Auch alte Lernzettel.

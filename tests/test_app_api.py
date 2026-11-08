@@ -169,6 +169,37 @@ def test_markdown_for_the_window():
     assert tinted.count('style="color:#2d7ff9;text-decoration:none" href=') == 2 and "text-decoration:none;color:#2d7ff9" in tinted
 
 
+def test_numbered_lists_keep_counting_and_indent_evenly():
+    # what local models write: blank lines between the questions, answers indented by 3 or 4 spaces
+    src = ("1. **Was ist Leistung?**\n   - *Antwort:* Energie pro Zeit.\n\n"
+           "2. **Einheit für Spannung?**\n   - *Antwort:* Volt.\n\n"
+           "3. **Einheit für Druck?**\n    - *Antwort:* Pascal.\n\nDanach ein Absatz.")
+    h = md.render(src)
+    assert h.count("<ol") == 1 and h.count("</ol>") == 1  # one list: 1, 2, 3 – not 1, 1, 1
+    assert "<ul><ul>" not in h and h.count("<ul>") == 3  # 4 spaces is one level deeper, like 3
+    assert h.endswith("</ol><p>Danach ein Absatz.</p>")
+    from PySide6.QtGui import QTextDocument, QTextListFormat
+    doc = QTextDocument()
+    doc.setHtml(h)
+    numbers = [b.textList().itemText(b) for b in _blocks(doc)
+               if b.textList() and b.textList().format().style() == QTextListFormat.ListDecimal]
+    assert numbers == ["1.", "2.", "3."], numbers
+    indents = {b.textList().format().indent() for b in _blocks(doc) if "Antwort" in b.text()}
+    assert len(indents) == 1, indents  # every answer at the same depth
+    # a list that starts at 5 stays at 5; an indented line under an item belongs to it
+    h = md.render("5. fünf\n6. sechs\n   weiter im Punkt")
+    assert '<ol start="5">' in h and "sechs<br>weiter im Punkt</li>" in h
+    # to-dos: the box is the marker – no bullet next to it
+    assert '<ul style="list-style-type:none"><li>' in md.render("- [ ] eins\n- [x] zwei")
+
+
+def _blocks(doc):
+    b = doc.begin()
+    while b.isValid():
+        yield b
+        b = b.next()
+
+
 def test_mind_map_layout_and_svg():
     src = "# Launch\n- Termin\n  - Freitag\n  - Montag\n- Recht"
     t = md.outline(src)
