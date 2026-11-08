@@ -260,6 +260,27 @@ def main(out: Path) -> int:
     for i, name in enumerate(["detail", "detail-transcript", "detail-mindmap", "detail-ask", "detail-notes", "detail-docs", "detail-export"]):
         detail.setProperty("tab", i)
         shot(name)
+    # the bar while summarizing (long lecture on a local model: "Teil 3 von 9 …")
+    sv = find(detail, "summaryProgress")
+    view = sv
+    while view is not None and view.property("streamTitle") is None:
+        view = view.parent()
+    if sv is None or view is None:
+        problems_extra.append("summary: no progress bar while summarizing")
+    else:
+        view.setProperty("streamTitle", "Vorlesung / Lernzettel")
+        view.setProperty("progressLabel", "Lange Aufnahme – Teil 3 von 9 wird verdichtet …")
+        view.setProperty("progress", 0.27)
+        view.setProperty("streamText", "*Lange Aufnahme – Teil 3 von 9 wird verdichtet …*")
+        view.setProperty("busy", True)
+        detail.setProperty("tab", 0)
+        wait(0.4)
+        if not sv.property("visible"):
+            problems_extra.append("summary: the progress bar isn't shown while summarizing")
+        shot("summary-progress")
+        view.setProperty("busy", False)
+        view.setProperty("streamText", "")
+        wait(0.2)
     # a summary edited like in Word: select a word, B, save → stored with its formats, Markdown gets "**"
     detail.setProperty("tab", 0)
     wait(0.4)

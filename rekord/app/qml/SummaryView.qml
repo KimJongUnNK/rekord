@@ -11,6 +11,8 @@ Item {
     property string tpl: "auto"
     property bool busy: false
     property string streamText: ""
+    property real progress: 0          // the bar while summarizing: 0…1
+    property string progressLabel: ""
     property string streamTitle: ""
     readonly property var list: page.rec ? page.rec.summaries.filter(s => s.template_id !== "mindmap") : []
     readonly property bool hasText: page.rec && page.rec.segments.length > 0
@@ -32,11 +34,12 @@ Item {
 
     function generate() {
         const t = page.templates.find(x => x.id === tpl)
-        busy = true; streamText = ""; streamTitle = t ? t.name : tpl
+        busy = true; streamText = ""; streamTitle = t ? t.name : tpl; progress = 0; progressLabel = "Startet …"
         page.app.stream("/api/recordings/" + page.rid + "/summaries", { template_id: tpl },
                         (txt) => v.streamText = txt,
                         () => { v.busy = false; v.streamText = ""; v.page.reload() },
-                        (err) => { v.busy = false; v.streamText = "**Fehler:** " + err })
+                        (err) => { v.busy = false; v.streamText = "**Fehler:** " + err },
+                        (p, label) => { v.progress = Math.max(v.progress, p); v.progressLabel = label })
     }
 
     RichEditor { id: richDlg }
@@ -108,7 +111,22 @@ Item {
                             Eyebrow { text: v.streamTitle }
                             BusyIndicator { running: v.busy; visible: v.busy; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
                         }
-                        Markdown { Layout.fillWidth: true; source: v.streamText || "…"; onSeek: (s) => player.seekPlay(s) }
+                        ColumnLayout {  // how far it is: preparing (long recordings: piece by piece), then writing
+                            objectName: "summaryProgress"
+                            visible: v.busy
+                            Layout.fillWidth: true
+                            spacing: 6
+                            Bar { objectName: "summaryProgressBar"; Layout.fillWidth: true; value: v.progress }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Muted { Layout.fillWidth: true; font.pixelSize: 12; text: v.progressLabel; elide: Text.ElideRight }
+                                Muted { font.pixelSize: 12; text: Math.round(v.progress * 100) + " %" }
+                            }
+                        }
+                        Markdown {  // what the AI writes – the status line already stands under the bar
+                            visible: v.streamText !== "" && v.streamText !== "*" + v.progressLabel + "*"
+                            Layout.fillWidth: true; source: v.streamText; onSeek: (s) => player.seekPlay(s)
+                        }
                     }
                 }
                 Repeater {

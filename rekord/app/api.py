@@ -6,6 +6,7 @@ turns that into callbacks). Everything blocking runs on worker threads; the wind
 from __future__ import annotations
 
 import itertools
+import re
 import json
 import logging
 import shutil
@@ -21,6 +22,43 @@ from .. import jobs
 
 log = logging.getLogger("rekord.app")
 ERR = "\u0000ERROR:"
+STATUS, STATUS_END = "\u0001", "\u0002"  # "Teil 2 von 6 wird verdichtet …" inside a stream (summarize.status)
+_STATUS_RE = re.compile("\u0001([^\u0002]*)\u0002?")
+WRITE_CHARS = 3500  # a typical summary's length: how far the bar moves while the AI writes
+
+
+def _states(text: str) -> list[tuple[float | None, str]]:
+    out = []
+    for s in _STATUS_RE.findall(text):
+        p, _, label = s.partition("|") if "|" in s else ("", "", s)
+        try:
+            out.append((float(p) if p else None, label))
+        except ValueError:
+            out.append((None, s))
+    return out
+
+
+def shown(text: str) -> str:
+    """What the window shows of a stream so far: the text – or, while there is none yet, the latest status."""
+    states = _states(text)
+    clean = _STATUS_RE.sub("", text)
+    if clean.strip() or not states:
+        return clean
+    return f"*{states[-1][1]}*"
+
+
+def progress_of(text: str) -> tuple[float, str]:
+    """Progress bar for a stream: -1 = no bar (a plain answer). While preparing: the last status; while the AI writes:
+    from where the preparation ended up to 97 %, by how much has been written."""
+    states = _states(text)
+    known = [p for p, _ in states if p is not None]
+    if not known:
+        return -1.0, ""
+    clean = _STATUS_RE.sub("", text)
+    if not clean.strip():
+        return known[-1], states[-1][1]
+    start = max(known[-1], 0.1)
+    return start + (0.97 - start) * min(1.0, len(clean) / WRITE_CHARS), "Die KI schreibt …"
 
 
 def _detail(r: httpx.Response) -> str:
@@ -51,6 +89,7 @@ def plain(v):
 class Api(QObject):
     reply = Signal(int, bool, int, "QVariant")  # id, ok, HTTP status, data (JSON) – or the error text
     chunk = Signal(int, str)                     # id, text so far (summaries, answers – while the AI writes)
+    progress = Signal(int, float, str)           # id, 0…1, what's happening (summaries: the bar)
     event = Signal("QVariantMap")                # processing events: progress, done, summary_done …
 
     def __init__(self, port: int, parent=None):
@@ -121,7 +160,13 @@ class Api(QObject):
                     now = time.monotonic()
                     if now - last > 0.06:  # ~15 updates a second are smooth enough
                         last = now
-                        self.chunk.emit(rid, text)
+                        self.chunk.emit(rid, shown(text))
+                        p, label = progress_of(text)
+                        if p >= 0:
+                            self.progress.emit(rid, p, label)
+            if progress_of(text)[0] >= 0:
+                self.progress.emit(rid, 1.0, "Fertig")
+            text = _STATUS_RE.sub("", text)
             self.chunk.emit(rid, text)
             self.reply.emit(rid, True, 200, text)
         except httpx.HTTPError as e:

@@ -1303,7 +1303,8 @@ def _stream_text(gen_factory, on_done=None):
             out = []
             try:
                 for d in gen_factory():
-                    out.append(d)
+                    if not d.startswith(summarize.STATUS):  # "Teil 2 von 6 …": shown, never saved
+                        out.append(d)
                     loop.call_soon_threadsafe(q.put_nowait, d)
                 if on_done:
                     on_done("".join(out))
