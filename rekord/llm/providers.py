@@ -94,7 +94,7 @@ def stream(settings: dict, system: str, messages: list[dict], max_tokens: int = 
     if p == "anthropic":
         yield from _anthropic(cfg, system, messages, max_tokens)
     elif p == "ollama":
-        yield from _ollama(cfg, system, messages)
+        yield from _ollama(cfg, system, messages, max_tokens)
     elif p in ("openai", "compatible"):
         yield from _openai(cfg, system, messages, max_tokens, compatible=p == "compatible")
     else:
@@ -209,7 +209,12 @@ def fit_context(system: str, messages: list[dict], limit: int = 32768) -> int:
     return max(2048, min(ctx, limit))
 
 
-def _ollama(cfg: dict, system: str, messages: list[dict]) -> Iterator[str]:
+# How long Ollama may stay silent: reading a long prompt on a laptop (or loading the model from an external drive)
+# takes minutes before the first word – 10 minutes cut long lectures off with "timed out".
+OLLAMA_SILENCE = 1800
+
+
+def _ollama(cfg: dict, system: str, messages: list[dict], max_tokens: int = 32000) -> Iterator[str]:
     from . import ollama
     base = (cfg.get("base_url") or "http://localhost:11434").rstrip("/")
     try:
@@ -223,10 +228,11 @@ def _ollama(cfg: dict, system: str, messages: list[dict]) -> Iterator[str]:
         raise LLMError("Kein lokales Modell gewählt. Einstellungen → KI → Lokal → Modell laden.")
     body = {"model": model, "stream": True, "think": False,
             "messages": [{"role": "system", "content": system}] + messages,
-            "options": {"num_ctx": fit_context(system, messages, int(cfg.get("num_ctx", 32768)))},
+            "options": {"num_ctx": fit_context(system, messages, int(cfg.get("num_ctx", 32768))),
+                        "num_predict": max_tokens},
             "keep_alive": OLLAMA_KEEP_ALIVE}
     try:
-        with httpx.stream("POST", f"{base}/api/chat", json=body, timeout=httpx.Timeout(600, connect=5)) as r:
+        with httpx.stream("POST", f"{base}/api/chat", json=body, timeout=httpx.Timeout(OLLAMA_SILENCE, connect=5)) as r:
             if r.status_code == 404:
                 raise LLMError(f"Modell „{model}“ ist nicht geladen. Einstellungen → KI → Lokal → Laden.")
             if r.status_code == 400 and body.get("think") is False:  # older Ollama without the think flag
@@ -240,6 +246,10 @@ def _ollama(cfg: dict, system: str, messages: list[dict]) -> Iterator[str]:
             yield from _strip_think(_ollama_lines(r))
     except httpx.ConnectError as e:
         raise LLMError(f"Ollama antwortet nicht auf {base}.") from e
+    except httpx.TimeoutException as e:
+        raise LLMError(f"Ollama ({model}) hat {OLLAMA_SILENCE // 60} Minuten nichts geliefert – der Computer ist dafür zu "
+                       "ausgelastet oder das Modell zu groß. Nochmal versuchen (schon verdichtete Teile bleiben gemerkt) "
+                       "oder Einstellungen → KI → Lokal → ein kleineres Modell.") from e
 
 
 def ollama_error(status: int, text: str, model: str) -> str:
@@ -264,7 +274,7 @@ def ollama_error(status: int, text: str, model: str) -> str:
 
 
 def _ollama_raw(base: str, body: dict) -> Iterator[str]:
-    with httpx.stream("POST", f"{base}/api/chat", json=body, timeout=httpx.Timeout(600, connect=5)) as r:
+    with httpx.stream("POST", f"{base}/api/chat", json=body, timeout=httpx.Timeout(OLLAMA_SILENCE, connect=5)) as r:
         if r.status_code >= 400:
             r.read()
             raise LLMError(ollama_error(r.status_code, r.text, body.get("model", "")))

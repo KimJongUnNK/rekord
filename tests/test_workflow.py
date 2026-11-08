@@ -277,3 +277,61 @@ def test_answers_and_summaries_come_without_timestamps_unless_asked(client, monk
         assert "".join(summarize.ask_all_stream("Was ist Umsatz?")).endswith("[01:58].")
     finally:
         config.save({"timestamps": "ask"})
+
+
+# ------------------------------------------------------------------ long lectures on a small local model
+
+def _long_lecture(lines: int) -> str:
+    rec = db.create_recording("VO 2h43", "", status="done")
+    sid = db.add_speaker(rec["id"], "Dozentin", "#FF5A1F")
+    conn = db.connect()
+    for i in range(lines):
+        conn.execute("INSERT INTO segments (recording_id, speaker_id, start, end, text) VALUES (?,?,?,?,?)",
+                     (rec["id"], sid, i * 5.0, i * 5.0 + 4, f"Satz {i}: Die Abschreibung verteilt die Anschaffungskosten "
+                                                           f"über die Nutzungsdauer, das ist prüfungsrelevant."))
+    conn.commit()
+    return rec["id"]
+
+
+def test_a_long_lecture_is_condensed_in_small_pieces_with_progress_and_remembered(monkeypatch):
+    from rekord.app import api as app_api
+    rid = _long_lecture(1800)  # ~2.5 h of speech: far more than an 8B model's context
+    settings = {"llm": {"provider": "ollama", "ollama": {"model": "qwen3:8b", "num_ctx": 32768}},
+                "summary_language": "de", "timestamps": "ask"}
+    monkeypatch.setattr(summarize.config, "load", lambda: settings)
+    calls = []
+
+    def stream(s, system, messages, max_tokens=0):
+        calls.append((len(messages[-1]["content"]), max_tokens))
+        yield "- Abschreibung verteilt Kosten [01:00]" if max_tokens == summarize.MAP_TOKENS else "# GuV\nFertig."
+    monkeypatch.setattr(providers, "stream", stream)
+    summarize._MAP_CACHE.clear()
+    out = list(summarize.generate_stream(rid, "lecture"))
+    states = [o for o in out if summarize.is_status(o)]
+    pieces = [c for c in calls if c[1] == summarize.MAP_TOKENS]
+    assert len(pieces) >= 6 and all(n <= summarize.MAP_CHARS + 300 for n, _ in pieces)  # small pieces, short notes
+    assert "Teil 1 von" in states[0] and len(states) == len(pieces) + 1
+    assert "".join(o for o in out if not summarize.is_status(o)) == "# GuV\nFertig."
+    # again (after a "timed out", or the next question): the pieces are remembered – only the final call is made
+    calls.clear()
+    assert "".join(summarize.ask_recording_stream(rid, "Was ist prüfungsrelevant?")).endswith("Fertig.")
+    assert [c for c in calls if c[1] == summarize.MAP_TOKENS] == [] and len(calls) == 1
+    # what the window shows while waiting – and that statuses never end up in a saved summary
+    assert app_api.shown(summarize.status("Teil 2 von 7 wird verdichtet …")) == "_Teil 2 von 7 wird verdichtet …_"
+    assert app_api.shown(summarize.status("x") + "# GuV") == "# GuV"
+    res = summarize.generate(rid, "lecture")
+    assert res["content"] == "# GuV\nFertig." and "\u0001" not in db.get_summary(res["id"])["content"]
+
+
+def test_ollama_silence_is_long_enough_and_explained(monkeypatch):
+    import httpx
+    from rekord.llm import ollama as ol
+    assert providers.OLLAMA_SILENCE >= 1800
+    monkeypatch.setattr(ol, "start", lambda base: True)
+
+    def silent(*a, **k):
+        raise httpx.ReadTimeout("timed out")
+    monkeypatch.setattr(httpx, "stream", silent)
+    with pytest.raises(providers.LLMError) as e:
+        list(providers._ollama({"model": "qwen3:8b"}, "s", [{"role": "user", "content": "x"}], 100))
+    assert "30 Minuten" in str(e.value) and "gemerkt" in str(e.value)

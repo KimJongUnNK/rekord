@@ -6,6 +6,7 @@ turns that into callbacks). Everything blocking runs on worker threads; the wind
 from __future__ import annotations
 
 import itertools
+import re
 import json
 import logging
 import shutil
@@ -21,6 +22,17 @@ from .. import jobs
 
 log = logging.getLogger("rekord.app")
 ERR = "\u0000ERROR:"
+STATUS, STATUS_END = "\u0001", "\u0002"  # "Teil 2 von 6 wird verdichtet …" inside a stream (summarize.status)
+_STATUS_RE = re.compile("\u0001([^\u0002]*)\u0002?")
+
+
+def shown(text: str) -> str:
+    """What the window shows of a stream so far: the text – or, while there is none yet, the latest status."""
+    states = _STATUS_RE.findall(text)
+    clean = _STATUS_RE.sub("", text)
+    if clean.strip() or not states:
+        return clean
+    return f"_{states[-1]}_"
 
 
 def _detail(r: httpx.Response) -> str:
@@ -121,7 +133,8 @@ class Api(QObject):
                     now = time.monotonic()
                     if now - last > 0.06:  # ~15 updates a second are smooth enough
                         last = now
-                        self.chunk.emit(rid, text)
+                        self.chunk.emit(rid, shown(text))
+            text = _STATUS_RE.sub("", text)
             self.chunk.emit(rid, text)
             self.reply.emit(rid, True, 200, text)
         except httpx.HTTPError as e:

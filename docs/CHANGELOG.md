@@ -2,6 +2,12 @@
 
 Was sich in welcher Version geändert hat, neueste zuerst. Die Downloads stehen immer unter [Releases](https://github.com/KimJongUnNK/rekord/releases/latest).
 
+## 1.4.9 – Lange Aufnahmen mit lokaler KI: kein „timed out“ mehr
+- **Behoben: „Fehler: timed out“** bei langen Aufnahmen (z. B. 2 h 43 min Vorlesung) mit lokaler KI. Das Transkript passt nicht in den Kontext eines kleinen Modells und wird erst abschnittsweise verdichtet – die Abschnitte waren riesig, die Notizen unbegrenzt lang, und nach 10 Minuten ohne Antwort von Ollama brach REKORD ab. Jetzt: Abschnitte von höchstens ~8 000 Tokens, kurze Notizen (max. 1 500 Tokens je Abschnitt), Ollama darf bis zu 30 Minuten still rechnen (Modell von externer Festplatte laden, langer Prompt).
+- **Fortschritt sichtbar:** statt einer leeren Karte steht da „Lange Aufnahme – Teil 3 von 9 wird verdichtet …“, dann „Alles verdichtet – jetzt wird zusammengefasst …“.
+- **Verdichtete Abschnitte werden gemerkt:** ein zweiter Versuch, eine andere Vorlage oder eine Frage zur selben Aufnahme fängt nicht von vorn an.
+- Bricht Ollama trotzdem ab, sagt REKORD warum und was hilft (nochmal versuchen – Abschnitte bleiben gemerkt – oder ein kleineres Modell).
+
 ## 1.4.8 – Zeitstempel nur, wenn du danach fragst
 - **Zeitstempel** (*Einstellungen → KI*, Standard: **Nur wenn ich danach frage**): Antworten (eine Aufnahme und *Fragen* über alle), neue Zusammenfassungen und KI-Änderungen kommen ohne [mm:ss] und ohne Aufnahme-Links – auch wenn eine Vorlage welche verlangt. Fragst du „an welcher Stelle?“, „welche Minute?“, „mit Zeitstempel“ o. Ä., stehen sie drin. Weil kleine lokale Modelle Anweisungen gern überlesen, nimmt REKORD Zeitstempel zusätzlich selbst heraus, auch beim Live-Mitschreiben. *Immer* stellt das alte Verhalten her. Bestehende Zusammenfassungen bleiben, wie sie sind.
 

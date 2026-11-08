@@ -155,22 +155,59 @@ def _chunks(text: str, size: int) -> list[str]:
     return out
 
 
-def prepared_transcript(settings: dict, rid: str, on_status: Callable[[str], None] | None = None, reserve: int = 0) -> str:
+# Status lines inside a stream ("Teil 2 von 6 wird verdichtet …"): shown while waiting, never part of the result.
+STATUS, STATUS_END = "\u0001", "\u0002"
+MAP_CHARS = 24_000      # a long transcript goes to a local model in pieces this big (~8k tokens: a few minutes each)
+MAP_TOKENS = 1500       # and each piece comes back as at most this many tokens of notes
+_MAP_CACHE: dict[tuple, str] = {}  # (piece, model) → notes: a second try or the next question doesn't start over
+
+
+def status(text: str) -> str:
+    return f"{STATUS}{text}{STATUS_END}"
+
+
+def is_status(chunk: str) -> bool:
+    return chunk.startswith(STATUS)
+
+
+def prepared_transcript_iter(settings: dict, rid: str, reserve: int = 0) -> Iterator[str]:
     """Fits the transcript into the model's context (minus `reserve` chars for other material, e.g. the Unterlagen).
-    Long recordings on small local models get map-reduced."""
+    Long recordings on small local models are condensed piece by piece first. Yields status lines while it works;
+    the last item is the transcript (or the condensed notes)."""
+    import hashlib
     text = transcript_text(rid)
     limit = max(8000, providers.context_chars(settings) - reserve)
     if len(text) <= limit:
-        return text
-    parts = _chunks(text, int(limit * 0.8))
+        yield text
+        return
+    parts = _chunks(text, min(int(limit * 0.8), MAP_CHARS))
+    model = providers.model_name(settings)
     notes = []
     for i, part in enumerate(parts):
-        if on_status:
-            on_status(f"Teil {i + 1}/{len(parts)} verdichten …")
-        notes.append(providers.complete(settings, "Verdichte diesen Transkript-Abschnitt zu detaillierten Stichpunkten. "
-                                        "Behalte Namen, Zahlen, Zusagen, Entscheidungen und [mm:ss] Zeitstempel.",
-                                        [{"role": "user", "content": part}], 8000))
-    return "(Langes Gespräch – abschnittsweise verdichtet)\n\n" + "\n\n".join(notes)
+        key = (hashlib.sha1(part.encode()).hexdigest(), model, settings.get("llm", {}).get("provider"))
+        if key not in _MAP_CACHE:
+            yield status(f"Lange Aufnahme – Teil {i + 1} von {len(parts)} wird verdichtet …")
+            _MAP_CACHE[key] = providers.complete(
+                settings, "Verdichte diesen Transkript-Abschnitt zu dichten Stichpunkten: Inhalte, Begriffe, Namen, Zahlen, "
+                          "Zusagen, Entscheidungen, Beispiele. Ein Stichpunkt pro Gedanke, keine Einleitung. "
+                          "Behalte die [mm:ss] Zeitstempel am Ende der Stichpunkte.",
+                [{"role": "user", "content": part}], MAP_TOKENS)
+            if len(_MAP_CACHE) > 400:
+                _MAP_CACHE.pop(next(iter(_MAP_CACHE)))
+        notes.append(f"### Teil {i + 1}/{len(parts)}\n{_MAP_CACHE[key].strip()}")
+    yield status("Alles verdichtet – jetzt wird zusammengefasst …")
+    yield "(Langes Gespräch – abschnittsweise verdichtet)\n\n" + "\n\n".join(notes)
+
+
+def prepared_transcript(settings: dict, rid: str, on_status: Callable[[str], None] | None = None, reserve: int = 0) -> str:
+    out = ""
+    for item in prepared_transcript_iter(settings, rid, reserve):
+        if is_status(item):
+            if on_status:
+                on_status(item.strip(STATUS + STATUS_END))
+        else:
+            out = item
+    return out
 
 
 DOCS_NOTE = """
@@ -261,7 +298,12 @@ def generate_stream(rid: str, template_id: str) -> Iterator[str]:
     rec = db.get_recording(rid)
     tpl = templates.get(template_id)
     docs = _docs(settings, rid)
-    transcript = prepared_transcript(settings, rid, reserve=len(docs))
+    transcript = ""
+    for item in prepared_transcript_iter(settings, rid, reserve=len(docs)):
+        if is_status(item):
+            yield item  # "Teil 2 von 6 wird verdichtet …" – shown while waiting
+        else:
+            transcript = item
     if not transcript.strip():
         raise providers.LLMError("Transkript ist leer.")
     user = f"<transkript>\n{transcript}\n</transkript>\n\n<vorlage name=\"{tpl['name']}\">\n{tpl['prompt']}\n</vorlage>"
@@ -279,6 +321,8 @@ def generate(rid: str, template_id: str, on_delta: Callable[[str], None] | None 
     tpl = templates.get(template_id)
     out = []
     for d in generate_stream(rid, template_id):
+        if is_status(d):
+            continue
         out.append(d)
         if on_delta:
             on_delta(d)
@@ -315,7 +359,12 @@ def ask_recording_stream(rid: str, question: str) -> Iterator[str]:
     rec = db.get_recording(rid)
     history = [{"role": c["role"], "content": c["content"]} for c in db.list_chat(rid)][-12:]
     docs = _docs(settings, rid)
-    transcript = prepared_transcript(settings, rid, reserve=len(docs))
+    transcript = ""
+    for item in prepared_transcript_iter(settings, rid, reserve=len(docs)):
+        if is_status(item):
+            yield item
+        else:
+            transcript = item
     summaries = "\n\n".join(f"## {x['title']}\n{x['content']}" for x in db.list_summaries(rid)[:2])
     docs_rule = ("\nStammt eine Antwort aus den Unterlagen statt aus dem Gespräch, sag das und nenne das Dokument "
                  "(z. B. „laut Agenda.pdf“)." if docs else "")
