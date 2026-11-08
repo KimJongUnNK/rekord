@@ -283,11 +283,15 @@ def test_pdf_export_keeps_every_line_inside_the_page(qt, tmp_path):
     assert saved and saved[0][0], saved
     from PySide6.QtPdf import QPdfDocument  # the text as a PDF viewer reads it (pdfium) – fonts differ per system
     pdf = QPdfDocument()
-    pdf.load(str(out))
+    err = pdf.load(str(out))
+    from PySide6.QtGui import QFontDatabase
+    from rekord.app import pdfout
+    assert pdf.pageCount() >= 3, (err, out.stat().st_size, pdfout.family(), len(QFontDatabase.families()))
     text = " ".join(pdf.getAllText(n).text() for n in range(pdf.pageCount()))
     dense = "".join(text.split())  # word spacing differs per font/system – only the characters count
     missing = [_tag(i) for i in range(80) if f"Satz{_tag(i)}" not in dense]
-    assert not missing, f"not in the PDF: {missing[:5]} … text: {dense[:300]!r}"  # every line of the transcript
+    assert not missing, (f"not in the PDF: {missing[:5]} … text: {dense[:300]!r} "
+                         f"font: {pdfout.family()} of {len(QFontDatabase.families())}")  # every line of the transcript
     assert "G/K" in dense and "frac" not in dense  # formulas readable
     assert f"von{pdf.pageCount()}" in dense and pdf.pageCount() >= 3  # footer with page numbers
     # nothing runs over the right margin: the outer strip of every page is blank

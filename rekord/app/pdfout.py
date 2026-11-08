@@ -6,12 +6,36 @@ without spaces ran over the margin too. Now the document is measured on the PDF 
 broken, margins are fixed, and every page gets a footer (title · page n of N)."""
 from __future__ import annotations
 
-from PySide6.QtCore import QMarginsF, QRectF, QSizeF, Qt
-from PySide6.QtGui import QColor, QFont, QPageLayout, QPageSize, QPainter, QPdfWriter, QTextDocument, QTextOption
+import os
+from pathlib import Path
+
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QMarginsF, QRectF, QSizeF, Qt
+from PySide6.QtGui import (QColor, QFont, QFontDatabase, QPageLayout, QPageSize, QPainter, QPdfWriter, QTextDocument,
+                           QTextOption)
 
 DPI = 300
 MARGINS_MM = QMarginsF(18, 16, 18, 14)
 FOOTER_PT = 8
+FAMILIES = ("Helvetica", "Arial", "Helvetica Neue", "Liberation Sans", "DejaVu Sans", "Noto Sans", "Segoe UI")
+# fonts the system has but Qt may not list (e.g. Windows without its own font backend): registered on demand
+_SYSTEM_FONTS = ("arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf", "segoeui.ttf", "segoeuib.ttf")
+
+
+def family() -> str:
+    """A real sans-serif family Qt can embed – never a name it silently replaces with nothing."""
+    have = set(QFontDatabase.families())
+    for name in FAMILIES:
+        if name in have:
+            return name
+    fonts = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+    for file in _SYSTEM_FONTS:
+        if (fonts / file).is_file():
+            QFontDatabase.addApplicationFont(str(fonts / file))
+    have = set(QFontDatabase.families())
+    for name in FAMILIES:
+        if name in have:
+            return name
+    return QFontDatabase.systemFont(QFontDatabase.GeneralFont).family()
 
 STYLE = """
 body { font-size: 10pt; color: #1A1A1A; }
@@ -27,7 +51,10 @@ a { color: #1A1A1A; text-decoration: none; }
 
 def write(dest: str, title: str, body_html: str) -> int:
     """Lay out and write the PDF; returns the number of pages."""
-    w = QPdfWriter(dest)
+    data = QByteArray()
+    buf = QBuffer(data)
+    buf.open(QIODevice.WriteOnly)
+    w = QPdfWriter(buf)  # into memory: the file is written in one go, complete and closed, below
     w.setResolution(DPI)
     w.setPageLayout(QPageLayout(QPageSize(QPageSize.A4), QPageLayout.Portrait, MARGINS_MM, QPageLayout.Millimeter))
     w.setTitle(title)
@@ -35,7 +62,7 @@ def write(dest: str, title: str, body_html: str) -> int:
 
     doc = QTextDocument()
     doc.documentLayout().setPaintDevice(w)  # measure fonts on the PDF, not on the screen
-    font = QFont("Helvetica")
+    font = QFont(family())
     font.setStyleHint(QFont.SansSerif)
     font.setPointSizeF(10)
     doc.setDefaultFont(font)
@@ -75,4 +102,6 @@ def write(dest: str, title: str, body_html: str) -> int:
             p.drawText(box, int(Qt.AlignRight | Qt.AlignVCenter), f"Seite {n + 1} von {pages}")
     finally:
         p.end()
+    buf.close()
+    Path(dest).write_bytes(bytes(data))
     return pages
