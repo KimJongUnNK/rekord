@@ -310,14 +310,19 @@ def test_a_long_lecture_is_condensed_in_small_pieces_with_progress_and_remembere
     states = [o for o in out if summarize.is_status(o)]
     pieces = [c for c in calls if c[1] == summarize.MAP_TOKENS]
     assert len(pieces) >= 6 and all(n <= summarize.MAP_CHARS + 300 for n, _ in pieces)  # small pieces, short notes
-    assert "Teil 1 von" in states[0] and len(states) == len(pieces) + 1
+    labels = [summarize.status_text(x) for x in states]
+    assert labels[0] == "Transkript wird vorbereitet …" and "Teil 1 von" in labels[1]
+    assert len(states) == len(pieces) + 3  # vorbereiten, je Teil, verdichtet, KI liest
+    from rekord.app.api import progress_of
+    values = [progress_of(x)[0] for x in states]
+    assert values == sorted(values) and 0 < values[0] < values[-1] < 0.8  # the bar only moves forward
     assert "".join(o for o in out if not summarize.is_status(o)) == "# GuV\nFertig."
     # again (after a "timed out", or the next question): the pieces are remembered – only the final call is made
     calls.clear()
     assert "".join(summarize.ask_recording_stream(rid, "Was ist prüfungsrelevant?")).endswith("Fertig.")
     assert [c for c in calls if c[1] == summarize.MAP_TOKENS] == [] and len(calls) == 1
     # what the window shows while waiting – and that statuses never end up in a saved summary
-    assert app_api.shown(summarize.status("Teil 2 von 7 wird verdichtet …")) == "_Teil 2 von 7 wird verdichtet …_"
+    assert app_api.shown(summarize.status("Teil 2 von 7 wird verdichtet …", 0.3)) == "*Teil 2 von 7 wird verdichtet …*"
     assert app_api.shown(summarize.status("x") + "# GuV") == "# GuV"
     res = summarize.generate(rid, "lecture")
     assert res["content"] == "# GuV\nFertig." and "\u0001" not in db.get_summary(res["id"])["content"]
@@ -335,3 +340,15 @@ def test_ollama_silence_is_long_enough_and_explained(monkeypatch):
     with pytest.raises(providers.LLMError) as e:
         list(providers._ollama({"model": "qwen3:8b"}, "s", [{"role": "user", "content": "x"}], 100))
     assert "30 Minuten" in str(e.value) and "gemerkt" in str(e.value)
+
+
+def test_progress_bar_while_summarizing():
+    from rekord.app.api import progress_of
+    assert progress_of("Eine normale Antwort im Chat.") == (-1.0, "")  # no bar for plain answers
+    start = summarize.status("Die KI liest das Transkript …", 0.08)
+    assert progress_of(start) == (0.08, "Die KI liest das Transkript …")
+    half = progress_of(start + "x" * 1750)
+    assert half[1] == "Die KI schreibt …" and 0.5 < half[0] < 0.6
+    assert progress_of(start + "x" * 99999)[0] == 0.97  # never 100 % before it's really done
+    after_pieces = summarize.status("Alles verdichtet", 0.72) + summarize.status("liest", 0.74) + "x"
+    assert progress_of(after_pieces)[0] > 0.74

@@ -11,6 +11,8 @@ Item {
     id: v
     required property var page
     property bool busy: false
+    property real progress: 0
+    property string progressLabel: ""
     readonly property var mm: page.rec ? page.rec.summaries.find(s => s.template_id === "mindmap") : null
     readonly property var layout: mm ? rekord.mindmap(mm.content) : ({ nodes: [], edges: [], width: 0, height: 0 })
 
@@ -23,10 +25,11 @@ Item {
                       (err) => { v.busy = false; v.page.app.toast("Mind Map: " + err) })
     }
     function create() {
-        busy = true
+        busy = true; progress = 0; progressLabel = "Startet …"
         page.app.stream("/api/recordings/" + page.rid + "/summaries", { template_id: "mindmap" }, null,
                         () => { v.busy = false; v.page.reload() },
-                        (err) => { v.busy = false; v.page.app.toast("Mind Map: " + err) })
+                        (err) => { v.busy = false; v.page.app.toast("Mind Map: " + err) },
+                        (p, label) => { v.progress = Math.max(v.progress, p); v.progressLabel = label })
     }
 
     FileDialog {
@@ -61,6 +64,14 @@ Item {
             Btn { visible: !!v.mm; text: "SVG speichern"; onClicked: { saveDlg.kind = "svg"; saveDlg.selectedFile = saveDlg.currentFolder + "/" + rekord.safeName(v.page.rec.title + " – Mind Map") + ".svg"; saveDlg.open() } }
             Btn { visible: !!v.mm; text: "PNG speichern"; onClicked: { saveDlg.kind = "png"; saveDlg.selectedFile = saveDlg.currentFolder + "/" + rekord.safeName(v.page.rec.title + " – Mind Map") + ".png"; saveDlg.open() } }
             BusyIndicator { running: v.busy; visible: v.busy; Layout.preferredWidth: 22; Layout.preferredHeight: 22 }
+        }
+        ColumnLayout {
+            visible: v.busy && v.progress > 0
+            Layout.fillWidth: true
+            Layout.maximumWidth: 520
+            spacing: 6
+            Bar { Layout.fillWidth: true; value: v.progress }
+            Muted { font.pixelSize: 12; text: v.progressLabel + " · " + Math.round(v.progress * 100) + " %" }
         }
         RowLayout {  // "mehr Unterpunkte", "Ast Abschreibungen genauer", "auf Englisch"
             visible: !!v.mm

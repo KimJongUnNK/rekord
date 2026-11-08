@@ -162,8 +162,14 @@ MAP_TOKENS = 1500       # and each piece comes back as at most this many tokens 
 _MAP_CACHE: dict[tuple, str] = {}  # (piece, model) → notes: a second try or the next question doesn't start over
 
 
-def status(text: str) -> str:
-    return f"{STATUS}{text}{STATUS_END}"
+def status(text: str, progress: float | None = None) -> str:
+    """A status line for the stream; progress 0…1 drives the bar while summarizing (None: just the text)."""
+    p = "" if progress is None else f"{max(0.0, min(1.0, progress)):.3f}"
+    return f"{STATUS}{p}|{text}{STATUS_END}"
+
+
+def status_text(chunk: str) -> str:
+    return chunk.strip(STATUS + STATUS_END).split("|", 1)[-1]
 
 
 def is_status(chunk: str) -> bool:
@@ -186,7 +192,7 @@ def prepared_transcript_iter(settings: dict, rid: str, reserve: int = 0) -> Iter
     for i, part in enumerate(parts):
         key = (hashlib.sha1(part.encode()).hexdigest(), model, settings.get("llm", {}).get("provider"))
         if key not in _MAP_CACHE:
-            yield status(f"Lange Aufnahme – Teil {i + 1} von {len(parts)} wird verdichtet …")
+            yield status(f"Lange Aufnahme – Teil {i + 1} von {len(parts)} wird verdichtet …", 0.05 + 0.65 * i / len(parts))
             _MAP_CACHE[key] = providers.complete(
                 settings, "Verdichte diesen Transkript-Abschnitt zu dichten Stichpunkten: Inhalte, Begriffe, Namen, Zahlen, "
                           "Zusagen, Entscheidungen, Beispiele. Ein Stichpunkt pro Gedanke, keine Einleitung. "
@@ -195,7 +201,7 @@ def prepared_transcript_iter(settings: dict, rid: str, reserve: int = 0) -> Iter
             if len(_MAP_CACHE) > 400:
                 _MAP_CACHE.pop(next(iter(_MAP_CACHE)))
         notes.append(f"### Teil {i + 1}/{len(parts)}\n{_MAP_CACHE[key].strip()}")
-    yield status("Alles verdichtet – jetzt wird zusammengefasst …")
+    yield status("Alles verdichtet – jetzt wird zusammengefasst …", 0.72)
     yield "(Langes Gespräch – abschnittsweise verdichtet)\n\n" + "\n\n".join(notes)
 
 
@@ -204,7 +210,7 @@ def prepared_transcript(settings: dict, rid: str, on_status: Callable[[str], Non
     for item in prepared_transcript_iter(settings, rid, reserve):
         if is_status(item):
             if on_status:
-                on_status(item.strip(STATUS + STATUS_END))
+                on_status(status_text(item))
         else:
             out = item
     return out
@@ -298,6 +304,7 @@ def generate_stream(rid: str, template_id: str) -> Iterator[str]:
     rec = db.get_recording(rid)
     tpl = templates.get(template_id)
     docs = _docs(settings, rid)
+    yield status("Transkript wird vorbereitet …", 0.02)
     transcript = ""
     for item in prepared_transcript_iter(settings, rid, reserve=len(docs)):
         if is_status(item):
@@ -312,6 +319,7 @@ def generate_stream(rid: str, template_id: str) -> Iterator[str]:
     if docs:
         user = docs + "\n\n" + user
     system = system_prompt(settings, rec) + (DOCS_NOTE if docs else "")
+    yield status("Die KI liest das Transkript …", 0.74 if transcript.startswith("(Langes Gespräch") else 0.08)
     src = providers.stream(settings, system, [{"role": "user", "content": user}])
     yield from (src if wants_times(settings) else strip_times_stream(src))
 

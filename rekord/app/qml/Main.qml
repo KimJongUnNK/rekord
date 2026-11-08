@@ -61,9 +61,9 @@ ApplicationWindow {
         _cb[id] = { ok: ok, fail: fail }
         return id
     }
-    function stream(path, body, onChunk, ok, fail) {
+    function stream(path, body, onChunk, ok, fail, onProgress) {
         const id = api.stream(path, body || {})
-        _cb[id] = { ok: ok, fail: fail, chunk: onChunk }
+        _cb[id] = { ok: ok, fail: fail, chunk: onChunk, progress: onProgress }
         return id
     }
     function upload(path, file, fields, ok, fail) {
@@ -84,6 +84,7 @@ ApplicationWindow {
             else win.toast(String(data))
         }
         function onChunk(id, text) { const cb = win._cb[id]; if (cb && cb.chunk) cb.chunk(text) }
+        function onProgress(id, value, label) { const cb = win._cb[id]; if (cb && cb.progress) cb.progress(value, label) }
         function onSaved(ok, msg) { win.toast(msg) }
     }
     function startRecording() {

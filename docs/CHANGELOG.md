@@ -2,9 +2,9 @@
 
 Was sich in welcher Version geändert hat, neueste zuerst. Die Downloads stehen immer unter [Releases](https://github.com/KimJongUnNK/rekord/releases/latest).
 
-## 1.4.9 – Lange Aufnahmen mit lokaler KI: kein „timed out“ mehr
+## 1.4.9 – Lange Aufnahmen mit lokaler KI: kein „timed out“ mehr · Fortschrittsbalken beim Zusammenfassen
 - **Behoben: „Fehler: timed out“** bei langen Aufnahmen (z. B. 2 h 43 min Vorlesung) mit lokaler KI. Das Transkript passt nicht in den Kontext eines kleinen Modells und wird erst abschnittsweise verdichtet – die Abschnitte waren riesig, die Notizen unbegrenzt lang, und nach 10 Minuten ohne Antwort von Ollama brach REKORD ab. Jetzt: Abschnitte von höchstens ~8 000 Tokens, kurze Notizen (max. 1 500 Tokens je Abschnitt), Ollama darf bis zu 30 Minuten still rechnen (Modell von externer Festplatte laden, langer Prompt).
-- **Fortschritt sichtbar:** statt einer leeren Karte steht da „Lange Aufnahme – Teil 3 von 9 wird verdichtet …“, dann „Alles verdichtet – jetzt wird zusammengefasst …“.
+- **Fortschrittsbalken beim Zusammenfassen** (und bei der Mind Map): Balken mit Prozent und was gerade passiert – „Transkript wird vorbereitet“, bei langen Aufnahmen „Teil 3 von 9 wird verdichtet …“, „Die KI liest das Transkript …“, „Die KI schreibt …“. Der Balken läuft nur vorwärts und steht erst bei 100 %, wenn die Zusammenfassung wirklich fertig ist.
 - **Verdichtete Abschnitte werden gemerkt:** ein zweiter Versuch, eine andere Vorlage oder eine Frage zur selben Aufnahme fängt nicht von vorn an.
 - Bricht Ollama trotzdem ab, sagt REKORD warum und was hilft (nochmal versuchen – Abschnitte bleiben gemerkt – oder ein kleineres Modell).
 

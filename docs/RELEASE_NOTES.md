@@ -38,6 +38,7 @@ Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und
 
 ## Neu in 1.4.9
 
+- 📊 **Fortschrittsbalken beim Zusammenfassen** – mit Prozent und was die KI gerade macht.
 - 🎓 **Lange Vorlesungen mit lokaler KI klappen.** Kein „timed out“ mehr bei 2–3 Stunden: REKORD verdichtet in kleinen Teilen, zeigt „Teil 3 von 9 …“ an und merkt sich, was schon fertig ist – ein zweiter Versuch oder eine Frage geht dann schnell.
 
 ## Neu in 1.4.8
