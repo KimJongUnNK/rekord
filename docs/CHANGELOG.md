@@ -2,6 +2,9 @@
 
 Was sich in welcher Version geändert hat, neueste zuerst. Die Downloads stehen immer unter [Releases](https://github.com/KimJongUnNK/rekord/releases/latest).
 
+## 1.4.11 – Kopieren und Bearbeiten wandern mit
+- **Lange Zusammenfassungen:** Scrollst du über den Kopf einer Zusammenfassung hinaus, bleibt oben eine Leiste mit Titel, **Kopieren** und **Bearbeiten** stehen – bis die Zusammenfassung zu Ende ist. Kein Zurückscrollen mehr.
+
 ## 1.4.10 – Formeln lesbar · PDF-Export ohne Abschneiden
 - **Formeln:** Die KI bekommt die Regel, Formeln als Formelschrift zu schreiben (`Gewinn = Umsatz − Kosten`, `x²`, `√a`, `Σ`, `≤`, `Δ`) – auch gesprochene Formeln („Umsatz minus Kosten ist der Gewinn“). Was trotzdem als LaTeX kommt (`$\frac{G}{K} \cdot 100$`, `x^{2}`, `\Delta K`, `K\ddot{a}ufe`), wandelt REKORD automatisch um: `G / K · 100`, `x²`, `ΔK`, `Käufe` – in neuen Zusammenfassungen, Antworten und KI-Änderungen beim Speichern, in älteren beim Anzeigen, beim Kopieren, im Word-, Markdown- und PDF-Export. Offline, ohne Zusatzprogramm. Geld („$5“), Dateinamen und Code bleiben unberührt. Die Vorlage *Vorlesung / Lernzettel* schreibt jede Formel in eine eigene Zeile und erklärt die Variablen.
 - **PDF-Export neu:** Der Text wird am PDF selbst gemessen statt am Bildschirm – auf dem Mac liefen Zeilen über den rechten Rand und wurden abgeschnitten. Jetzt: feste Ränder, lange Wörter und Links brechen um, keine Zeile wird zwischen zwei Seiten geteilt, jeder Sprecherbeitrag ein eigener Absatz, Fußzeile mit Titel und „Seite n von N“, Titel nur einmal.

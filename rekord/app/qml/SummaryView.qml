@@ -20,6 +20,7 @@ Item {
     // the full analysis still runs: the live transcript has gaps – the summary is written once it's complete
     readonly property bool analyzing: page.busy
     property var later: []  // templates asked for meanwhile
+    property var pinned: null  // the card whose header has scrolled out of view – its buttons stay on top
     Connections { target: v.page; function onRidChanged() { v.later = [] } }
 
     function askLater() {
@@ -89,9 +90,12 @@ Item {
                 Btn { text: "KI verbinden"; iconName: "spark"; onClicked: v.page.app.go("settings", "ai") }
             }
         }
+        Item {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
         ScrollView {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            id: scroll
+            anchors.fill: parent
             clip: true
             contentWidth: availableWidth
             ColumnLayout {
@@ -134,6 +138,17 @@ Item {
                     delegate: Card {
                         id: sc
                         required property var modelData
+                        // long summary scrolled past its header: the bar sticks to the top until the card ends
+                        readonly property real viewTop: scroll.contentItem ? scroll.contentItem.contentY : 0
+                        readonly property bool headerGone: sc.y + sCol.y + 30 < viewTop && sc.y + sc.height - 90 > viewTop
+                        onHeaderGoneChanged: { if (headerGone) v.pinned = sc; else if (v.pinned === sc) v.pinned = null }
+                        Component.onDestruction: if (v.pinned === sc) v.pinned = null
+                        function copy() { api.copyRich(sc.modelData.content, sc.modelData.rich || ""); v.page.app.toast("Kopiert – mit Formatierung") }
+                        function edit() {
+                            richDlg.edit(sc.modelData.title, sc.modelData.content, sc.modelData.rich || "",
+                                         (md, html) => v.page.app.call("PATCH", "/api/summaries/" + sc.modelData.id, { content: md, rich: html },
+                                                                       () => { v.page.app.toast("Gespeichert"); v.page.reload() }))
+                        }
                         Layout.fillWidth: true
                         Layout.preferredHeight: sCol.implicitHeight + 36
                         ColumnLayout {
@@ -150,14 +165,12 @@ Item {
                                     objectName: "summaryCopy"
                                     kind: "ghost"; small: true; text: "Kopieren"
                                     ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Mit Formatierung – in Word, Pages oder Google Docs einfügen, fett bleibt fett"
-                                    onClicked: { api.copyRich(sc.modelData.content, sc.modelData.rich || ""); v.page.app.toast("Kopiert – mit Formatierung") }
+                                    onClicked: sc.copy()
                                 }
                                 Btn {
                                     objectName: "summaryEdit"
                                     kind: "ghost"; small: true; text: "Bearbeiten"
-                                    onClicked: richDlg.edit(sc.modelData.title, sc.modelData.content, sc.modelData.rich || "",
-                                                            (md, html) => v.page.app.call("PATCH", "/api/summaries/" + sc.modelData.id, { content: md, rich: html },
-                                                                                          () => { v.page.app.toast("Gespeichert"); v.page.reload() }))
+                                    onClicked: sc.edit()
                                 }
                                 Btn {
                                     kind: "ghost"; small: true; iconName: "close"
@@ -245,6 +258,29 @@ Item {
                     Muted { Layout.alignment: Qt.AlignHCenter; visible: v.hasText; text: "Vorlage wählen und los." }
                 }
             }
+        }
+        Rectangle {  // the pinned header: title + Kopieren + Bearbeiten while scrolling through a long summary
+            objectName: "summarySticky"
+            visible: v.pinned !== null
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: stickyRow.implicitHeight + 16
+            color: Theme.card
+            border.color: Theme.accentLine
+            radius: 10
+            z: 2
+            RowLayout {
+                id: stickyRow
+                anchors.fill: parent
+                anchors.leftMargin: 18
+                anchors.rightMargin: 12
+                spacing: 8
+                Eyebrow { text: v.pinned ? v.pinned.modelData.title : ""; Layout.fillWidth: true; elide: Text.ElideRight }
+                Btn { objectName: "summaryStickyCopy"; kind: "ghost"; small: true; text: "Kopieren"; onClicked: if (v.pinned) v.pinned.copy() }
+                Btn { objectName: "summaryStickyEdit"; kind: "ghost"; small: true; text: "Bearbeiten"; onClicked: if (v.pinned) v.pinned.edit() }
+            }
+        }
         }
     }
 }
