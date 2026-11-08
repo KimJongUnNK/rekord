@@ -279,7 +279,17 @@ def test_pdf_export_keeps_every_line_inside_the_page(qt, tmp_path):
             pass
     a = Api.__new__(Api)
     a.saved = type("S", (), {"emit": lambda self, ok, msg: saved.append((ok, msg))})()
-    app_api.Api._write_pdf(a, rec["id"], str(out))
+    # the Mac in dark mode: the app's text colour is white – the PDF (white paper) must still print black text
+    from PySide6.QtGui import QColor, QGuiApplication, QPalette
+    old_palette = QGuiApplication.palette()
+    dark = QPalette(old_palette)
+    for role in (QPalette.Text, QPalette.WindowText, QPalette.ButtonText, QPalette.BrightText):
+        dark.setColor(role, QColor("white"))
+    QGuiApplication.setPalette(dark)
+    try:
+        app_api.Api._write_pdf(a, rec["id"], str(out))
+    finally:
+        QGuiApplication.setPalette(old_palette)
     assert saved and saved[0][0], saved
     from PySide6.QtPdf import QPdfDocument  # the text as a PDF viewer reads it (pdfium) – fonts differ per system
     pdf = QPdfDocument()

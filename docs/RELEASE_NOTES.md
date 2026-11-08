@@ -36,6 +36,10 @@ Kommt der Hinweis nicht: unten links auf **Nach Updates suchen** klicken.
 Beim ersten Start lädt REKORD einmalig die Sprachmodelle (~700 MB), danach läuft alles offline.
 Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**
 
+## Neu in 1.4.12
+
+- 📄 **PDF-Export im Dark Mode behoben.** Die Seiten waren leer (weiße Schrift auf weißem Papier). Jetzt immer schwarz auf weiß.
+
 ## Neu in 1.4.11
 
 - 📌 **Kopieren und Bearbeiten wandern mit.** Bei langen Zusammenfassungen bleiben die Knöpfe oben stehen, während du scrollst.

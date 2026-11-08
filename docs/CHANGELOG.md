@@ -2,6 +2,9 @@
 
 Was sich in welcher Version geändert hat, neueste zuerst. Die Downloads stehen immer unter [Releases](https://github.com/KimJongUnNK/rekord/releases/latest).
 
+## 1.4.12 – PDF-Export im Dark Mode
+- **Behoben: leere PDF-Seiten.** Mit REKORD im Dark Mode war der exportierte Text weiß – auf weißem Papier unsichtbar, nur die Fußzeile war zu sehen. Das PDF druckt jetzt immer schwarze Schrift auf weißem Papier, egal welches Design eingestellt ist.
+
 ## 1.4.11 – Kopieren und Bearbeiten wandern mit · Listen sauber nummeriert
 - **Lange Zusammenfassungen:** Scrollst du über den Kopf einer Zusammenfassung hinaus, bleibt oben eine Leiste mit Titel, **Kopieren** und **Bearbeiten** stehen – bis die Zusammenfassung zu Ende ist. Kein Zurückscrollen mehr.
 - **Behoben: Lernfragen hießen alle „1.“** und die Antwort-Punkte standen unterschiedlich weit eingerückt. Leerzeilen zwischen den Punkten beenden die Liste nicht mehr, Einrückung zählt nach Ebene (2, 3 oder 4 Leerzeichen = eine Ebene), eine Liste ab „5.“ bleibt bei 5, eingerückte Zeilen unter einem Punkt gehören zu ihm. To-dos haben nur noch das Kästchen, keinen Punkt daneben.
