@@ -248,3 +248,58 @@ def test_ai_or_typed_change_drops_the_stale_formatting_and_undo_brings_it_back(c
     assert sm["content"] == "**neu**" and sm["rich"] == "<p><b>neu</b></p>"
     client.patch(f"/api/summaries/{sid}", json={"content": "x", "rich": 5})  # junk isn't stored as formatting
     assert db.get_summary(sid)["rich"] is None
+
+
+# ------------------------------------------------------------------ PDF export: nothing cut off
+
+def _tag(i: int) -> str:  # Satzbc, Satzbd … – letters, the same in every font
+    return "".join("abcdefghij"[int(d)] for d in f"{i:03d}")
+
+
+def test_pdf_export_keeps_every_line_inside_the_page(qt, tmp_path):
+    pytest.importorskip("PySide6.QtPdf", exc_type=ImportError)
+    from PySide6.QtCore import QSize
+    from rekord.app import api as app_api
+    rec = db.create_recording("VO Gewinn- und Verlustrechnung im Betrieb – Teil 1 und 2", "", status="done", duration=9000)
+    sid = db.add_speaker(rec["id"], "Wirtschaft und Recht Dozentin", "#FF5A1F")
+    conn = db.connect()
+    for i in range(80):
+        text = "Die Gewinn- und Verlustrechnung zeigt Umsatzerlöse und außerplanmäßige Abschreibungen. " * (1 + i % 3)
+        if i % 7 == 0:
+            text += "https://www.example.com/ein/sehr/langer/link/ohne/ein/einziges/leerzeichen/der/nicht/passt/" * 2
+        conn.execute("INSERT INTO segments (recording_id, speaker_id, start, end, text) VALUES (?,?,?,?,?)",
+                     (rec["id"], sid, i * 30.0, i * 30 + 25, f"Satz{_tag(i)} {text}"))
+    conn.commit()
+    db.add_summary(rec["id"], "lecture", "Lernzettel", "## Formeln\n- Rentabilität: $R = \\frac{G}{K} \\cdot 100$")
+    out = tmp_path / "vo.pdf"
+    saved = []
+
+    class Api(app_api.Api):
+        def __init__(self):  # only what the PDF writer needs
+            pass
+    a = Api.__new__(Api)
+    a.saved = type("S", (), {"emit": lambda self, ok, msg: saved.append((ok, msg))})()
+    app_api.Api._write_pdf(a, rec["id"], str(out))
+    assert saved and saved[0][0], saved
+    from PySide6.QtPdf import QPdfDocument  # the text as a PDF viewer reads it (pdfium) – fonts differ per system
+    pdf = QPdfDocument()
+    err = pdf.load(str(out))
+    from PySide6.QtGui import QFontDatabase
+    from rekord.app import pdfout
+    assert pdf.pageCount() >= 3, (err, out.stat().st_size, pdfout.family(), len(QFontDatabase.families()))
+    text = " ".join(pdf.getAllText(n).text() for n in range(pdf.pageCount()))
+    dense = "".join(text.split())  # word spacing differs per font/system – only the characters count
+    missing = [_tag(i) for i in range(80) if f"Satz{_tag(i)}" not in dense]
+    assert not missing, (f"not in the PDF: {missing[:5]} … text: {dense[:300]!r} "
+                         f"font: {pdfout.family()} of {len(QFontDatabase.families())}")  # every line of the transcript
+    assert "G/K" in dense and "frac" not in dense  # formulas readable
+    assert f"von{pdf.pageCount()}" in dense and pdf.pageCount() >= 3  # footer with page numbers
+    # nothing runs over the right margin: the outer strip of every page is blank
+    for n in range(pdf.pageCount()):
+        img = pdf.render(n, QSize(595, 842))
+        ink = [(x, y) for x in range(565, 595) for y in range(0, 842, 2)
+               if img.pixelColor(x, y).alpha() > 40 and img.pixelColor(x, y).lightness() < 200]
+        assert not ink, f"page {n + 1}: text in the right margin at {ink[:3]}"
+        body = [1 for x in range(60, 300) for y in range(100, 700, 4)
+                if img.pixelColor(x, y).alpha() > 40 and img.pixelColor(x, y).lightness() < 200]
+        assert body, "the check sees no text at all"

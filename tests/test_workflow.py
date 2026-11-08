@@ -352,3 +352,49 @@ def test_progress_bar_while_summarizing():
     assert progress_of(start + "x" * 99999)[0] == 0.97  # never 100 % before it's really done
     after_pieces = summarize.status("Alles verdichtet", 0.72) + summarize.status("liest", 0.74) + "x"
     assert progress_of(after_pieces)[0] > 0.74
+
+
+# ------------------------------------------------------------------ formulas readable everywhere
+
+def test_latex_from_the_ai_becomes_readable_formulas():
+    from rekord import formulas
+    t = formulas.to_text
+    assert t(r"Rentabilität: $R = \frac{G}{K} \cdot 100\,\%$") == "Rentabilität: R = G / K · 100 %"
+    assert t(r"- **AfA**: $AfA = \frac{AK - RW}{n}$") == "- **AfA**: AfA = (AK − RW) / n"
+    assert t(r"$$\text{Gewinn} = \text{Umsatz} - \text{Kosten}$$") == "Gewinn = Umsatz − Kosten"
+    assert t(r"C_0 = \sum_{t=1}^{n} \frac{CF_t}{(1+i)^t} - I_0") == "C₀ = Σₜ₌₁ⁿ CFₜ / (1+i)ᵗ − I₀"
+    assert t(r"\Delta K = K_{fix} + k_v \times x") == "ΔK = K_fix + kᵥ × x"
+    assert t(r"\sqrt{a^2+b^2}, \sqrt[3]{x}, E = mc^2, x^-1") == "√(a²+b²), ∛x, E = mc², x⁻¹"
+    assert t(r"\( a \leq b \) und \[ \alpha \approx 0{,}05 \]") == "a ≤ b und α ≈ 0,05"
+    assert t(r"$CR = \frac{K\ddot{a}ufe}{Besuche} \cdot 100\,\%$") == "CR = Käufe / Besuche · 100 %"
+    # left alone: money, file names, code, words with underscores, text without formulas
+    for same in ("Preis $5 und $10", "Datei VO_GuV_03.m4a", "Code `x^2` bleibt", "snake_case", "Gewinn = Umsatz − Kosten"):
+        assert t(same) == same
+
+
+def test_formulas_are_readable_in_the_window_in_word_and_in_saved_summaries(client, monkeypatch):
+    docx = pytest.importorskip("docx")
+    from rekord.app import md as app_md
+    from rekord.app import richtext
+    src = "## Definitionen & Formeln\n- Rentabilität: $R = \\frac{G}{K} \\cdot 100$"
+    assert "R = G / K · 100" in app_md.render(src) and "\\frac" not in app_md.render(src)  # old summaries too
+    assert "R = G / K · 100" in richtext.plain(src)  # copy for Word: clean text …
+    assert "\\frac" not in richtext.markdown_to_html(src)  # … and formatted
+    rec = db.create_recording("BWL", "", source="import")
+    db.add_summary(rec["id"], "lecture", "Lernzettel", src)
+    raw = client.get(f"/api/recordings/{rec['id']}/export/docx")
+    text = "\n".join(p.text for p in docx.Document(io.BytesIO(raw.content)).paragraphs)
+    assert "R = G / K · 100" in text and "\\" not in text and "$" not in text
+    assert "R = G / K · 100" in client.get(f"/api/recordings/{rec['id']}/export/md").text
+    # a new summary: the AI is told how to write formulas, and what it writes anyway is saved readable
+    seen = []
+
+    def stream(settings, system, messages, max_tokens=0):
+        seen.append(system)
+        yield "Gewinn: $G = U - K$"
+    monkeypatch.setattr(providers, "stream", stream)
+    real = summarize.config.load()
+    monkeypatch.setattr(summarize.config, "load", lambda: {**real, "llm": {"provider": "ollama", "ollama": {"model": "x"}}})
+    res = summarize.generate(_long_lecture(3), "lecture")
+    assert db.get_summary(res["id"])["content"] == "Gewinn: G = U − K"
+    assert "KEIN LaTeX" in seen[-1]

@@ -70,7 +70,9 @@ def seed() -> dict:
     db.add_summary(rec["id"], "meeting", "Meeting-Protokoll",
                    "## Entscheidungen\n- Launch bleibt am **Freitag**\n- Rechtliche Freigabe vorher einholen\n\n"
                    "## Aufgaben\n- **Max**: Texte für die Landingpage bis Mittwoch\n- **Max**: Freigabe der Rechtsabteilung bis Donnerstag\n\n"
-                   "## Offen\n- Verschiebung auf Montag, falls die Freigabe fehlt")
+                   "## Offen\n- Verschiebung auf Montag, falls die Freigabe fehlt\n\n"
+                   "## Formeln\n- Conversion-Rate: $CR = \\frac{K\\ddot{a}ufe}{Besuche} \\cdot 100\\,\\%$\n"
+                   "- Budget: $B_{gesamt} = \\sum_{i=1}^{n} k_i \\times x_i$")
     # Unterlagen: the agenda (names and terms → corrected in the transcript) and a whiteboard photo nobody could read yet
     from rekord import context
     import tempfile as _tf
