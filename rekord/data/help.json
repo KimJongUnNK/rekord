@@ -75,5 +75,7 @@
  "ailength": "<b>Kurz</b>: nur das Wichtigste in knappen Stichpunkten. <b>Normal</b>: vollständig ohne Wiederholungen. <b>Ausführlich</b>: alle Details und Begründungen aus der Aufnahme.",
  "aitone": "<b>Direkt</b>: erst die Sache, keine Einleitung, keine Floskeln. <b>Sachlich</b>: neutral in ganzen Sätzen. <b>Locker</b>: freundlich, aber auf den Punkt.",
  "aiexamples": "Die KI hängt an jeden wichtigen Punkt ein konkretes Beispiel aus der Aufnahme – eine Zahl, einen Fall, ein Zitat. Gibt es keins, schreibt sie auch kein leeres „z. B.“.",
- "boost": "Handy hinten im Hörsaal, leiser Call: REKORD hebt die Sprache vor dem Transkribieren auf die ideale Lautstärke – bis +30 dB, ohne Übersteuern, bei Live-Mitschrift genauso wie bei der Auswertung danach. Um wie viel, steht im Fortschritt („Lautstärke angepasst: +12 dB“). Deine Aufnahme selbst bleibt unverändert."
+ "boost": "Handy hinten im Hörsaal, leiser Call: REKORD hebt die Sprache vor dem Transkribieren auf die ideale Lautstärke – bis +30 dB, ohne Übersteuern, bei Live-Mitschrift genauso wie bei der Auswertung danach. Um wie viel, steht im Fortschritt („Lautstärke angepasst: +12 dB“). Deine Aufnahme selbst bleibt unverändert.",
+ "aiemojis": "Aus (Standard): keine Emojis in Zusammenfassungen und Antworten – schreibt eine lokale KI trotzdem welche, nimmt REKORD sie beim Speichern raus. An: sparsam erlaubt.",
+ "airules": "Genau dieser Text geht bei jeder Anfrage an die KI – bei Zusammenfassungen, Änderungen und Fragen, als ein Block am Ende der Regeln. Nichts davon ist versteckt; ändert sich oben eine Einstellung, steht es hier sofort mit drin."
 }

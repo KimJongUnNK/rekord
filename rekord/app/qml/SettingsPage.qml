@@ -375,7 +375,7 @@ Page {
                         Check { objectName: "aiExamples"; text: "Zu jedem wichtigen Punkt ein Beispiel aus der Aufnahme"; checked: secBehave.p.examples !== false; onToggled: secBehave.setPref("examples", checked) }
                     }
                     Field {
-                        label: "Emojis"
+                        label: "Emojis"; tip: "aiemojis"
                         Check { objectName: "aiEmojis"; text: "Emojis erlauben"; checked: !!secBehave.p.emojis; onToggled: secBehave.setPref("emojis", checked) }
                     }
                     Field {
@@ -426,7 +426,7 @@ Page {
                         }
                     }
                     Field {
-                        label: "So liest es die KI"; hint: "Genau dieser Text steht bei jeder Anfrage ganz oben in den Regeln – einmal, nicht verteilt."
+                        label: "So liest es die KI"; tip: "airules"; hint: "Genau dieser Text steht bei jeder Anfrage ganz oben in den Regeln – einmal, nicht verteilt."
                         Text {
                             objectName: "aiRulesPreview"
                             Layout.fillWidth: true
