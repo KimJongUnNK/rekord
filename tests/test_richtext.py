@@ -285,10 +285,11 @@ def test_pdf_export_keeps_every_line_inside_the_page(qt, tmp_path):
     pdf = QPdfDocument()
     pdf.load(str(out))
     text = " ".join(pdf.getAllText(n).text() for n in range(pdf.pageCount()))
-    text = " ".join(text.split())
-    assert all(f"Satz{_tag(i)}" in text for i in range(80))  # every line of the transcript is in the PDF
-    assert "G / K" in text and "frac" not in text  # formulas readable
-    assert f"von {pdf.pageCount()}" in text and pdf.pageCount() >= 3  # footer with page numbers
+    dense = "".join(text.split())  # word spacing differs per font/system – only the characters count
+    missing = [_tag(i) for i in range(80) if f"Satz{_tag(i)}" not in dense]
+    assert not missing, f"not in the PDF: {missing[:5]} … text: {dense[:300]!r}"  # every line of the transcript
+    assert "G/K" in dense and "frac" not in dense  # formulas readable
+    assert f"von{pdf.pageCount()}" in dense and pdf.pageCount() >= 3  # footer with page numbers
     # nothing runs over the right margin: the outer strip of every page is blank
     for n in range(pdf.pageCount()):
         img = pdf.render(n, QSize(595, 842))
