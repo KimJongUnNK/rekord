@@ -227,21 +227,12 @@ class Api(QObject):
     @Slot(str, str)
     def _write_pdf(self, rid: str, dest: str) -> None:
         try:
-            from PySide6.QtGui import QPageSize, QPdfWriter, QTextDocument
-
             from .. import db, export
-            from . import md
-            html = md.render(export.markdown(rid), links=False)
+            from . import md, pdfout
+            text = export.markdown(rid).replace("  \n", "\n\n")  # each line of the transcript its own paragraph
             title = (db.get_recording(rid) or {}).get("title", "REKORD")
-            doc = QTextDocument()
-            doc.setDefaultStyleSheet("body{font-family:sans-serif;font-size:10pt} h1{font-size:18pt} h2{font-size:14pt} "
-                                     "h3{font-size:12pt} table{border-collapse:collapse} td,th{border:1px solid #999;padding:3px}")
-            doc.setHtml(f"<h1>{md.esc(title)}</h1>{html}")
-            w = QPdfWriter(dest)
-            w.setPageSize(QPageSize(QPageSize.A4))
-            w.setTitle(title)
-            doc.print_(w)
-            self.saved.emit(True, f"Gespeichert: {Path(dest).name}")
+            pages = pdfout.write(dest, title, md.render(text, links=False))
+            self.saved.emit(True, f"Gespeichert: {Path(dest).name} ({pages} Seiten)")
         except Exception as e:  # noqa: BLE001
             self.saved.emit(False, f"PDF fehlgeschlagen: {e}")
 

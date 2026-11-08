@@ -38,7 +38,8 @@ def _inline(s: str, links: bool, link_color: str = "") -> str:
 
 
 def render(src: str, links: bool = True, link_color: str = "") -> str:
-    lines = str(src or "").replace("\r", "").split("\n")
+    from .. import formulas
+    lines = formulas.to_text(str(src or "")).replace("\r", "").split("\n")  # old summaries with LaTeX, too
     out: list[str] = []
     stack: list[str] = []
     i = 0

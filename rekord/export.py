@@ -6,7 +6,7 @@ import io
 import re
 import json
 
-from . import db
+from . import db, formulas
 from .summarize import fmt_time
 
 
@@ -28,9 +28,9 @@ def markdown(rid: str, with_summary: bool = True) -> str:
     out = [f"# {rec['title']}", "", f"*{date} · {fmt_time(rec['duration'] or 0)} · {', '.join(dict.fromkeys(sp.values()))}*", ""]
     if with_summary:
         for s in db.list_summaries(rid):
-            out += [f"## {s['title']}", "", s["content"], ""]
+            out += [f"## {s['title']}", "", formulas.to_text(s["content"]), ""]
     if rec.get("notes"):
-        out += ["## Notizen", "", rec["notes"], ""]
+        out += ["## Notizen", "", formulas.to_text(rec["notes"]), ""]
     out += ["## Transkript", ""]
     for s in segs:
         out.append(f"**{sp.get(s['speaker_id'], '?')}** [{fmt_time(s['start'])}]: {s['text']}  ")
@@ -342,7 +342,7 @@ def docx(rid: str) -> bytes:
         if s.get("rich"):
             _html_to_docx(d, s["rich"])  # formatted in the editor: every format as it is
         else:
-            _md_to_docx(d, s["content"])
+            _md_to_docx(d, formulas.to_text(s["content"]))
     d.add_heading("Transkript", 1)
     for s in segs:
         p = d.add_paragraph()

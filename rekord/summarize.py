@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Callable, Iterator
 
-from . import config, db
+from . import config, db, formulas
 from .llm import providers, templates
 
 log = logging.getLogger("rekord.summarize")
@@ -119,6 +119,12 @@ def _time_rule(settings: dict, asked: str = "") -> str:
             "Nur wenn der Nutzer ausdrücklich danach fragt.")
 
 
+FORMULA_RULE = ("- Formeln als lesbare Formelschrift, eine pro Zeile, z. B. `Gewinn = Umsatz − Kosten`, "
+                "`Rentabilität = Gewinn / Kapital × 100 %`, `x² + y²`, `√a`, `Σ`, `≤`, `≠`, `Δ` – KEIN LaTeX "
+                "(kein $, kein \\frac, kein \\cdot). Gesprochene Formeln („Umsatz minus Kosten ist der Gewinn“) "
+                "in diese Schreibweise bringen, Variablen erklären, wenn sie genannt wurden.")
+
+
 def user_rules(settings: dict) -> str:
     """Einstellungen → KI → Anweisungen an die KI: the user's own rules for tone and form, in every answer."""
     t = (settings.get("ai_instructions") or "").strip()
@@ -135,6 +141,7 @@ Regeln:
 - Schreibe auf {lang}, als sauberes Markdown. Kurze, klare Sätze. Kein Gelaber, keine Einleitung wie "Hier ist".
 - Nutze die echten Namen der Sprecher. „Nicht erkannte Stimme“ (oder ältere „Sprecher 1“ etc.) sind eine oder mehrere Personen, die REKORD nicht kennt – lass die Bezeichnung so und erfinde keine Namen.
 {_time_rule(settings, asked)}
+{FORMULA_RULE}
 - Erfinde nichts. Wenn etwas unklar ist oder fehlt, sag das. Transkriptionsfehler stillschweigend korrigieren, wenn eindeutig.
 
 Was die App über diese Aufnahme weiß (Fragen nach Dateiname, Datum, Dauer usw. damit direkt beantworten):
@@ -270,7 +277,8 @@ Regeln:
   „Emojis weg“, „nummeriert“), Länge, Ton, Sprache, Reihenfolge, Überschriften.
 - Alles, was die Anweisung nicht betrifft, bleibt wie es ist – auch Zeitstempel [mm:ss] und Namen.
 - Neue Inhalte nur aus dem Transkript (falls mitgegeben) – nichts erfinden.
-- Antworte NUR mit der vollständigen überarbeiteten Zusammenfassung, ohne Vorrede, ohne Codeblock."""
+- Antworte NUR mit der vollständigen überarbeiteten Zusammenfassung, ohne Vorrede, ohne Codeblock.
+""" + FORMULA_RULE
 
 
 def edit_summary(sid: int, instruction: str, settings: dict | None = None) -> str:
@@ -288,6 +296,7 @@ def edit_summary(sid: int, instruction: str, settings: dict | None = None) -> st
     out = providers.complete(settings, EDIT_SYSTEM + user_rules(settings), [{"role": "user", "content": user}], 8000)
     out = re.sub(r"<think>.*?</think>", "", out or "", flags=re.S).strip()
     out = re.sub(r"^```(?:markdown|md)?\s*\n(.*?)\n```\s*$", r"\1", out, flags=re.S).strip()
+    out = formulas.to_text(out)
     if not wants_times(settings, instruction):
         out = strip_times(out)
     if not out:
@@ -334,7 +343,7 @@ def generate(rid: str, template_id: str, on_delta: Callable[[str], None] | None 
         out.append(d)
         if on_delta:
             on_delta(d)
-    content = "".join(out).strip()
+    content = formulas.to_text("".join(out).strip())
     if template_id == "mindmap":
         content = finish_mindmap(settings, content)
     sid = db.add_summary(rid, template_id, tpl["name"], content, settings["llm"]["provider"], providers.model_name(settings))
@@ -394,7 +403,7 @@ Wenn die Antwort nicht im Transkript steht, sag das klar.{docs_rule}
         out.append(d)
         yield d
     db.add_chat(rid, "user", question)
-    db.add_chat(rid, "assistant", "".join(out))
+    db.add_chat(rid, "assistant", formulas.to_text("".join(out)))
 
 
 def keywords(q: str) -> str:
@@ -469,4 +478,4 @@ Fragen nach Dateinamen, Datum oder Dauer beantwortest du direkt aus <letzte_aufn
         out.append(d)
         yield d
     db.add_chat("global", "user", question)
-    db.add_chat("global", "assistant", "".join(out))
+    db.add_chat("global", "assistant", formulas.to_text("".join(out)))

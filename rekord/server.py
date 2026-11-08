@@ -24,7 +24,7 @@ import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
-from . import __version__, audio, config, context, db, export, frames, jobs, live, models, pipeline, summarize, updater
+from . import __version__, audio, config, context, db, export, formulas, frames, jobs, live, models, pipeline, summarize, updater
 from .engines import asr
 from .llm import providers, templates
 
@@ -1347,7 +1347,7 @@ async def summarize_rec(rid: str, request: Request):
     s = config.load()
 
     def save(content: str):
-        content = content.strip()
+        content = formulas.to_text(content.strip())  # LaTeX the AI wrote anyway → readable formula text
         if content and tid == "mindmap":
             content = summarize.finish_mindmap(s, content)  # flat list from a small model → branches
         if content:

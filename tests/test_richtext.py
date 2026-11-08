@@ -248,3 +248,49 @@ def test_ai_or_typed_change_drops_the_stale_formatting_and_undo_brings_it_back(c
     assert sm["content"] == "**neu**" and sm["rich"] == "<p><b>neu</b></p>"
     client.patch(f"/api/summaries/{sid}", json={"content": "x", "rich": 5})  # junk isn't stored as formatting
     assert db.get_summary(sid)["rich"] is None
+
+
+# ------------------------------------------------------------------ PDF export: nothing cut off
+
+def test_pdf_export_keeps_every_line_inside_the_page(qt, tmp_path):
+    pypdf = pytest.importorskip("pypdf")
+    from PySide6.QtCore import QSize
+    from rekord.app import api as app_api
+    rec = db.create_recording("VO Gewinn- und Verlustrechnung im Betrieb – Teil 1 und 2", "", status="done", duration=9000)
+    sid = db.add_speaker(rec["id"], "Wirtschaft und Recht Dozentin", "#FF5A1F")
+    conn = db.connect()
+    for i in range(80):
+        text = "Die Gewinn- und Verlustrechnung zeigt Umsatzerlöse und außerplanmäßige Abschreibungen. " * (1 + i % 3)
+        if i % 7 == 0:
+            text += "https://www.example.com/ein/sehr/langer/link/ohne/ein/einziges/leerzeichen/der/nicht/passt/" * 2
+        conn.execute("INSERT INTO segments (recording_id, speaker_id, start, end, text) VALUES (?,?,?,?,?)",
+                     (rec["id"], sid, i * 30.0, i * 30 + 25, f"Satz{i:03d} {text}"))
+    conn.commit()
+    db.add_summary(rec["id"], "lecture", "Lernzettel", "## Formeln\n- Rentabilität: $R = \\frac{G}{K} \\cdot 100$")
+    out = tmp_path / "vo.pdf"
+    saved = []
+
+    class Api(app_api.Api):
+        def __init__(self):  # only what the PDF writer needs
+            pass
+    a = Api.__new__(Api)
+    a.saved = type("S", (), {"emit": lambda self, ok, msg: saved.append((ok, msg))})()
+    app_api.Api._write_pdf(a, rec["id"], str(out))
+    assert saved and saved[0][0], saved
+    reader = pypdf.PdfReader(str(out))
+    text = "".join(p.extract_text() for p in reader.pages).replace("\n", "").replace("\t", " ")
+    assert all(f"Satz{i:03d}" in text for i in range(80))  # every line of the transcript is in the PDF
+    assert "G / K · 100" in text and "frac" not in text  # formulas readable (some symbols extract as glyph ids)
+    assert f"Seite 1 von {len(reader.pages)}" in text
+    # nothing runs over the right margin: the outer strip of every page is blank
+    from PySide6.QtPdf import QPdfDocument
+    pdf = QPdfDocument()
+    pdf.load(str(out))
+    for n in range(pdf.pageCount()):
+        img = pdf.render(n, QSize(595, 842))
+        ink = [(x, y) for x in range(565, 595) for y in range(0, 842, 2)
+               if img.pixelColor(x, y).alpha() > 40 and img.pixelColor(x, y).lightness() < 200]
+        assert not ink, f"page {n + 1}: text in the right margin at {ink[:3]}"
+        body = [1 for x in range(60, 300) for y in range(100, 700, 4)
+                if img.pixelColor(x, y).alpha() > 40 and img.pixelColor(x, y).lightness() < 200]
+        assert body, "the check sees no text at all"

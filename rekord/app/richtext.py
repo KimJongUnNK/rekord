@@ -29,15 +29,17 @@ def _doc(qdoc) -> QTextDocument | None:
 
 def markdown_to_html(src: str) -> str:
     """Markdown (what the AI writes) → HTML with real formatting (headings, bold, lists, tables)."""
+    from .. import formulas
     d = QTextDocument()
-    d.setMarkdown(src or "")
+    d.setMarkdown(formulas.to_text(src or ""))
     return d.toHtml()
 
 
 def plain(src: str) -> str:
     """Markdown → readable text without marks (for apps that only take plain text)."""
+    from .. import formulas
     d = QTextDocument()
-    d.setMarkdown(src or "")
+    d.setMarkdown(formulas.to_text(src or ""))
     return d.toPlainText()
 
 
@@ -66,10 +68,11 @@ class Formatter(QObject):
         d = _doc(qdoc)
         if d is None:
             return
+        from .. import formulas
         if html:
             d.setHtml(html)
         else:
-            d.setMarkdown(markdown or "")
+            d.setMarkdown(formulas.to_text(markdown or ""))
 
     @Slot(QObject, result=str)
     def html(self, qdoc) -> str:
