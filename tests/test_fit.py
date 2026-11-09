@@ -64,11 +64,44 @@ def test_the_analysis_hears_the_louder_audio_the_file_stays(monkeypatch, tmp_pat
     monkeypatch.setattr(models, "ensure", lambda *a, **k: None)
     monkeypatch.setattr(models, "usable_asr", lambda m: m)
     monkeypatch.setattr(pipeline, "diarize", diarize)
+    stages = []
+    real_update = db.update_recording
+    monkeypatch.setattr(db, "update_recording", lambda rid, **kw: (stages.append(kw.get("stage")), real_update(rid, **kw))[1])
     with pytest.raises(Seen):
         pipeline.process(rec["id"])
     assert abs(heard["level"] - audio.SPEECH_LEVEL) < 0.02  # speaker separation and Whisper get speech level
     assert audio.speech_level(audio.load(wav)) < 0.02  # the stored recording is untouched
+    assert any(st and st.startswith("Lautstärke angepasst: +") and st.endswith(" dB") for st in stages)  # shown in the progress
+    # Einstellungen → Transkription → off: the analysis hears the recording as it is
+    monkeypatch.setattr(pipeline.config, "load", lambda: config.DEFAULTS | {"boost_quiet": False})
+    with pytest.raises(Seen):
+        pipeline.process(rec["id"])
+    assert heard["level"] < 0.02
     db.update_recording(rec["id"], status="done")
+
+
+def test_the_live_text_hears_the_louder_audio_too():
+    """Every way to a transcript lifts a quiet room: the analysis after Stopp (import, drag-in, inbox folder,
+    appending, merging, transcribing again and the CLI all go through pipeline.process) – and the live text."""
+    import threading
+
+    from rekord import live
+    heard = []
+
+    class Eng:
+        def transcribe_clip(self, clip):
+            heard.append(audio.speech_level(clip))
+            return "hallo", "de"
+    s = live.LiveSession.__new__(live.LiveSession)
+    s.s, s.engine, s._main, s._lock, s.segments = {"vocabulary": []}, Eng(), None, threading.Lock(), []
+    s._fix, s.emit, s._label = (lambda t: t), (lambda ev: None), (lambda r: {"name": "A"})
+    s._note_language = lambda lang, sec: None
+    quiet = _speech(0.01)
+    s._segment([{"start": 0.0, "samples": quiet}], {})
+    assert heard and abs(heard[-1] - audio.SPEECH_LEVEL) < 0.02
+    s.s["boost_quiet"] = False
+    s._segment([{"start": 0.0, "samples": quiet}], {})
+    assert heard[-1] < 0.02
 
 
 # ------------------------------------------------------------------ the model for this computer

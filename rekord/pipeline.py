@@ -90,9 +90,13 @@ def process(rid: str, on_event=None) -> dict:
         s = {**s, "asr_engine": "sherpa", "asr_model": fallback}
         models.ensure(models.needed(s), on_progress=load)
     db.update_recording(rid, duration=duration, peaks=audio.peaks(samples))
-    samples, gain = audio.boost(samples)  # quiet recording: louder for the analysis (the file stays as it is)
+    gain = 1.0
+    if s.get("boost_quiet", True):  # Einstellungen → Transkription: quiet recordings louder (the file stays as it is)
+        samples, gain = audio.boost(samples)
     if gain > 1:
-        log.info("%s: quiet recording – %.0f dB louder for the analysis", rid, 20 * np.log10(gain))
+        db_up = 20 * np.log10(gain)
+        log.info("%s: quiet recording – %.0f dB louder for the analysis", rid, db_up)
+        stage(f"Lautstärke angepasst: +{db_up:.0f} dB", 0.04)  # shown in the progress, so it's visible that it happened
 
     # 1. who spoke when
     stage("Sprecher trennen", 0.05)

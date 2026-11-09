@@ -227,9 +227,10 @@ class Api(QObject):
     @Slot(str, str)
     def _write_pdf(self, rid: str, dest: str) -> None:
         try:
-            from .. import db, export
+            from .. import config, db, export
             from . import md, pdfout
-            text = export.markdown(rid).replace("  \n", "\n\n")  # each line of the transcript its own paragraph
+            full = bool(config.load().get("pdf_transcript"))  # Export → "Transkript anhängen" (off: only what was written up)
+            text = export.markdown(rid, with_transcript=full).replace("  \n", "\n\n")  # each transcript line its own paragraph
             title = (db.get_recording(rid) or {}).get("title", "REKORD")
             pages = pdfout.write(dest, title, md.render(text, links=False))
             self.saved.emit(True, f"Gespeichert: {Path(dest).name} ({pages} Seiten)")

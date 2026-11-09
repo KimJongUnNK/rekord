@@ -36,6 +36,14 @@ Kommt der Hinweis nicht: unten links auf **Nach Updates suchen** klicken.
 Beim ersten Start lädt REKORD einmalig die Sprachmodelle (~700 MB), danach läuft alles offline.
 Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**
 
+## Neu in 1.4.13
+
+- 🎛️ **KI-Verhalten einstellen.** *Einstellungen → KI-Verhalten*: Länge, Ton, Beispiele, Emojis, Sprache, Zeitstempel, eigene Regeln – gilt für jede Zusammenfassung, Änderung und Antwort. Darunter steht genau, was die KI liest.
+- ✍️ **„Ändern“ klappt auch bei 3-Stunden-Vorlesungen mit lokaler KI** – mit Fortschrittsbalken, ohne Zeitlimit.
+- 📄 **PDF nur mit dem Zusammengefassten.** Ein paar Seiten statt 45 – das ganze Transkript auf Wunsch.
+- 🧹 **Kein leeres „z. B.,.“ mehr** bei „Prüfungsrelevant“.
+- 🔊 **Leise Aufnahmen lauter – auch live**, mit Schalter und Anzeige „+12 dB“.
+
 ## Neu in 1.4.12
 
 - 📄 **PDF-Export im Dark Mode behoben.** Die Seiten waren leer (weiße Schrift auf weißem Papier). Jetzt immer schwarz auf weiß.

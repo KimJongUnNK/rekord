@@ -183,17 +183,26 @@ Item {
                                 Layout.fillWidth: true
                                 spacing: 8
                                 property bool busy: false
+                                property real progress: 0
+                                property string label: ""
+                                property string live: ""
+                                property string error: ""
                                 id: aiRow
                                 function run() {
                                     const t = aiField.text.trim()
                                     if (!t || busy) return
-                                    busy = true
-                                    v.page.app.call("POST", "/api/summaries/" + sc.modelData.id + "/ai", { instruction: t }, () => {
-                                        aiRow.busy = false
-                                        aiField.text = ""
-                                        v.page.app.toast("Geändert – „Rückgängig“ holt die vorige Fassung zurück.")
-                                        v.page.reload()
-                                    }, (err) => { aiRow.busy = false; v.page.app.toast("KI: " + err) })
+                                    busy = true; progress = 0; label = "Wird gestartet …"; live = ""; error = ""
+                                    // a stream, not a plain request: a 3-hour lecture on a local model takes minutes – no timeout
+                                    v.page.app.stream("/api/summaries/" + sc.modelData.id + "/ai/stream", { instruction: t },
+                                        (txt) => { if (!txt.startsWith("*") || !txt.endsWith("*")) aiRow.live = txt },
+                                        () => {
+                                            aiRow.busy = false; aiRow.live = ""
+                                            aiField.text = ""
+                                            v.page.app.toast("Geändert – „Rückgängig“ holt die vorige Fassung zurück.")
+                                            v.page.reload()
+                                        },
+                                        (err) => { aiRow.busy = false; aiRow.live = ""; aiRow.error = String(err); v.page.app.toast("KI: " + err) },
+                                        (p, l) => { aiRow.progress = Math.max(aiRow.progress, p); aiRow.label = l })
                                 }
                                 Input {
                                     id: aiField
@@ -202,6 +211,7 @@ Item {
                                     enabled: !aiRow.busy
                                     placeholderText: "Sag der KI, was sie ändern soll – z. B. „keine Sternchen“, „kürzer“, „Spiegelstriche statt Punkte“, „To-dos als Tabelle“"
                                     onAccepted: aiRow.run()
+                                    onTextChanged: aiRow.error = ""
                                 }
                                 BusyIndicator { visible: aiRow.busy; running: visible; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
                                 Btn { kind: "primary"; small: true; iconName: "spark"; text: "Ändern"; enabled: !aiRow.busy && aiField.text.trim() !== ""; onClicked: aiRow.run() }
@@ -212,6 +222,29 @@ Item {
                                     ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Zur Fassung vor der letzten KI-Änderung – nochmal klicken: wieder zurück"
                                     onClicked: v.page.app.call("POST", "/api/summaries/" + sc.modelData.id + "/undo", null, () => { v.page.app.toast("Rückgängig"); v.page.reload() })
                                 }
+                            }
+                            ColumnLayout {  // while the AI changes it: how far, and the new version as it's written
+                                objectName: "summaryAiProgress"
+                                visible: aiRow.busy || aiRow.error !== ""
+                                Layout.fillWidth: true
+                                spacing: 6
+                                Bar { visible: aiRow.busy; Layout.fillWidth: true; value: aiRow.progress }
+                                RowLayout {
+                                    visible: aiRow.busy
+                                    Layout.fillWidth: true
+                                    Muted { Layout.fillWidth: true; font.pixelSize: 12; text: aiRow.label; elide: Text.ElideRight }
+                                    Muted { font.pixelSize: 12; text: Math.round(aiRow.progress * 100) + " %" }
+                                }
+                                Text {
+                                    objectName: "summaryAiError"
+                                    visible: aiRow.error !== ""
+                                    Layout.fillWidth: true
+                                    text: "KI: " + aiRow.error
+                                    wrapMode: Text.WordWrap
+                                    color: Theme.accent
+                                    font.family: Theme.text; font.pixelSize: 13
+                                }
+                                Markdown { visible: aiRow.live !== ""; Layout.fillWidth: true; source: aiRow.live; opacity: 0.75 }
                             }
                             TextEdit {  // formatted in the editor: shown exactly like that
                                 visible: !!sc.modelData.rich

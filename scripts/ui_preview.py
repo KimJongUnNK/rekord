@@ -262,6 +262,9 @@ def main(out: Path) -> int:
     for i, name in enumerate(["detail", "detail-transcript", "detail-mindmap", "detail-ask", "detail-notes", "detail-docs", "detail-export"]):
         detail.setProperty("tab", i)
         shot(name)
+    pdf_box = find(detail, "pdfTranscript")  # Export → PDF: only what was written up, unless "Transkript anhängen"
+    if pdf_box is None or pdf_box.property("checked"):
+        problems_extra.append("export: no 'PDF: ganzes Transkript anhängen' switch, or it is on by default")
     # the bar while summarizing (long lecture on a local model: "Teil 3 von 9 …")
     sv = find(detail, "summaryProgress")
     view = sv
@@ -606,6 +609,23 @@ def main(out: Path) -> int:
     ts = find(settings, "timestampsSelect")
     if ts is None or ts.property("value") != "ask":
         problems_extra.append(f"settings: 'Zeitstempel' should default to 'Nur wenn ich danach frage' ({ts and ts.property('value')!r})")
+    # KI-Verhalten: own section, the switches save, and the preview shows exactly the block the AI gets
+    if find(settings, "aiBehaviour") is None or find(settings, "aiLength") is None or find(settings, "aiTone") is None:
+        problems_extra.append("settings: no section 'KI-Verhalten' with Länge and Ton")
+    else:
+        call(settings, "jump", "behave")
+        QMetaObject.invokeMethod(find(settings, "aiLength"), "picked", Q_ARG(str, "short"))
+        if not wait_for(lambda: (config.load().get("ai_prefs") or {}).get("length") == "short", 4):
+            problems_extra.append("settings: 'Länge: Kurz' wasn't saved")
+        prev = find(settings, "aiRulesPreview")
+        if prev is None or not wait_for(lambda: "Verhaltensregeln" in (prev.property("text") or "")
+                                        and "nur das Wichtigste" in (prev.property("text") or ""), 4):
+            problems_extra.append("settings: the preview of the AI rules doesn't show the current rules")
+        shot("settings-ai-behaviour")
+        config.save({"ai_prefs": {"length": "normal"}})
+    boost = find(settings, "boostQuiet")
+    if boost is None or not boost.property("checked"):
+        problems_extra.append("settings: 'Leise Aufnahmen lauter machen' missing or not on by default")
     for key in ("ai", "asr", "models", "int", "data"):
         call(settings, "jump", key)
         shot(f"settings-{key}")

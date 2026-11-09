@@ -382,6 +382,8 @@ class LiveSession:
         text = ""
         if self.engine is not None:
             samples = np.concatenate([g["samples"] for g in group])
+            if self.s.get("boost_quiet", True):  # a quiet room: louder for the live text too (the recording stays as it is)
+                samples = audio.boost(samples)[0]
             clips = asr.split_long(0, len(samples) / SR, samples)
             parts = []
             for a, b in clips:

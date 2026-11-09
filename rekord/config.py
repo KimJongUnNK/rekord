@@ -69,6 +69,10 @@ DEFAULTS: dict = {
     "template_order": [],  # Vorlagen in the user's order of importance (ids); empty = built-in order
     "summary_language": "de",
     "timestamps": "ask",  # Einstellungen → KI → Zeitstempel: "ask" = only when you ask for them, "always"
+    # Einstellungen → KI-Verhalten: how the AI answers, everywhere (summaries, changes, questions) – see summarize.prefs_block
+    "ai_prefs": {"length": "normal", "tone": "direct", "examples": True, "emojis": False},
+    "pdf_transcript": False,  # Export → PDF: also the whole transcript (off: only summaries, mind map, notes)
+    "boost_quiet": True,  # Einstellungen → Transkription: quiet recordings louder before transcribing (up to +30 dB)
     "ai_instructions": "",  # filled in by the user; AI_INSTRUCTIONS_SUGGESTION is offered in the settings  # Einstellungen → KI → Anweisungen an die KI: how the AI talks, in every answer and summary
     "llm": {
         "provider": "anthropic",  # anthropic | openai | ollama | compatible | none

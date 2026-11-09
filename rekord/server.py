@@ -356,6 +356,12 @@ def get_settings():
     return config.public() | {"providers": providers.PROVIDERS}
 
 
+@app.get("/api/ai/rules")
+def ai_rules():
+    """Einstellungen → KI-Verhalten: exactly the block every AI call gets (shown under the settings, nothing hidden)."""
+    return {"rules": summarize.prefs_block(config.load()).strip()}
+
+
 @app.put("/api/settings")
 async def put_settings(request: Request):
     patch = await request.json()
@@ -1377,6 +1383,16 @@ async def summary_ai(sid: int, request: Request):
     except providers.LLMError as e:
         raise HTTPException(400, str(e))
     return {"ok": True, "content": content, "can_undo": True}
+
+
+@app.post("/api/summaries/{sid}/ai/stream")
+async def summary_ai_stream(sid: int, request: Request):
+    """The same as a stream: progress while a long transcript is prepared, the new text as it's written – no timeout."""
+    b = await request.json()
+    if db.get_summary(sid) is None:
+        raise HTTPException(404)
+    instruction = b.get("instruction", "")
+    return _stream_text(lambda: summarize.edit_summary_stream(sid, instruction))
 
 
 @app.post("/api/summaries/{sid}/undo")

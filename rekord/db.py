@@ -86,6 +86,11 @@ CREATE TABLE IF NOT EXISTS templates (
     prompt TEXT NOT NULL,
     created_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS condensed (
+    key TEXT PRIMARY KEY,
+    notes TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS segments_fts USING fts5(
     text, recording_id UNINDEXED, segment_id UNINDEXED, tokenize='unicode61 remove_diacritics 2'
 );
@@ -533,3 +538,19 @@ def save_template(tid: str | None, name: str, prompt: str, category: str = "Eige
 def delete_template(tid: str) -> None:
     with tx() as c:
         c.execute("DELETE FROM templates WHERE id=?", (tid,))
+
+
+# ------------------------------------------------------------------ condensed transcript pieces (long recordings, local AI)
+
+def get_condensed(key: str) -> str | None:
+    """Notes the AI already wrote for one piece of a long transcript – survive a restart, so an AI change or a
+    question about a 3-hour lecture doesn't condense everything again."""
+    row = connect().execute("SELECT notes FROM condensed WHERE key=?", (key,)).fetchone()
+    return row["notes"] if row else None
+
+
+def set_condensed(key: str, notes: str) -> None:
+    conn = connect()
+    conn.execute("INSERT OR REPLACE INTO condensed (key, notes, created_at) VALUES (?,?,?)", (key, notes, time.time()))
+    conn.execute("DELETE FROM condensed WHERE key NOT IN (SELECT key FROM condensed ORDER BY created_at DESC LIMIT 2000)")
+    conn.commit()

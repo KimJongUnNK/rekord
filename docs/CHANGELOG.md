@@ -2,6 +2,14 @@
 
 Was sich in welcher Version geändert hat, neueste zuerst. Die Downloads stehen immer unter [Releases](https://github.com/KimJongUnNK/rekord/releases/latest).
 
+## 1.4.13 – KI-Verhalten in den Einstellungen · „Ändern“ klappt auch bei langen Vorlesungen · PDF ohne Transkript
+- **Neu: Einstellungen → KI-Verhalten.** Länge (Kurz / Normal / Ausführlich), Ton (Direkt / Sachlich / Locker), Beispiele zu jedem Punkt, Emojis, Sprache, Zeitstempel und eigene Regeln – einmal eingestellt, gilt es für jede Zusammenfassung, jede Änderung und jede Antwort, mit Claude, ChatGPT und lokaler KI. Die KI bekommt alles als **einen** festen Block Regeln (nicht verteilt, nicht doppelt); darunter steht genau der Text, den sie liest. Was sich prüfen lässt, prüft REKORD danach selbst: keine Zeitstempel, keine Emojis (wenn aus), kein leeres „z. B.“.
+- **Behoben: „Sag der KI, was sie ändern soll“ reagierte nicht** bei langen Aufnahmen mit lokaler KI. Die Anfrage gab nach 2 Minuten auf, während das Transkript noch verdichtet wurde. Jetzt mit Fortschrittsbalken („Teil 3 von 9 …“, „Die KI ändert die Zusammenfassung …“), ohne Zeitlimit, die neue Fassung erscheint beim Schreiben. Ändert die KI nichts oder gibt nichts zurück, steht das klar da.
+- **Verdichtete Abschnitte langer Aufnahmen bleiben gespeichert** – auch nach einem Neustart fängt die nächste Änderung oder Frage nicht von vorn an.
+- **Behoben: „z. B.,.“ ohne Beispiel** (z. B. bei „Prüfungsrelevant“). Ursache: Die KI schrieb „z. B. [12:34]“, der Zeitstempel wurde entfernt, „z. B.“ blieb übrig. Jetzt verschwindet ein leeres „z. B.“ mit, die Vorlage *Vorlesung / Lernzettel* verlangt bei „Prüfungsrelevant“ das konkrete Beispiel aus der Vorlesung, und die KI hat die Regel, nie Platzhalter stehen zu lassen.
+- **PDF-Export: nur, was zusammengeschrieben wurde** – Zusammenfassungen, Mind Map, Notizen. Eine lange Vorlesung ist ein paar Seiten statt 45. Das ganze Transkript gibt's mit *Export → PDF: ganzes Transkript anhängen*. Gibt es noch keine Zusammenfassung, kommt das Transkript automatisch.
+- **Leise Aufnahmen lauter – jetzt auch in der Live-Mitschrift**, mit Schalter unter *Einstellungen → Transkription* (Standard: an) und Anzeige im Fortschritt („Lautstärke angepasst: +12 dB“). Die Aufnahme selbst bleibt unverändert.
+
 ## 1.4.12 – PDF-Export im Dark Mode
 - **Behoben: leere PDF-Seiten.** Mit REKORD im Dark Mode war der exportierte Text weiß – auf weißem Papier unsichtbar, nur die Fußzeile war zu sehen. Das PDF druckt jetzt immer schwarze Schrift auf weißem Papier, egal welches Design eingestellt ist.
 
