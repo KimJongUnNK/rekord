@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from typing import Iterator
 
 from . import db, history, summarize
 from .llm import providers
@@ -60,6 +61,16 @@ def _parse(raw: str) -> dict:
 
 def edit(rid: str, instruction: str, settings: dict) -> dict:
     """Apply the instruction. Returns {"changed": n, "deleted": n, "note": "…"}. Raises EditError / LLMError."""
+    result: dict = {}
+    for item in edit_stream(rid, instruction, settings):
+        if not summarize.is_status(item):
+            result = json.loads(item)
+    return result
+
+
+def edit_stream(rid: str, instruction: str, settings: dict) -> Iterator[str]:
+    """The same as a stream for the window: a status line per piece ("Teil 2 von 7 …" – a long lecture on a local
+    model takes minutes, a plain request would give up), then the result as JSON."""
     instruction = (instruction or "").strip()
     if not instruction:
         raise EditError("Schreib, was die KI ändern soll.")
@@ -73,7 +84,9 @@ def edit(rid: str, instruction: str, settings: dict) -> dict:
     changes: dict[int, str] = {}
     deletes: set[int] = set()
     notes = []
-    for part in chunks:
+    for i, part in enumerate(chunks):
+        yield summarize.status(f"Die KI geht das Transkript durch – Teil {i + 1} von {len(chunks)} …" if len(chunks) > 1
+                               else "Die KI geht das Transkript durch …", 0.05 + 0.9 * i / len(chunks))
         raw = providers.complete(settings, SYSTEM, [{"role": "user", "content":
                                  f"<anweisung>\n{instruction}\n</anweisung>\n<transkript>\n{part}\n</transkript>"}], 16000)
         data = _parse(raw)
@@ -99,4 +112,4 @@ def edit(rid: str, instruction: str, settings: dict) -> dict:
     res = history.change(rid, f"KI: {instruction}"[:120], changes, sorted(deletes))
     note = " ".join(notes)[:400]
     log.info("transcript ai %s: %d changed, %d removed", rid, res["changed"], res["deleted"])
-    return {**res, "note": note}
+    yield json.dumps({**res, "note": note}, ensure_ascii=False)

@@ -21,6 +21,8 @@ Item {
     readonly property var stills: page.rec && page.rec.frames ? page.rec.frames : []  // from a video: what was on screen
     property int active: -1
     property bool aiBusy: false
+    property real aiProgress: 0     // while the AI goes through a long transcript piece by piece
+    property string aiLabel: ""
     property var hist: ({})  // what Rückgängig / Wiederholen would do (fresh with every load of the recording)
     Connections { target: v.page; function onRecChanged() { v.hist = v.page.rec && v.page.rec.history ? v.page.rec.history : ({}) } }
     function loadHist() { page.app.call("GET", "/api/recordings/" + page.rid + "/transcript/history", null, (r) => v.hist = r, () => {}) }
@@ -37,16 +39,20 @@ Item {
     function aiEdit() {
         const t = aiIn.text.trim()
         if (!t || aiBusy) return
-        aiBusy = true
-        page.app.call("POST", "/api/recordings/" + page.rid + "/transcript/ai", { instruction: t }, (r) => {
+        aiBusy = true; aiProgress = 0; aiLabel = "Wird gestartet …"
+        // a stream, not a plain request: a long lecture on a local model takes minutes – no timeout, with progress
+        page.app.stream("/api/recordings/" + page.rid + "/transcript/ai/stream", { instruction: t }, null, (txt) => {
             aiBusy = false
+            let r = {}
+            try { r = JSON.parse(String(txt).trim()) } catch (e) { r = {} }
             aiIn.text = ""
             page.app.toast(r.changed || r.deleted
                            ? (r.changed ? r.changed + " Zeilen geändert" : "") + (r.changed && r.deleted ? ", " : "") + (r.deleted ? r.deleted + " entfernt" : "") + " – „Rückgängig“ holt alles zurück."
                            : (r.note || "Nichts zu ändern."))
             page.reload()
             v.loadHist()
-        }, (err) => { aiBusy = false; page.app.toast(err) })
+        }, (err) => { aiBusy = false; page.app.toast("KI: " + err) },
+        (p, l) => { v.aiProgress = Math.max(v.aiProgress, p); v.aiLabel = l })
     }
 
     FindReplaceDialog { id: frep; page: v.page }
@@ -123,6 +129,18 @@ Item {
                 ToolTip.visible: hovered; ToolTip.delay: 400
                 ToolTip.text: v.hist.redo ? "Wiederholen: " + v.hist.redo + " (Strg/⌘ + ⇧ + Z)" : "Nichts zu wiederholen"
                 onClicked: v.step("redo")
+            }
+        }
+        ColumnLayout {  // while the AI goes through the transcript: how far
+            objectName: "transcriptAiProgress"
+            visible: v.aiBusy
+            Layout.fillWidth: true
+            spacing: 6
+            Bar { Layout.fillWidth: true; value: v.aiProgress }
+            RowLayout {
+                Layout.fillWidth: true
+                Muted { Layout.fillWidth: true; font.pixelSize: 12; text: v.aiLabel; elide: Text.ElideRight }
+                Muted { font.pixelSize: 12; text: Math.round(v.aiProgress * 100) + " %" }
             }
         }
         RowLayout {

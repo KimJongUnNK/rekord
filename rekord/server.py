@@ -24,7 +24,7 @@ import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
-from . import __version__, audio, config, context, db, export, formulas, frames, jobs, live, models, pipeline, summarize, updater
+from . import __version__, audio, config, context, db, export, frames, jobs, live, models, pipeline, summarize, updater
 from .engines import asr
 from .llm import providers, templates
 
@@ -1026,6 +1026,17 @@ async def transcript_ai_edit(rid: str, request: Request):
         raise HTTPException(400, str(e)) from e
 
 
+@app.post("/api/recordings/{rid}/transcript/ai/stream")
+async def transcript_ai_stream(rid: str, request: Request):
+    """The same as a stream: progress per piece of a long transcript, no timeout; the last part is the result (JSON)."""
+    from . import transcript_ai
+    if db.get_recording(rid) is None:
+        raise HTTPException(404)
+    body = await request.json()
+    instruction, settings = str(body.get("instruction", "")), config.load()
+    return _stream_text(lambda: transcript_ai.edit_stream(rid, instruction, settings))
+
+
 @app.get("/api/recordings/{rid}/transcript/history")
 def transcript_history(rid: str):
     from . import history
@@ -1353,7 +1364,8 @@ async def summarize_rec(rid: str, request: Request):
     s = config.load()
 
     def save(content: str):
-        content = formulas.to_text(content.strip())  # LaTeX the AI wrote anyway → readable formula text
+        # the same finish as everywhere: readable formulas, no empty "z. B.", no emojis unless allowed (KI-Verhalten)
+        content = summarize.finish(content.strip(), s).strip()
         if content and tid == "mindmap":
             content = summarize.finish_mindmap(s, content)  # flat list from a small model → branches
         if content:

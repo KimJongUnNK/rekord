@@ -494,7 +494,38 @@ def test_empty_example_words_are_cleaned_and_real_examples_stay():
     assert f("- Kosten, e.g.,") == "- Kosten."
     keep = "- Abschreibung, z. B. lineare Abschreibung über 5 Jahre."
     assert f(keep) == keep and f("Ende...") == "Ende..."
-    assert summarize.strip_times("- **Ladung** ist zentral, z. B. [12:34].") == "- **Ladung** ist zentral."
+    # normal sentences, function calls, paths and code are never touched
+    for text in ("We will see.", "Das dauert etwa.", "Rufe print() auf.", "Pfad: ../daten/x.txt",
+                 "```\nf(), x..y, z. B.,.\n```", "Code: `print()` und `a, z. B.,.`", "Version 1..3 fehlt"):
+        assert f(text) == text, text
+    assert summarize.finish(summarize.strip_times("- **Ladung** ist zentral, z. B. [12:34]."), {}) == "- **Ladung** ist zentral."
+    # streamed in pieces: an example that is still on its way is never cut off
+    pieces = ["- Abschreibung, z. B.", " lineare Abschreibung [01:02] über 5 Jahre."]
+    streamed = "".join(summarize.strip_times_stream(iter(pieces)))
+    assert summarize.finish(streamed, {}) == "- Abschreibung, z. B. lineare Abschreibung über 5 Jahre."
     from rekord.llm import templates
     lecture = templates.get("lecture")["prompt"]
     assert "konkrete Beispiel" in lecture  # the template asks for the example, it doesn't leave a "z. B." to copy
+
+
+def test_a_summary_written_in_the_window_is_finished_like_everywhere_else(client, monkeypatch):
+    """The window's path (POST /api/recordings/{id}/summaries) saves through server.save – it must clean the same
+    way: no empty "z. B." left by a removed timestamp, no emojis unless allowed, readable formulas."""
+    rec = db.create_recording("Fenster", "", status="done")
+    spk = db.add_speaker(rec["id"], "Dozentin", "#FF5A1F")
+    conn = db.connect()
+    conn.execute("INSERT INTO segments (recording_id, speaker_id, start, end, text) VALUES (?,?,?,?,?)",
+                 (rec["id"], spk, 0, 4, "Die Ladung ist zentral."))
+    conn.commit()
+    settings = {"llm": {"provider": "ollama", "ollama": {"model": "qwen3:8b"}}, "summary_language": "de",
+                "timestamps": "ask", "ai_prefs": {"emojis": False}}
+    monkeypatch.setattr(summarize.config, "load", lambda: settings)
+    from rekord import server
+    monkeypatch.setattr(server.config, "load", lambda: settings)
+    monkeypatch.setattr(providers, "stream", lambda s, sy, m, mt=0: iter(
+        ["# Ladung 🚀\n## Prüfungsrelevant\n- **Ladung** ist zentral, z. B. [00:01].\n- $Q = I \\cdot t$"]))
+    r = client.post(f"/api/recordings/{rec['id']}/summaries", json={"template_id": "lecture"})
+    assert r.status_code == 200
+    saved = [x for x in db.list_summaries(rec["id"]) if x["template_id"] == "lecture"][-1]["content"]
+    assert "🚀" not in saved and "z. B." not in saved and "- **Ladung** ist zentral." in saved
+    assert "Q = I · t" in saved and "$" not in saved

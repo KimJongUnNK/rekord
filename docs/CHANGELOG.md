@@ -2,6 +2,12 @@
 
 Was sich in welcher Version geändert hat, neueste zuerst. Die Downloads stehen immer unter [Releases](https://github.com/KimJongUnNK/rekord/releases/latest).
 
+## 1.4.14 – Fehlersuche: Mind Map und Transkript ändern ohne Zeitlimit, Text-Bereinigung repariert
+- **Behoben: „Ändern“ bei der Mind Map und „Sag der KI, was sie ändern soll“ im Transkript** gaben bei langen Aufnahmen mit lokaler KI nach 2 Minuten auf – derselbe Fehler wie bis 1.4.13 bei Zusammenfassungen. Jetzt beide mit Fortschrittsbalken („Teil 3 von 7 …“) und ohne Zeitlimit.
+- **Behoben: Neue Zusammenfassungen im Fenster** wurden nicht nachbearbeitet – leere „z. B.,.“ und Emojis (obwohl ausgeschaltet) konnten stehen bleiben. Jetzt läuft jede Zusammenfassung durch dieselbe Bereinigung.
+- **Behoben: Die Bereinigung leerer Beispiele war zu gierig** – sie machte aus „We will see.“ „We will.“, aus „dauert etwa.“ „dauert.“, aus `print()` `print` und aus `../daten` `./daten`, auch in Codeblöcken. Jetzt trifft sie nur echte Reste nach Komma oder Klammer; Code bleibt unberührt.
+- **Behoben: Ein Beispiel konnte beim Mitschreiben abgeschnitten werden**, wenn „z. B.“ und das Beispiel in zwei Stücken ankamen („z. B.“ | „lineare Abschreibung“ → „. lineare Abschreibung“).
+
 ## 1.4.13 – KI-Verhalten in den Einstellungen · „Ändern“ klappt auch bei langen Vorlesungen · PDF ohne Transkript
 - **Neu: Einstellungen → KI-Verhalten.** Länge (Kurz / Normal / Ausführlich), Ton (Direkt / Sachlich / Locker), Beispiele zu jedem Punkt, Emojis, Sprache, Zeitstempel und eigene Regeln – einmal eingestellt, gilt es für jede Zusammenfassung, jede Änderung und jede Antwort, mit Claude, ChatGPT und lokaler KI. Die KI bekommt alles als **einen** festen Block Regeln (nicht verteilt, nicht doppelt); darunter steht genau der Text, den sie liest. Was sich prüfen lässt, prüft REKORD danach selbst: keine Zeitstempel, keine Emojis (wenn aus), kein leeres „z. B.“.
 - **Behoben: „Sag der KI, was sie ändern soll“ reagierte nicht** bei langen Aufnahmen mit lokaler KI. Die Anfrage gab nach 2 Minuten auf, während das Transkript noch verdichtet wurde. Jetzt mit Fortschrittsbalken („Teil 3 von 9 …“, „Die KI ändert die Zusammenfassung …“), ohne Zeitlimit, die neue Fassung erscheint beim Schreiben. Ändert die KI nichts oder gibt nichts zurück, steht das klar da.

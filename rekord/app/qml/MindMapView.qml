@@ -19,10 +19,12 @@ Item {
     function change() {
         const t = mmAi.text.trim()
         if (!t || busy || !mm) return
-        busy = true
-        page.app.call("POST", "/api/summaries/" + mm.id + "/ai", { instruction: t },
-                      () => { v.busy = false; mmAi.text = ""; v.page.reload() },
-                      (err) => { v.busy = false; v.page.app.toast("Mind Map: " + err) })
+        busy = true; progress = 0; progressLabel = "Startet …"
+        // a stream with progress, no timeout (a long lecture on a local model takes minutes)
+        page.app.stream("/api/summaries/" + mm.id + "/ai/stream", { instruction: t }, null,
+                        () => { v.busy = false; mmAi.text = ""; v.page.reload() },
+                        (err) => { v.busy = false; v.page.app.toast("Mind Map: " + err) },
+                        (p, label) => { v.progress = Math.max(v.progress, p); v.progressLabel = label })
     }
     function create() {
         busy = true; progress = 0; progressLabel = "Startet …"
