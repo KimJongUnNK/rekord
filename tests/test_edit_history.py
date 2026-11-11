@@ -119,3 +119,27 @@ def test_word_export_has_no_markdown_leftovers():
     assert "Budget" in bold
     assert any(p.style.name == "List Bullet" for p in doc.paragraphs) and any(p.style.name == "Quote" for p in doc.paragraphs)
     assert "Emil: Budget passt." in text  # stray ** in the transcript gone too
+
+
+def test_ai_edit_of_a_long_transcript_streams_progress_and_never_times_out(client, monkeypatch):
+    """Like "Ändern" for summaries: a long lecture on a local model takes minutes – a plain request gave up after
+    2 minutes. The stream shows "Teil 2 von 5 …" and ends with the result."""
+    rid = _rec([f"Satz {i}: Die Abschreibung verteilt die Anschaffungskosten über die Nutzungsdauer, ähm, genau."
+                for i in range(600)])
+    first = db.list_segments(rid)[0]["id"]
+    monkeypatch.setattr(providers, "context_chars", lambda s: 20000)
+    monkeypatch.setattr(providers, "configured", lambda s: (True, ""))
+    calls = []
+
+    def complete(settings, system, messages, max_tokens=32000):
+        calls.append(1)
+        return '{"aendern": [{"id": %d, "text": "Satz 0: Die Abschreibung verteilt die Kosten."}]}' % first if len(calls) == 1 else "{}"
+    monkeypatch.setattr(providers, "complete", complete)
+    body = client.post(f"/api/recordings/{rid}/transcript/ai/stream", json={"instruction": "Ähms raus"}).text
+    from rekord import summarize
+    statuses = [summarize.status_text(m) for m in __import__("re").findall("\u0001[^\u0002]*\u0002", body)]
+    assert len(calls) > 2 and len(statuses) == len(calls) and statuses[0].endswith(f"Teil 1 von {len(calls)} …")
+    import json
+    result = json.loads(__import__("re").sub("\u0001[^\u0002]*\u0002", "", body))
+    assert result["changed"] == 1 and _texts(rid)[0] == "Satz 0: Die Abschreibung verteilt die Kosten."
+    assert "Schreib, was" in client.post(f"/api/recordings/{rid}/transcript/ai/stream", json={"instruction": " "}).text

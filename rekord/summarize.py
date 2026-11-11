@@ -89,27 +89,46 @@ def wants_times(settings: dict, asked: str = "") -> bool:
 
 def strip_times(text: str) -> str:
     out = TS_ANY.sub("", text or "")
-    return fix_dangling(re.sub(r"[ \t]+([.,;:!?)])", r"\1", out))
+    # what a removed timestamp leaves ("z. B.,.") is cleaned in finish() on the whole text – never on a streamed piece,
+    # where the example may still be on its way ("z. B." | " lineare Abschreibung")
+    return re.sub(r"[ \t]+([.,;:!?)])", r"\1", out)
 
 
 # "wurden betont, z. B. [12:34]." minus the timestamp = "z. B.,." – or a small model copied a placeholder.
-_EXAMPLE_WORD = r"(?:z\.\s?B\.|zum Beispiel|bspw\.|beispielsweise|etwa|vgl\.|siehe|e\.\s?g\.|for example|such as|see)"
-_DANGLING = re.compile(r"[ \t]*,?[ \t]*\(?" + _EXAMPLE_WORD + r"[ \t]*\)?[ \t]*[,.;:]*[ \t]*$", re.I | re.M)
-_EMPTY_PARENS = re.compile(r"[ \t]*\([ \t,.;:]*\)")
+# Only what is clearly a leftover goes: an example word after a comma or bracket with nothing behind it.
+# Normal sentences ("we'll see.", "dauert etwa."), function calls ("print()"), paths ("../x") and code stay.
+_ABBR = r"(?:z\.\s?B\.|e\.\s?g\.|bspw\.|vgl\.)"  # unambiguous: never the end of a real sentence
+_WORD = r"(?:zum Beispiel|beispielsweise|etwa|siehe|for example|such as|see)"
+_DANGLING = re.compile(r"(?:[ \t]*,[ \t]*\(?|[ \t]*\(|[ \t]+)" + _ABBR + r"[ \t]*\)?[ \t]*[,.;:]*[ \t]*$"
+                       r"|(?:[ \t]*,[ \t]*\(?|[ \t]*\()" + _WORD + r"[ \t]*\)?[ \t]*[,.;:]*[ \t]*$", re.I | re.M)
+_EMPTY_PARENS = re.compile(r"(?:(?<=\s)|^)\([ \t,.;:]*\)[ \t]*", re.M)  # "( )" left alone in text – not f()
+_CODE = re.compile(r"```.*?(?:```|\Z)|`[^`\n]*`", re.S)
 
 
 def fix_dangling(text: str) -> str:
     """Removes an example word with nothing after it at the end of a line ("…, z. B.,." → "….") and empty brackets;
-    a real example ("z. B. lineare Abschreibung") stays."""
-    out = _EMPTY_PARENS.sub("", text or "")
-    lines = []
-    for line in out.split("\n"):
-        fixed = _DANGLING.sub("", line)
-        if fixed != line and fixed.strip() and not fixed.rstrip().endswith((".", "!", "?", ":", "*", ")")):
-            fixed = fixed.rstrip() + "."
-        lines.append(fixed)
-    out = "\n".join(lines)
-    return re.sub(r"(?<![.,])[ \t]*,[ \t]*\.(?!\.)|(?<!\.)\.\.(?!\.)", ".", out)
+    a real example ("z. B. lineare Abschreibung") and code stay as they are."""
+    parts, last, out = [], 0, []
+    for m in _CODE.finditer(text or ""):  # code spans and blocks are never touched
+        parts.append((False, text[last:m.start()]))
+        parts.append((True, m.group(0)))
+        last = m.end()
+    parts.append((False, (text or "")[last:]))
+    for is_code, chunk in parts:
+        if is_code:
+            out.append(chunk)
+            continue
+        lines = []
+        for line in _EMPTY_PARENS.sub("", chunk).split("\n"):
+            fixed = _DANGLING.sub("", line)
+            if fixed != line and fixed.strip() and not fixed.rstrip().endswith((".", "!", "?", ":", "*", ")")):
+                fixed = fixed.rstrip() + "."
+            if fixed != line:
+                fixed = re.sub(r"[ \t]*,[ \t]*\.$", ".", fixed)
+            lines.append(fixed)
+        chunk = "\n".join(lines)
+        out.append(re.sub(r"(?<![./\w])[ \t]*,[ \t]*\.(?=\s|$)|(?<![./])\.\.(?=[ \t]*$)", ".", chunk, flags=re.M))
+    return "".join(out)
 
 
 NO_PLACEHOLDER_RULE = ("- Nie Platzhalter oder angefangene Aufzählungen stehen lassen: kein „z. B.“, „etwa“, „…“ oder "

@@ -36,6 +36,11 @@ Kommt der Hinweis nicht: unten links auf **Nach Updates suchen** klicken.
 Beim ersten Start lädt REKORD einmalig die Sprachmodelle (~700 MB), danach läuft alles offline.
 Lieber Schritt für Schritt, mit Bildern? → **[Anleitung für Mac, Windows und Linux](https://github.com/KimJongUnNK/rekord/blob/main/docs/ANLEITUNG.md)**
 
+## Neu in 1.4.14
+
+- 🧭 **Mind Map und Transkript ändern** klappt jetzt auch bei langen Vorlesungen mit lokaler KI – mit Fortschrittsbalken, ohne Zeitlimit.
+- 🧹 **Saubere Zusammenfassungen**: keine leeren „z. B.“, keine ungewollten Emojis – und Code, Pfade und normale Sätze bleiben genau so, wie sie sind.
+
 ## Neu in 1.4.13
 
 - 🎛️ **KI-Verhalten einstellen.** *Einstellungen → KI-Verhalten*: Länge, Ton, Beispiele, Emojis, Sprache, Zeitstempel, eigene Regeln – gilt für jede Zusammenfassung, Änderung und Antwort. Darunter steht genau, was die KI liest.
