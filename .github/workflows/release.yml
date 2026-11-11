@@ -141,7 +141,7 @@ jobs:
         run: |
           VER=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
           docker run --rm -v "$PWD/linux-out:/pkgs:ro" archlinux:latest bash -c "
-            pacman -Sy --noconfirm --needed fakeroot binutils debugedit >/dev/null &&
+            pacman -Syu --noconfirm --needed fakeroot binutils debugedit >/dev/null &&
             useradd -m b && mkdir /home/b/p && cp /pkgs/PKGBUILD /pkgs/REKORD-${VER}-Linux-x86_64.tar.gz /home/b/p/ && chown -R b /home/b/p &&
             su b -c 'cd /home/b/p && makepkg -f --noconfirm' && pacman -U --noconfirm /home/b/p/rekord-bin-*.pkg.tar.zst && rekord models list | head -1"
       - uses: actions/upload-artifact@v7

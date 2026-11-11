@@ -161,7 +161,7 @@ jobs:
           t debian:bookworm      "apt-get update -q && apt-get install -y -q curl ca-certificates"
           t fedora:latest        "dnf install -y -q curl"
           t opensuse/tumbleweed  "zypper -n in curl"
-          t archlinux:latest     "pacman -Sy --noconfirm curl"
+          t archlinux:latest     "pacman -Syu --noconfirm curl"
       - name: macOS (install.sh → /Applications, no quarantine)
         if: runner.os == 'macOS'
         run: |
